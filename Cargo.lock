@@ -911,7 +911,7 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rapina"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "bytes",
  "http",
@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-cli"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "clap",
  "colored",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-macros"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "proc-macro2",
  "quote",

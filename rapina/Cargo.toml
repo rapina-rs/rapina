@@ -1,6 +1,6 @@
 [package]
 name = "rapina"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2024"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
 license = "MIT"
@@ -36,4 +36,4 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Our macros
-rapina-macros = { version = "0.1.0-alpha.2", path = "../rapina-macros/" }
+rapina-macros = { version = "0.1.0-alpha.3", path = "../rapina-macros/" }
