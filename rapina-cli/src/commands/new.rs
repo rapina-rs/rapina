@@ -109,6 +109,7 @@ hyper = "1"
 /// Generate the content for src/main.rs.
 fn generate_main_rs() -> String {
     r#"use rapina::prelude::*;
+use rapina::middleware::RequestLogMiddleware;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -129,9 +130,9 @@ async fn main() -> std::io::Result<()> {
         .get_named("/", "hello", hello)
         .get_named("/health", "health_check", health);
 
-    println!("Starting Rapina server on http://127.0.0.1:3000");
-
     Rapina::new()
+        .with_tracing(TracingConfig::new())
+        .middleware(RequestLogMiddleware::new())
         .router(router)
         .listen("127.0.0.1:3000")
         .await

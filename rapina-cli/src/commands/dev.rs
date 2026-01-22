@@ -1,11 +1,11 @@
 //! Implementation of the `rapina dev` command.
 
 use colored::Colorize;
-use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
+use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 /// Configuration for the dev server.
@@ -292,7 +292,8 @@ fn print_banner(config: &DevConfig) {
     println!();
     println!(
         " {}",
-        "╭───────────────────────────────────────────────────────────╮".custom_color(colors::mauve())
+        "╭───────────────────────────────────────────────────────────╮"
+            .custom_color(colors::mauve())
     );
 
     // Title - centered in 59 chars
@@ -307,7 +308,8 @@ fn print_banner(config: &DevConfig) {
 
     println!(
         " {}",
-        "├───────────────────────────────────────────────────────────┤".custom_color(colors::mauve())
+        "├───────────────────────────────────────────────────────────┤"
+            .custom_color(colors::mauve())
     );
 
     // Empty line
@@ -338,8 +340,7 @@ fn print_banner(config: &DevConfig) {
     println!(
         " {}{}{}",
         b,
-        format!(" {:<58}", "For production: cargo build --release")
-            .custom_color(colors::subtext()),
+        format!(" {:<58}", "For production: cargo build --release").custom_color(colors::subtext()),
         b
     );
 
@@ -348,7 +349,8 @@ fn print_banner(config: &DevConfig) {
 
     println!(
         " {}",
-        "╰───────────────────────────────────────────────────────────╯".custom_color(colors::mauve())
+        "╰───────────────────────────────────────────────────────────╯"
+            .custom_color(colors::mauve())
     );
     println!();
 }
