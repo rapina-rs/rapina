@@ -51,7 +51,7 @@ pub fn execute(name: &str) -> Result<(), String> {
     println!();
     println!("  {}:", "Next steps".bright_yellow());
     println!("    cd {}", name.cyan());
-    println!("    cargo run");
+    println!("    rapina dev");
     println!();
 
     Ok(())
@@ -89,6 +89,7 @@ fn validate_project_name(name: &str) -> Result<(), String> {
 
 /// Generate the content for Cargo.toml.
 fn generate_cargo_toml(name: &str) -> String {
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"[package]
 name = "{name}"
@@ -96,10 +97,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rapina = "0.1"
+rapina = "{version}"
 tokio = {{ version = "1", features = ["full"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
+hyper = "1"
 "#
     )
 }
@@ -107,6 +109,19 @@ serde_json = "1"
 /// Generate the content for src/main.rs.
 fn generate_main_rs() -> String {
     r#"use rapina::prelude::*;
+use serde::Serialize;
+use std::sync::Arc;
+
+#[derive(Serialize)]
+struct MessageResponse {
+    message: String,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: String,
+    version: String,
+}
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -125,17 +140,22 @@ async fn main() -> std::io::Result<()> {
 async fn hello(
     _req: hyper::Request<hyper::body::Incoming>,
     _params: rapina::extract::PathParams,
-    _state: std::sync::Arc<rapina::state::AppState>,
-) -> &'static str {
-    "Hello from Rapina!"
+    _state: Arc<rapina::state::AppState>,
+) -> Json<MessageResponse> {
+    Json(MessageResponse {
+        message: "Hello from Rapina!".to_string(),
+    })
 }
 
 async fn health(
     _req: hyper::Request<hyper::body::Incoming>,
     _params: rapina::extract::PathParams,
-    _state: std::sync::Arc<rapina::state::AppState>,
-) -> &'static str {
-    "OK"
+    _state: Arc<rapina::state::AppState>,
+) -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
 }
 "#
     .to_string()

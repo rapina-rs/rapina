@@ -1,11 +1,11 @@
 //! Implementation of the `rapina dev` command.
 
 use colored::Colorize;
-use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
+use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 /// Configuration for the dev server.
@@ -42,7 +42,10 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
     .map_err(|e| format!("Failed to set Ctrl+C handler: {}", e))?;
 
     // Initial build and run
-    println!("{} Building project...", "INFO ".bright_cyan());
+    println!(
+        "{} Building project...",
+        "INFO".custom_color(colors::blue()).bold()
+    );
 
     let mut server_process = build_and_run(&config)?;
 
@@ -72,8 +75,8 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
 
         println!(
             "{} Watching for changes in: {}",
-            "INFO ".bright_cyan(),
-            "./src".cyan()
+            "INFO".custom_color(colors::blue()).bold(),
+            "./src".custom_color(colors::sky())
         );
 
         // Main loop
@@ -81,7 +84,10 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
             // Check for file changes (non-blocking with timeout)
             if rx.recv_timeout(Duration::from_millis(100)).is_ok() {
                 println!();
-                println!("{} Change detected, rebuilding...", "INFO ".bright_yellow());
+                println!(
+                    "{} Change detected, rebuilding...",
+                    "INFO".custom_color(colors::yellow()).bold()
+                );
 
                 // Kill current server
                 let _ = server_process.kill();
@@ -93,7 +99,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
                         server_process = new_process;
                     }
                     Err(e) => {
-                        eprintln!("{} {}", "ERROR".bright_red(), e);
+                        eprintln!("{} {}", "ERROR".custom_color(colors::red()).bold(), e);
                         // Keep waiting for more changes
                     }
                 }
@@ -105,7 +111,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
             {
                 eprintln!(
                     "{} Server exited with status: {}",
-                    "ERROR".bright_red(),
+                    "ERROR".custom_color(colors::red()).bold(),
                     status
                 );
                 // Wait for file change before trying to restart
@@ -115,7 +121,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
         // No reload, just wait for the server
         println!(
             "{} Hot reload disabled, press Ctrl+C to stop",
-            "INFO ".bright_cyan()
+            "INFO".custom_color(colors::blue()).bold()
         );
 
         while running.load(Ordering::SeqCst) {
@@ -133,7 +139,10 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
 
     // Cleanup
     println!();
-    println!("{} Shutting down...", "INFO ".bright_cyan());
+    println!(
+        "{} Shutting down...",
+        "INFO".custom_color(colors::blue()).bold()
+    );
     let _ = server_process.kill();
     let _ = server_process.wait();
 
@@ -183,7 +192,10 @@ fn build_and_run(config: &DevConfig) -> Result<Child, String> {
         return Err("Build failed".to_string());
     }
 
-    println!("{} Build successful", "INFO ".bright_green());
+    println!(
+        "{} Build successful",
+        "INFO".custom_color(colors::green()).bold()
+    );
 
     // Get the binary name from Cargo.toml
     let binary_name = get_binary_name()?;
@@ -198,10 +210,9 @@ fn build_and_run(config: &DevConfig) -> Result<Child, String> {
         .map_err(|e| format!("Failed to start server: {}", e))?;
 
     println!(
-        "{} Server started on http://{}:{} (Press CTRL+C to quit)",
-        "INFO ".bright_green(),
-        config.host,
-        config.port
+        "{} Server started on {} (Press CTRL+C to quit)",
+        "INFO".custom_color(colors::green()).bold(),
+        format!("http://{}:{}", config.host, config.port).custom_color(colors::sky())
     );
 
     Ok(child)
@@ -233,62 +244,111 @@ fn get_binary_name() -> Result<String, String> {
         .ok_or_else(|| "Could not determine binary name from Cargo.toml".to_string())
 }
 
+/// Catppuccin Mocha color palette
+mod colors {
+    use colored::CustomColor;
+
+    pub fn mauve() -> CustomColor {
+        CustomColor::new(203, 166, 247)
+    }
+
+    pub fn lavender() -> CustomColor {
+        CustomColor::new(180, 190, 254)
+    }
+
+    pub fn sky() -> CustomColor {
+        CustomColor::new(137, 220, 235)
+    }
+
+    pub fn subtext() -> CustomColor {
+        CustomColor::new(166, 173, 200)
+    }
+
+    pub fn green() -> CustomColor {
+        CustomColor::new(166, 227, 161)
+    }
+
+    pub fn yellow() -> CustomColor {
+        CustomColor::new(249, 226, 175)
+    }
+
+    pub fn red() -> CustomColor {
+        CustomColor::new(243, 139, 168)
+    }
+
+    pub fn blue() -> CustomColor {
+        CustomColor::new(137, 180, 250)
+    }
+}
+
 /// Print the development server banner.
 fn print_banner(config: &DevConfig) {
     let url = format!("http://{}:{}", config.host, config.port);
     let routes_url = format!("{}/.__rapina/routes", url);
 
+    // Box is 61 chars wide total, 59 chars inner content
+    let b = "│".custom_color(colors::mauve());
+
     println!();
     println!(
-        "{}",
-        " ╭────────────── Rapina CLI - Development mode ──────────────╮".bright_magenta()
+        " {}",
+        "╭───────────────────────────────────────────────────────────╮".custom_color(colors::mauve())
     );
+
+    // Title - centered in 59 chars
     println!(
-        "{}",
-        " │                                                           │".bright_magenta()
+        " {}{}{}",
+        b,
+        format!("{:^59}", "Rapina CLI - Development Mode")
+            .custom_color(colors::lavender())
+            .bold(),
+        b
     );
+
     println!(
-        " {}  Serving at: {:<42} {}",
-        "│".bright_magenta(),
-        url.cyan(),
-        "│".bright_magenta()
+        " {}",
+        "├───────────────────────────────────────────────────────────┤".custom_color(colors::mauve())
     );
+
+    // Empty line
+    println!(" {}{:59}{}", b, "", b);
+
+    // Serving at: align label and value
+    let serving_line = format!(" Serving at: {:<44}", url);
     println!(
-        "{}",
-        " │                                                           │".bright_magenta()
+        " {}{}{}",
+        b,
+        format!("{:59}", serving_line).custom_color(colors::sky()),
+        b
     );
+
+    // Routes: align with Serving at
+    let routes_line = format!(" Routes:     {:<44}", routes_url);
     println!(
-        " {}  Routes: {:<46} {}",
-        "│".bright_magenta(),
-        routes_url.cyan(),
-        "│".bright_magenta()
+        " {}{}{}",
+        b,
+        format!("{:59}", routes_line).custom_color(colors::sky()),
+        b
     );
+
+    // Empty line
+    println!(" {}{:59}{}", b, "", b);
+
+    // Production hint
     println!(
-        "{}",
-        " │                                                           │".bright_magenta()
+        " {}{}{}",
+        b,
+        format!(" {:<58}", "For production: cargo build --release")
+            .custom_color(colors::subtext()),
+        b
     );
+
+    // Empty line
+    println!(" {}{:59}{}", b, "", b);
+
     println!(
-        " {}  Running in development mode. For production use:        {}",
-        "│".bright_magenta(),
-        "│".bright_magenta()
-    );
-    println!(
-        "{}",
-        " │                                                           │".bright_magenta()
-    );
-    println!(
-        " {}  {}                                    {}",
-        "│".bright_magenta(),
-        "cargo build --release".yellow(),
-        "│".bright_magenta()
-    );
-    println!(
-        "{}",
-        " │                                                           │".bright_magenta()
-    );
-    println!(
-        "{}",
-        " ╰───────────────────────────────────────────────────────────╯".bright_magenta()
+        " {}",
+        "╰───────────────────────────────────────────────────────────╯".custom_color(colors::mauve())
     );
     println!();
 }
