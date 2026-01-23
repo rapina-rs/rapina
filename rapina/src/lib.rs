@@ -85,6 +85,7 @@ pub mod handler;
 pub mod introspection;
 pub mod middleware;
 pub mod observability;
+pub mod openapi;
 pub mod response;
 pub mod router;
 pub mod server;
