@@ -298,13 +298,12 @@ fn check_schema_changes(
     // Check for type changes
     if let (Some(base_type), Some(current_type)) =
         (base_schema.get("type"), current_schema.get("type"))
+        && base_type != current_type
     {
-        if base_type != current_type {
-            report.breaking.push(format!(
-                "{}: type changed from {} to {}",
-                context, base_type, current_type
-            ));
-        }
+        report.breaking.push(format!(
+            "{}: type changed from {} to {}",
+            context, base_type, current_type
+        ));
     }
 }
 
