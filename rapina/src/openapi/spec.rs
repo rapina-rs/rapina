@@ -260,7 +260,8 @@ pub fn build_openapi_spec(
         // Add documented error responses
         for error in &route.error_responses {
             let status_key = error.status.to_string();
-            if !operation.responses.contains_key(&status_key) {
+            let error_desc = error.description.to_string();
+            operation.responses.entry(status_key).or_insert_with(|| {
                 let mut content = BTreeMap::new();
                 content.insert(
                     "application/json".to_string(),
@@ -270,14 +271,11 @@ pub fn build_openapi_spec(
                         },
                     },
                 );
-                operation.responses.insert(
-                    status_key,
-                    Response {
-                        description: error.description.to_string(),
-                        content: Some(content),
-                    },
-                );
-            }
+                Response {
+                    description: error_desc,
+                    content: Some(content),
+                }
+            });
         }
 
         // Add default error response for undocumented errors
