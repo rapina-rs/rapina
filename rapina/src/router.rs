@@ -10,6 +10,7 @@ use std::sync::Arc;
 use http::{Method, Request, Response, StatusCode};
 use hyper::body::Incoming;
 
+use crate::error::ErrorVariant;
 use crate::extract::{PathParams, extract_path_params};
 use crate::handler::Handler;
 use crate::introspection::RouteInfo;
@@ -24,6 +25,7 @@ pub(crate) struct Route {
     pub(crate) pattern: String,
     pub(crate) handler_name: String,
     pub(crate) response_schema: Option<serde_json::Value>,
+    pub(crate) error_responses: Vec<ErrorVariant>,
     handler: HandlerFn,
 }
 
@@ -70,6 +72,7 @@ impl Router {
         pattern: &str,
         handler_name: &str,
         response_schema: Option<serde_json::Value>,
+        error_responses: Vec<ErrorVariant>,
         handler: F,
     ) -> Self
     where
@@ -91,6 +94,7 @@ impl Router {
             pattern: pattern.to_string(),
             handler_name: handler_name.to_string(),
             response_schema,
+            error_responses,
             handler,
         };
 
@@ -108,7 +112,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", None, handler)
+        self.route_named(method, pattern, "handler", None, Vec::new(), handler)
     }
 
     /// Adds a GET route with a handler name.
@@ -118,7 +122,14 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(Method::GET, pattern, handler_name, None, handler)
+        self.route_named(
+            Method::GET,
+            pattern,
+            handler_name,
+            None,
+            Vec::new(),
+            handler,
+        )
     }
 
     /// Adds a POST route with a handler name.
@@ -128,7 +139,14 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(Method::POST, pattern, handler_name, None, handler)
+        self.route_named(
+            Method::POST,
+            pattern,
+            handler_name,
+            None,
+            Vec::new(),
+            handler,
+        )
     }
 
     /// Adds a GET route with a Handler.
@@ -138,6 +156,7 @@ impl Router {
             pattern,
             H::NAME,
             H::response_schema(),
+            H::error_responses(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -152,6 +171,7 @@ impl Router {
             pattern,
             H::NAME,
             H::response_schema(),
+            H::error_responses(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -166,6 +186,7 @@ impl Router {
             pattern,
             H::NAME,
             H::response_schema(),
+            H::error_responses(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -180,6 +201,7 @@ impl Router {
             pattern,
             H::NAME,
             H::response_schema(),
+            H::error_responses(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -216,6 +238,7 @@ impl Router {
                     &route.pattern,
                     &route.handler_name,
                     route.response_schema.clone(),
+                    route.error_responses.clone(),
                 )
             })
             .collect()
@@ -383,6 +406,7 @@ mod tests {
             "/users/:id",
             "update_user",
             None,
+            Vec::new(),
             |_req, _params, _state| async { StatusCode::OK },
         );
 

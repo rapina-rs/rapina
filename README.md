@@ -157,6 +157,40 @@ Error::rate_limited("too many requests") // 429
 Error::internal("something went wrong")  // 500
 ```
 
+### Domain Errors
+
+Define typed domain errors with automatic API conversion:
+
+```rust
+use rapina::prelude::*;
+
+enum UserError {
+    NotFound(u64),
+    EmailTaken(String),
+}
+
+impl IntoApiError for UserError {
+    fn into_api_error(self) -> Error {
+        match self {
+            UserError::NotFound(id) => Error::not_found(format!("user {} not found", id)),
+            UserError::EmailTaken(email) => Error::conflict(format!("email {} taken", email)),
+        }
+    }
+}
+
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>) -> Result<Json<User>, UserError> {
+    let user = find_user(id).ok_or(UserError::NotFound(id))?;
+    Ok(Json(user))
+}
+```
+
+Benefits:
+- Type-safe error handling
+- Automatic conversion with `?` operator
+- Consistent API responses
+- Self-documenting code
+
 ### Route Introspection
 
 Enable introspection to see all registered routes:

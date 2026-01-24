@@ -7,6 +7,7 @@ use std::sync::Arc;
 use http::Request;
 use hyper::body::Incoming;
 
+use crate::error::ErrorVariant;
 use crate::extract::PathParams;
 use crate::response::BoxBody;
 use crate::state::AppState;
@@ -21,9 +22,14 @@ pub trait Handler: Clone + Send + Sync + 'static {
     /// Handler name used as operationId in OpenAPI.
     const NAME: &'static str;
 
-    /// JSON Schema for the sucess response (if available)
+    /// JSON Schema for the success response (if available).
     fn response_schema() -> Option<serde_json::Value> {
-        None // Default: no schema
+        None
+    }
+
+    /// Error variants for OpenAPI documentation.
+    fn error_responses() -> Vec<ErrorVariant> {
+        Vec::new()
     }
 
     /// Handle the request.

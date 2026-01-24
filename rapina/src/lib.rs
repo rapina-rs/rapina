@@ -104,7 +104,7 @@ pub mod testing;
 pub mod prelude {
     pub use crate::app::Rapina;
     pub use crate::context::RequestContext;
-    pub use crate::error::{Error, Result};
+    pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Form, Headers, Json, Path, Query, Validated};
     pub use crate::introspection::RouteInfo;
     pub use crate::middleware::{Middleware, Next};

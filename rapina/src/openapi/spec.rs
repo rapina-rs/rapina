@@ -256,6 +256,31 @@ pub fn build_openapi_spec(
         operation
             .responses
             .insert("200".to_string(), success_response);
+
+        // Add documented error responses
+        for error in &route.error_responses {
+            let status_key = error.status.to_string();
+            if !operation.responses.contains_key(&status_key) {
+                let mut content = BTreeMap::new();
+                content.insert(
+                    "application/json".to_string(),
+                    MediaType {
+                        schema: Schema::Ref {
+                            reference: "#/components/schemas/ErrorResponse".to_string(),
+                        },
+                    },
+                );
+                operation.responses.insert(
+                    status_key,
+                    Response {
+                        description: error.description.to_string(),
+                        content: Some(content),
+                    },
+                );
+            }
+        }
+
+        // Add default error response for undocumented errors
         operation
             .responses
             .insert("default".to_string(), error_response_ref());
@@ -272,4 +297,82 @@ pub fn build_openapi_spec(
     }
 
     spec
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ErrorVariant;
+    use crate::introspection::RouteInfo;
+
+    #[test]
+    fn test_build_openapi_spec_basic() {
+        let routes = vec![RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        assert_eq!(spec.info.title, "Test API");
+        assert_eq!(spec.info.version, "1.0.0");
+        assert!(spec.paths.contains_key("/users"));
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_error_responses() {
+        let errors = vec![
+            ErrorVariant {
+                status: 404,
+                code: "NOT_FOUND",
+                description: "User not found",
+            },
+            ErrorVariant {
+                status: 409,
+                code: "CONFLICT",
+                description: "Email already taken",
+            },
+        ];
+        let routes = vec![RouteInfo::new(
+            "GET",
+            "/users/:id",
+            "get_user",
+            None,
+            errors,
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let path = spec.paths.get("/users/{id}").unwrap();
+        let get_op = path.get.as_ref().unwrap();
+
+        // Should have 200, 404, 409, and default responses
+        assert!(get_op.responses.contains_key("200"));
+        assert!(get_op.responses.contains_key("404"));
+        assert!(get_op.responses.contains_key("409"));
+        assert!(get_op.responses.contains_key("default"));
+
+        // Check descriptions
+        assert_eq!(
+            get_op.responses.get("404").unwrap().description,
+            "User not found"
+        );
+        assert_eq!(
+            get_op.responses.get("409").unwrap().description,
+            "Email already taken"
+        );
+    }
+
+    #[test]
+    fn test_build_openapi_spec_skips_internal_routes() {
+        let routes = vec![
+            RouteInfo::new("GET", "/__rapina/routes", "internal", None, Vec::new()),
+            RouteInfo::new("GET", "/users", "list_users", None, Vec::new()),
+        ];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        assert!(!spec.paths.contains_key("/__rapina/routes"));
+        assert!(spec.paths.contains_key("/users"));
+    }
 }

@@ -2,6 +2,28 @@
 //!
 //! This module provides a consistent error type that automatically converts
 //! to HTTP responses with structured JSON bodies including trace IDs.
+//!
+//! # Domain Errors
+//!
+//! For type-safe domain errors, implement the [`IntoApiError`] trait:
+//!
+//! ```rust
+//! use rapina::error::{Error, IntoApiError};
+//!
+//! enum UserError {
+//!     NotFound(u64),
+//!     EmailTaken(String),
+//! }
+//!
+//! impl IntoApiError for UserError {
+//!     fn into_api_error(self) -> Error {
+//!         match self {
+//!             UserError::NotFound(id) => Error::not_found(format!("user {} not found", id)),
+//!             UserError::EmailTaken(email) => Error::conflict(format!("email {} taken", email)),
+//!         }
+//!     }
+//! }
+//! ```
 
 use serde::Serialize;
 use std::fmt;
@@ -147,6 +169,111 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Trait for converting domain errors into API errors.
+///
+/// Implement this trait on your domain error types to enable automatic
+/// conversion to Rapina's [`Error`] type. This allows you to use `?` operator
+/// and return domain errors from handlers.
+///
+/// # Example
+///
+/// ```rust
+/// use rapina::error::{Error, IntoApiError};
+///
+/// enum OrderError {
+///     NotFound(u64),
+///     AlreadyShipped,
+///     InsufficientStock { product: String, available: u32 },
+/// }
+///
+/// impl IntoApiError for OrderError {
+///     fn into_api_error(self) -> Error {
+///         match self {
+///             OrderError::NotFound(id) => {
+///                 Error::not_found(format!("order {} not found", id))
+///             }
+///             OrderError::AlreadyShipped => {
+///                 Error::conflict("order has already been shipped")
+///             }
+///             OrderError::InsufficientStock { product, available } => {
+///                 Error::bad_request(format!("insufficient stock for {}", product))
+///                     .with_details(serde_json::json!({
+///                         "product": product,
+///                         "available": available
+///                     }))
+///             }
+///         }
+///     }
+/// }
+/// ```
+pub trait IntoApiError {
+    /// Converts this error into an API error.
+    fn into_api_error(self) -> Error;
+}
+
+impl<T: IntoApiError> From<T> for Error {
+    fn from(err: T) -> Self {
+        err.into_api_error()
+    }
+}
+
+/// Metadata about an error variant for OpenAPI documentation.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ErrorVariant {
+    /// HTTP status code (e.g., 404, 409).
+    pub status: u16,
+    /// Machine-readable error code (e.g., "NOT_FOUND").
+    pub code: &'static str,
+    /// Human-readable description for documentation.
+    pub description: &'static str,
+}
+
+/// Trait for documenting domain errors in OpenAPI.
+///
+/// Implement this trait alongside [`IntoApiError`] to have your domain errors
+/// automatically documented in the OpenAPI specification.
+///
+/// # Example
+///
+/// ```rust
+/// use rapina::error::{Error, IntoApiError, DocumentedError, ErrorVariant};
+///
+/// enum UserError {
+///     NotFound(u64),
+///     EmailTaken(String),
+/// }
+///
+/// impl IntoApiError for UserError {
+///     fn into_api_error(self) -> Error {
+///         match self {
+///             UserError::NotFound(id) => Error::not_found(format!("user {} not found", id)),
+///             UserError::EmailTaken(email) => Error::conflict(format!("email {} taken", email)),
+///         }
+///     }
+/// }
+///
+/// impl DocumentedError for UserError {
+///     fn error_variants() -> Vec<ErrorVariant> {
+///         vec![
+///             ErrorVariant {
+///                 status: 404,
+///                 code: "NOT_FOUND",
+///                 description: "User not found",
+///             },
+///             ErrorVariant {
+///                 status: 409,
+///                 code: "CONFLICT",
+///                 description: "Email already taken",
+///             },
+///         ]
+///     }
+/// }
+/// ```
+pub trait DocumentedError: IntoApiError {
+    /// Returns all possible error variants for OpenAPI documentation.
+    fn error_variants() -> Vec<ErrorVariant>;
+}
+
 impl IntoResponse for Error {
     fn into_response(self) -> http::Response<BoxBody> {
         // Use existing trace_id or generate new one as fallback
@@ -174,6 +301,81 @@ pub type Result<T> = std::result::Result<T, Error>;
 mod tests {
     use super::*;
     use http_body_util::BodyExt;
+
+    // Test domain error for the trait tests
+    #[derive(Debug)]
+    enum TestUserError {
+        NotFound(u64),
+        EmailTaken(String),
+    }
+
+    impl IntoApiError for TestUserError {
+        fn into_api_error(self) -> Error {
+            match self {
+                TestUserError::NotFound(id) => Error::not_found(format!("user {} not found", id)),
+                TestUserError::EmailTaken(email) => {
+                    Error::conflict(format!("email {} already taken", email))
+                }
+            }
+        }
+    }
+
+    impl DocumentedError for TestUserError {
+        fn error_variants() -> Vec<ErrorVariant> {
+            vec![
+                ErrorVariant {
+                    status: 404,
+                    code: "NOT_FOUND",
+                    description: "User not found",
+                },
+                ErrorVariant {
+                    status: 409,
+                    code: "CONFLICT",
+                    description: "Email already taken",
+                },
+            ]
+        }
+    }
+
+    #[test]
+    fn test_into_api_error_not_found() {
+        let domain_err = TestUserError::NotFound(42);
+        let api_err: Error = domain_err.into_api_error();
+
+        assert_eq!(api_err.status, 404);
+        assert_eq!(api_err.code, "NOT_FOUND");
+        assert_eq!(api_err.message, "user 42 not found");
+    }
+
+    #[test]
+    fn test_into_api_error_conflict() {
+        let domain_err = TestUserError::EmailTaken("test@example.com".to_string());
+        let api_err: Error = domain_err.into_api_error();
+
+        assert_eq!(api_err.status, 409);
+        assert_eq!(api_err.code, "CONFLICT");
+        assert_eq!(api_err.message, "email test@example.com already taken");
+    }
+
+    #[test]
+    fn test_domain_error_from_conversion() {
+        let domain_err = TestUserError::NotFound(123);
+        let api_err = Error::from(domain_err);
+
+        assert_eq!(api_err.status, 404);
+        assert_eq!(api_err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_documented_error_variants() {
+        let variants = TestUserError::error_variants();
+
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0].status, 404);
+        assert_eq!(variants[0].code, "NOT_FOUND");
+        assert_eq!(variants[1].status, 409);
+        assert_eq!(variants[1].code, "CONFLICT");
+    }
 
     #[test]
     fn test_error_new() {
