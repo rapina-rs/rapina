@@ -122,6 +122,21 @@ struct HealthResponse {
     version: String,
 }
 
+#[get("/")]
+async fn hello() -> Json<MessageResponse> {
+    Json(MessageResponse {
+        message: "Hello from Rapina!".to_string(),
+    })
+}
+
+#[get("/health")]
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let router = Router::new()
@@ -134,21 +149,6 @@ async fn main() -> std::io::Result<()> {
         .router(router)
         .listen("127.0.0.1:3000")
         .await
-}
-
-#[get("/path")]
-async fn hello() -> Json<MessageResponse> {
-    Json(MessageResponse {
-        message: "Hello from Rapina!".to_string(),
-    })
-}
-
-#[get("/path")]
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })
 }
 "#
     .to_string()

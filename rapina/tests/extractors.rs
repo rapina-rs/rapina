@@ -18,7 +18,7 @@ struct User {
 async fn test_json_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
             use http_body_util::BodyExt;
             let body = req.into_body().collect().await.unwrap().to_bytes();
             let user: User = serde_json::from_slice(&body).unwrap();
@@ -45,7 +45,7 @@ async fn test_json_extraction() {
 async fn test_json_extraction_invalid_json() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
             use http_body_util::BodyExt;
             let body = req.into_body().collect().await.unwrap().to_bytes();
             match serde_json::from_slice::<User>(&body) {
@@ -69,7 +69,7 @@ async fn test_json_extraction_invalid_json() {
 async fn test_json_response() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/user", |_, _, _| async {
+        .router(Router::new().route(http::Method::GET, "/user", |_, _, _| async {
             Json(User {
                 name: "Bob".to_string(),
                 email: "bob@test.com".to_string(),
@@ -106,7 +106,7 @@ struct Pagination {
 async fn test_query_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/items", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/items", |req, _, _| async move {
             let query = req.uri().query().unwrap_or("");
             let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
                 page: None,
@@ -130,7 +130,7 @@ async fn test_query_extraction() {
 async fn test_query_extraction_optional_params() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/items", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/items", |req, _, _| async move {
             let query = req.uri().query().unwrap_or("");
             let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
                 page: None,
@@ -160,7 +160,7 @@ async fn test_query_extraction_optional_params() {
 async fn test_path_extraction_u64() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/users/:id", |_, params, _| async move {
+        .router(Router::new().route(http::Method::GET, "/users/:id", |_, params, _| async move {
             let id = params.get("id").cloned().unwrap_or_default();
             format!("User ID: {}", id)
         }));
@@ -177,7 +177,7 @@ async fn test_path_extraction_string() {
     let app = Rapina::new()
         .with_introspection(false)
         .router(
-            Router::new().get("/users/:username", |_, params, _| async move {
+            Router::new().route(http::Method::GET, "/users/:username", |_, params, _| async move {
                 let username = params.get("username").cloned().unwrap_or_default();
                 format!("Hello, {}!", username)
             }),
@@ -194,7 +194,8 @@ async fn test_path_extraction_string() {
 async fn test_path_extraction_multiple_params() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get(
+        .router(Router::new().route(
+            http::Method::GET,
             "/users/:user_id/posts/:post_id",
             |_, params, _| async move {
                 let user_id = params.get("user_id").cloned().unwrap_or_default();
@@ -216,7 +217,7 @@ async fn test_path_extraction_multiple_params() {
 async fn test_headers_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/auth", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/auth", |req, _, _| async move {
             let auth = req
                 .headers()
                 .get("authorization")
@@ -240,7 +241,7 @@ async fn test_headers_extraction() {
 async fn test_headers_extraction_missing() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/auth", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/auth", |req, _, _| async move {
             match req.headers().get("authorization") {
                 Some(_) => "authenticated".to_string(),
                 None => "not authenticated".to_string(),
@@ -258,7 +259,7 @@ async fn test_headers_extraction_missing() {
 async fn test_custom_header() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/custom", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/custom", |req, _, _| async move {
             let custom = req
                 .headers()
                 .get("x-custom-header")
@@ -290,7 +291,7 @@ struct LoginForm {
 async fn test_form_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/login", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/login", |req, _, _| async move {
             use http_body_util::BodyExt;
 
             let content_type = req
@@ -343,7 +344,7 @@ async fn test_state_extraction() {
             version: "1.0.0".to_string(),
         })
         .router(
-            Router::new().get("/info", |_, _, state: Arc<AppState>| async move {
+            Router::new().route(http::Method::GET, "/info", |_, _, state: Arc<AppState>| async move {
                 let config = state.get::<AppConfig>().unwrap();
                 format!("{} v{}", config.app_name, config.version)
             }),
@@ -377,7 +378,7 @@ async fn test_multiple_state_types() {
         })
         .state(CacheConfig { ttl: 3600 })
         .router(
-            Router::new().get("/config", |_, _, state: Arc<AppState>| async move {
+            Router::new().route(http::Method::GET, "/config", |_, _, state: Arc<AppState>| async move {
                 let db = state.get::<DbConfig>().unwrap();
                 let cache = state.get::<CacheConfig>().unwrap();
                 format!("DB: {}, Cache TTL: {}", db.url, cache.ttl)
@@ -397,7 +398,7 @@ async fn test_multiple_state_types() {
 async fn test_context_trace_id() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/trace", |req, _, _| async move {
+        .router(Router::new().route(http::Method::GET, "/trace", |req, _, _| async move {
             use rapina::context::RequestContext;
             let ctx = req.extensions().get::<RequestContext>().unwrap();
             format!("Trace ID length: {}", ctx.trace_id.len())
@@ -425,7 +426,7 @@ struct CreateUser {
 async fn test_validated_extraction_valid() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
             use http_body_util::BodyExt;
             let body = req.into_body().collect().await.unwrap().to_bytes();
             let user: CreateUser = match serde_json::from_slice(&body) {
@@ -460,7 +461,7 @@ async fn test_validated_extraction_valid() {
 async fn test_validated_extraction_invalid_email() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
             use http_body_util::BodyExt;
             let body = req.into_body().collect().await.unwrap().to_bytes();
             let user: CreateUser = match serde_json::from_slice(&body) {
@@ -494,7 +495,7 @@ async fn test_validated_extraction_invalid_email() {
 async fn test_validated_extraction_empty_name() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
+        .router(Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
             use http_body_util::BodyExt;
             let body = req.into_body().collect().await.unwrap().to_bytes();
             let user: CreateUser = match serde_json::from_slice(&body) {

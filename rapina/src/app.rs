@@ -20,10 +20,15 @@ use crate::state::AppState;
 /// ```rust,no_run
 /// use rapina::prelude::*;
 ///
+/// #[get("/")]
+/// async fn hello() -> &'static str {
+///     "Hello!"
+/// }
+///
 /// #[tokio::main]
 /// async fn main() -> std::io::Result<()> {
 ///     let router = Router::new()
-///         .get("/", |_, _, _| async { "Hello!" });
+///         .get("/", hello);
 ///
 ///     Rapina::new()
 ///         .router(router)
@@ -169,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_rapina_with_router() {
-        let router = Router::new().get("/health", |_req, _params, _state| async { StatusCode::OK });
+        let router = Router::new().route(http::Method::GET, "/health", |_req, _params, _state| async { StatusCode::OK });
 
         let app = Rapina::new().router(router);
         assert!(!app.router.routes.is_empty());
@@ -206,8 +211,8 @@ mod tests {
         }
 
         let router = Router::new()
-            .get("/", |_req, _params, _state| async { StatusCode::OK })
-            .post("/users", |_req, _params, _state| async {
+            .route(http::Method::GET, "/", |_req, _params, _state| async { StatusCode::OK })
+            .route(http::Method::POST, "/users", |_req, _params, _state| async {
                 StatusCode::CREATED
             });
 

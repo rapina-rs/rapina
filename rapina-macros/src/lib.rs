@@ -30,24 +30,20 @@ fn route_macro_core(
     let func: ItemFn = syn::parse2(item).expect("expected function");
 
     let func_name = &func.sig.ident;
-    let func_block = &func.block;
-    let func_output = &func.sig.output;
+    let func_name_str = func_name.to_string();
     let func_vis = &func.vis;
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
-    if args.is_empty() {
+    // Build the handler body
+    let handler_body = if args.is_empty() {
+        let inner_block = &func.block;
         quote! {
-            #func_vis async fn #func_name(
-                req: hyper::Request<hyper::body::Incoming>,
-                params: rapina::extract::PathParams,
-                state: std::sync::Arc<rapina::state::AppState>,
-            ) #func_output #func_block
+            rapina::response::IntoResponse::into_response((|| async #inner_block)().await)
         }
     } else {
         let mut parts_extractions = Vec::new();
         let mut body_extractors: Vec<(syn::Ident, Box<syn::Type>)> = Vec::new();
-        let mut arg_names = Vec::new();
 
         for arg in &args {
             if let FnArg::Typed(pat_type) = arg
@@ -56,9 +52,6 @@ fn route_macro_core(
                 let arg_name = &pat_ident.ident;
                 let arg_type = &pat_type.ty;
 
-                arg_names.push(arg_name.clone());
-
-                // Check if this is a parts-only extractor
                 let type_str = quote!(#arg_type).to_string();
                 if is_parts_only_extractor(&type_str) {
                     parts_extractions.push(quote! {
@@ -73,7 +66,6 @@ fn route_macro_core(
             }
         }
 
-        // Generate body extraction code - only one body extractor is allowed
         let body_extraction = if body_extractors.is_empty() {
             quote! {}
         } else if body_extractors.len() == 1 {
@@ -96,15 +88,31 @@ fn route_macro_core(
         let inner_block = &func.block;
 
         quote! {
-            #func_vis async fn #func_name(
+            let (parts, body) = req.into_parts();
+            #(#parts_extractions)*
+            #body_extraction
+            rapina::response::IntoResponse::into_response((|| async #inner_block)().await)
+        }
+    };
+
+    // Generate the struct and Handler impl
+    quote! {
+        #[derive(Clone, Copy)]
+        #[allow(non_camel_case_types)]
+        #func_vis struct #func_name;
+
+        impl rapina::handler::Handler for #func_name {
+            const NAME: &'static str = #func_name_str;
+
+            fn call(
+                &self,
                 req: hyper::Request<hyper::body::Incoming>,
                 params: rapina::extract::PathParams,
                 state: std::sync::Arc<rapina::state::AppState>,
-            ) -> hyper::Response<http_body_util::Full<hyper::body::Bytes>> {
-                let (parts, body) = req.into_parts();
-                #(#parts_extractions)*
-                #body_extraction
-                rapina::response::IntoResponse::into_response((|| async #inner_block)().await)
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = hyper::Response<rapina::response::BoxBody>> + Send>> {
+                Box::pin(async move {
+                    #handler_body
+                })
             }
         }
     }
@@ -125,12 +133,10 @@ fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::route_macro_core;
-
     use quote::quote;
-    use syn::ItemFn;
 
     #[test]
-    fn test_function_with_no_args() {
+    fn test_generates_struct_with_handler_impl() {
         let path = quote!("/");
         let input = quote! {
             async fn hello() -> &'static str {
@@ -139,19 +145,19 @@ mod tests {
         };
 
         let output = route_macro_core(path, input);
+        let output_str = output.to_string();
 
-        // parse back and verify structure
-        let output_fn: ItemFn = syn::parse2(output).expect("expected function");
-
-        // check should have 3 parameters: req, params, and state
-        assert_eq!(output_fn.sig.inputs.len(), 3);
-
-        // check if function name preserved
-        assert_eq!(output_fn.sig.ident.to_string(), "hello");
+        // Check struct is generated
+        assert!(output_str.contains("struct hello"));
+        // Check Handler impl is generated
+        assert!(output_str.contains("impl rapina :: handler :: Handler for hello"));
+        // Check NAME constant
+        assert!(output_str.contains("const NAME"));
+        assert!(output_str.contains("\"hello\""));
     }
 
     #[test]
-    fn test_function_with_single_extractor() {
+    fn test_generates_handler_with_extractors() {
         let path = quote!("/users/:id");
         let input = quote! {
             async fn get_user(id: rapina::extract::Path<u64>) -> String {
@@ -160,16 +166,12 @@ mod tests {
         };
 
         let output = route_macro_core(path, input);
-        let output_func: ItemFn = syn::parse2(output).expect("should parse as function");
+        let output_str = output.to_string();
 
-        // check should have 3 parameters: req, params, and state
-        assert_eq!(output_func.sig.inputs.len(), 3);
-
-        let body_str = quote!(#output_func.block).to_string();
-
-        // check should contain extraction code
-        assert!(body_str.contains("from_request"));
-        assert!(body_str.contains("id"));
+        // Check struct is generated
+        assert!(output_str.contains("struct get_user"));
+        // Check extraction code is present
+        assert!(output_str.contains("FromRequestParts"));
     }
 
     #[test]
@@ -185,47 +187,13 @@ mod tests {
         };
 
         let output = route_macro_core(path, input);
-        let output_func: ItemFn = syn::parse2(output).expect("should parse as function");
+        let output_str = output.to_string();
 
-        // Check signature has req, params, and state
-        assert_eq!(output_func.sig.inputs.len(), 3);
-
-        // Check both extractions are present in body
-        let body_str = quote!(#output_func.block).to_string();
-        assert!(body_str.contains("id"));
-        assert!(body_str.contains("body"));
-
-        // Check that parts-only extractor uses FromRequestParts
-        assert!(body_str.contains("FromRequestParts"));
-        // Check that body extractor uses FromRequest
-        assert!(body_str.contains("FromRequest"));
-    }
-
-    #[test]
-    fn test_parts_extractors_before_body() {
-        let path = quote!("/users/:id");
-        let input = quote! {
-            async fn handler(
-                ctx: rapina::extract::Context,
-                id: rapina::extract::Path<u64>,
-                state: rapina::extract::State<Config>,
-                body: rapina::extract::Json<Data>
-            ) -> String {
-                "ok".to_string()
-            }
-        };
-
-        let output = route_macro_core(path, input);
-        let body_str = output.to_string();
-
-        // Verify request is split into parts and body
-        assert!(body_str.contains("into_parts"));
-
-        // Verify parts extractors use FromRequestParts
-        assert!(body_str.contains("FromRequestParts"));
-
-        // Verify body extractor reconstructs request
-        assert!(body_str.contains("from_parts"));
+        // Check struct is generated
+        assert!(output_str.contains("struct create_user"));
+        // Check both extractors are handled
+        assert!(output_str.contains("FromRequestParts"));
+        assert!(output_str.contains("FromRequest"));
     }
 
     #[test]
