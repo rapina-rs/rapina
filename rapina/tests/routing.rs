@@ -21,7 +21,11 @@ async fn test_basic_get_route() {
 async fn test_basic_post_route() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().route(http::Method::POST, "/users", |_, _, _| async { StatusCode::CREATED }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                StatusCode::CREATED
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -77,7 +81,11 @@ async fn test_404_for_unknown_route() {
 async fn test_method_not_matching() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().route(http::Method::GET, "/resource", |_, _, _| async { "get response" }));
+        .router(
+            Router::new().route(http::Method::GET, "/resource", |_, _, _| async {
+                "get response"
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -94,10 +102,12 @@ async fn test_method_not_matching() {
 async fn test_path_parameter_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().route(http::Method::GET, "/users/:id", |_, params, _| async move {
-            let id = params.get("id").cloned().unwrap_or_default();
-            format!("User ID: {}", id)
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/users/:id", |_, params, _| async move {
+                let id = params.get("id").cloned().unwrap_or_default();
+                format!("User ID: {}", id)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/users/42").send().await;
@@ -134,7 +144,9 @@ async fn test_multiple_routes() {
             .route(http::Method::GET, "/", |_, _, _| async { "home" })
             .route(http::Method::GET, "/about", |_, _, _| async { "about" })
             .route(http::Method::GET, "/contact", |_, _, _| async { "contact" })
-            .route(http::Method::POST, "/submit", |_, _, _| async { "submitted" }),
+            .route(http::Method::POST, "/submit", |_, _, _| async {
+                "submitted"
+            }),
     );
 
     let client = TestClient::new(app).await;
@@ -149,7 +161,11 @@ async fn test_multiple_routes() {
 async fn test_route_with_trailing_slash() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().route(http::Method::GET, "/users", |_, _, _| async { "users list" }));
+        .router(
+            Router::new().route(http::Method::GET, "/users", |_, _, _| async {
+                "users list"
+            }),
+        );
 
     let client = TestClient::new(app).await;
 

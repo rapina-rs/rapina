@@ -130,41 +130,26 @@ impl Router {
 
     /// Adds a GET route with a Handler.
     pub fn get<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(
-            Method::GET,
-            pattern,
-            H::NAME,
-            move |req, params, state| {
-                let h = handler.clone();
-                async move { h.call(req, params, state).await }
-            },
-        )
+        self.route_named(Method::GET, pattern, H::NAME, move |req, params, state| {
+            let h = handler.clone();
+            async move { h.call(req, params, state).await }
+        })
     }
 
     /// Adds a POST route with a Handler.
     pub fn post<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(
-            Method::POST,
-            pattern,
-            H::NAME,
-            move |req, params, state| {
-                let h = handler.clone();
-                async move { h.call(req, params, state).await }
-            },
-        )
+        self.route_named(Method::POST, pattern, H::NAME, move |req, params, state| {
+            let h = handler.clone();
+            async move { h.call(req, params, state).await }
+        })
     }
 
     /// Adds a PUT route with a Handler.
     pub fn put<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(
-            Method::PUT,
-            pattern,
-            H::NAME,
-            move |req, params, state| {
-                let h = handler.clone();
-                async move { h.call(req, params, state).await }
-            },
-        )
+        self.route_named(Method::PUT, pattern, H::NAME, move |req, params, state| {
+            let h = handler.clone();
+            async move { h.call(req, params, state).await }
+        })
     }
 
     /// Adds a DELETE route with a Handler.
@@ -252,7 +237,9 @@ mod tests {
 
     #[test]
     fn test_router_add_get_route() {
-        let router = Router::new().route(Method::GET, "/users", |_req, _params, _state| async { StatusCode::OK });
+        let router = Router::new().route(Method::GET, "/users", |_req, _params, _state| async {
+            StatusCode::OK
+        });
         assert_eq!(router.routes.len(), 1);
         assert_eq!(router.routes[0].0, Method::GET);
         assert_eq!(router.routes[0].1.pattern, "/users");
@@ -282,7 +269,9 @@ mod tests {
     #[test]
     fn test_router_multiple_routes() {
         let router = Router::new()
-            .route(Method::GET, "/users", |_req, _params, _state| async { StatusCode::OK })
+            .route(Method::GET, "/users", |_req, _params, _state| async {
+                StatusCode::OK
+            })
             .route(Method::POST, "/users", |_req, _params, _state| async {
                 StatusCode::CREATED
             })
@@ -301,8 +290,12 @@ mod tests {
     #[test]
     fn test_router_chaining() {
         let router = Router::new()
-            .route(Method::GET, "/", |_req, _params, _state| async { StatusCode::OK })
-            .route(Method::GET, "/health", |_req, _params, _state| async { StatusCode::OK });
+            .route(Method::GET, "/", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(Method::GET, "/health", |_req, _params, _state| async {
+                StatusCode::OK
+            });
 
         assert_eq!(router.routes.len(), 2);
     }
@@ -310,9 +303,15 @@ mod tests {
     #[test]
     fn test_router_preserves_route_order() {
         let router = Router::new()
-            .route(Method::GET, "/first", |_req, _params, _state| async { StatusCode::OK })
-            .route(Method::GET, "/second", |_req, _params, _state| async { StatusCode::OK })
-            .route(Method::GET, "/third", |_req, _params, _state| async { StatusCode::OK });
+            .route(Method::GET, "/first", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(Method::GET, "/second", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(Method::GET, "/third", |_req, _params, _state| async {
+                StatusCode::OK
+            });
 
         assert_eq!(router.routes[0].1.pattern, "/first");
         assert_eq!(router.routes[1].1.pattern, "/second");
@@ -341,7 +340,9 @@ mod tests {
 
     #[test]
     fn test_router_routes_default_handler_name() {
-        let router = Router::new().route(Method::GET, "/health", |_req, _params, _state| async { StatusCode::OK });
+        let router = Router::new().route(Method::GET, "/health", |_req, _params, _state| async {
+            StatusCode::OK
+        });
 
         let routes = router.routes();
         assert_eq!(routes.len(), 1);
@@ -400,7 +401,9 @@ mod tests {
             .get_named("/named", "named_handler", |_req, _params, _state| async {
                 StatusCode::OK
             })
-            .route(Method::GET, "/default", |_req, _params, _state| async { StatusCode::OK });
+            .route(Method::GET, "/default", |_req, _params, _state| async {
+                StatusCode::OK
+            });
 
         let routes = router.routes();
         assert_eq!(routes[0].handler_name, "named_handler");

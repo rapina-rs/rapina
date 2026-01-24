@@ -75,7 +75,11 @@ async fn test_timeout_middleware_passes_fast_request() {
     let app = Rapina::new()
         .with_introspection(false)
         .middleware(TimeoutMiddleware::new(Duration::from_secs(5)))
-        .router(Router::new().route(http::Method::GET, "/fast", |_, _, _| async { "fast response" }));
+        .router(
+            Router::new().route(http::Method::GET, "/fast", |_, _, _| async {
+                "fast response"
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/fast").send().await;
@@ -89,11 +93,13 @@ async fn test_body_limit_middleware_allows_small_body() {
     let app = Rapina::new()
         .with_introspection(false)
         .middleware(BodyLimitMiddleware::new(1024 * 1024)) // 1MB limit
-        .router(Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            format!("Received {} bytes", body.len())
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/upload").body("small payload").send().await;
@@ -141,11 +147,13 @@ async fn test_middleware_with_post_request() {
     let app = Rapina::new()
         .with_introspection(false)
         .middleware(TraceIdMiddleware::new())
-        .router(Router::new().route(http::Method::POST, "/data", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            String::from_utf8_lossy(&body).to_string()
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/data", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                String::from_utf8_lossy(&body).to_string()
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -190,12 +198,14 @@ async fn test_middleware_preserves_response_body() {
     let app = Rapina::new()
         .with_introspection(false)
         .middleware(TraceIdMiddleware::new())
-        .router(Router::new().route(http::Method::GET, "/json", |_, _, _| async {
-            Json(serde_json::json!({
-                "status": "success",
-                "data": [1, 2, 3]
-            }))
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/json", |_, _, _| async {
+                Json(serde_json::json!({
+                    "status": "success",
+                    "data": [1, 2, 3]
+                }))
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/json").send().await;
@@ -212,9 +222,11 @@ async fn test_middleware_with_error_response() {
     let app = Rapina::new()
         .with_introspection(false)
         .middleware(TraceIdMiddleware::new())
-        .router(Router::new().route(http::Method::GET, "/error", |_, _, _| async {
-            Error::not_found("resource not found")
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/error", |_, _, _| async {
+                Error::not_found("resource not found")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/error").send().await;

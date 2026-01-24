@@ -174,7 +174,11 @@ mod tests {
 
     #[test]
     fn test_rapina_with_router() {
-        let router = Router::new().route(http::Method::GET, "/health", |_req, _params, _state| async { StatusCode::OK });
+        let router = Router::new().route(
+            http::Method::GET,
+            "/health",
+            |_req, _params, _state| async { StatusCode::OK },
+        );
 
         let app = Rapina::new().router(router);
         assert!(!app.router.routes.is_empty());
@@ -211,10 +215,14 @@ mod tests {
         }
 
         let router = Router::new()
-            .route(http::Method::GET, "/", |_req, _params, _state| async { StatusCode::OK })
-            .route(http::Method::POST, "/users", |_req, _params, _state| async {
-                StatusCode::CREATED
-            });
+            .route(http::Method::GET, "/", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(
+                http::Method::POST,
+                "/users",
+                |_req, _params, _state| async { StatusCode::CREATED },
+            );
 
         let app = Rapina::new()
             .router(router)

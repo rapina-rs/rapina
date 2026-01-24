@@ -22,10 +22,5 @@ pub trait Handler: Clone + Send + Sync + 'static {
     const NAME: &'static str;
 
     /// Handle the request.
-    fn call(
-        &self,
-        req: Request<Incoming>,
-        params: PathParams,
-        state: Arc<AppState>,
-    ) -> BoxFuture;
+    fn call(&self, req: Request<Incoming>, params: PathParams, state: Arc<AppState>) -> BoxFuture;
 }
