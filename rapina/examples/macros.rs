@@ -2,9 +2,19 @@ use rapina::extract::{FromRequestParts, State};
 use rapina::prelude::*;
 use std::sync::Arc;
 
-#[derive(Clone)]
+#[derive(Clone, Config)]
 struct AppConfig {
+    #[env = "APP_NAME"]
+    #[default = "Rapina Demo"]
     app_name: String,
+
+    #[env = "PORT"]
+    #[default = "3000"]
+    port: u16,
+
+    #[env = "HOST"]
+    #[default = "127.0.0.1"]
+    host: String,
 }
 
 #[derive(Deserialize)]
@@ -93,9 +103,10 @@ async fn create_user(body: Json<CreateUser>) -> Json<User> {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let config = AppConfig {
-        app_name: "Rapina Demo".to_string(),
-    };
+    // Load .env file if present
+    load_dotenv();
+    let config = AppConfig::from_env().expect("Failed to load config");
+    let addr = format!("{}:{}", config.host, config.port);
 
     let router = Router::new()
         .get("/", hello)
@@ -108,6 +119,6 @@ async fn main() -> std::io::Result<()> {
         .openapi("Rapina Test", "1.0.0")
         .state(config)
         .router(router)
-        .listen("127.0.0.1:3000")
+        .listen(&addr)
         .await
 }

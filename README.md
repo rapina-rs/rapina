@@ -86,6 +86,53 @@ rapina routes                           # List all registered routes
 rapina doctor                           # Run API health checks
 ```
 
+### Configuration
+
+Type-safe configuration with the `Config` derive macro:
+
+```rust
+use rapina::prelude::*;
+
+#[derive(Config)]
+struct Settings {
+    #[env = "DATABASE_URL"]
+    database_url: String,
+
+    #[env = "PORT"]
+    #[default = "3000"]
+    port: u16,
+
+    #[env = "HOST"]
+    #[default = "127.0.0.1"]
+    host: String,
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    load_dotenv();
+
+    let config = Settings::from_env().expect("Missing config");
+
+    Rapina::new()
+        .router(router)
+        .listen(format!("{}:{}", config.host, config.port))
+        .await
+}
+```
+
+Features:
+- Loads from environment variables and `.env` files
+- Fail-fast validation with clear error messages
+- Type-safe parsing with defaults
+
+Create a `.env` file for local development:
+
+```bash
+DATABASE_URL=postgres://localhost/myapp
+PORT=3000
+JWT_SECRET=your-secret-key
+```
+
 ### Typed Extractors
 
 ```rust
