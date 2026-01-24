@@ -147,3 +147,66 @@ pub struct Components {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub schemas: BTreeMap<String, schemars::Schema>,
 }
+
+pub fn build_openapi_spec(
+    title: &str,
+    version: &str,
+    routes: &[crate::introspection::RouteInfo],
+) -> OpenApiSpec {
+    let mut spec = OpenApiSpec::new(title, version);
+
+    for route in routes {
+        // skip internal rapina routes
+        if route.path.starts_with("/__rapina") {
+            continue;
+        }
+        // Extract path parameters (e.g., :id -> id)
+        let params: Vec<Parameter> = route
+            .path
+            .split('/')
+            .filter(|s| s.starts_with(':'))
+            .map(|s| Parameter {
+                name: s.trim_start_matches(':').to_string(),
+                location: ParameterLocation::Path,
+                description: None,
+                required: true,
+                schema: None,
+            })
+            .collect();
+
+        // Convert :param to {param} for OpenAPI format
+        let openapi_path = route
+            .path
+            .split('/')
+            .map(|s| {
+                if s.starts_with(':') {
+                    format!("{{{}}}", s.trim_start_matches(':'))
+                } else {
+                    s.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+
+        let operation = Operation {
+            operation_id: Some(route.handler_name.clone()),
+            parameters: params,
+            ..Default::default()
+        };
+
+        let path_item = spec
+            .paths
+            .entry(openapi_path)
+            .or_insert_with(PathItem::default);
+
+        match route.method.to_uppercase().as_str() {
+            "GET" => path_item.get = Some(operation),
+            "POST" => path_item.post = Some(operation),
+            "PUT" => path_item.put = Some(operation),
+            "DELETE" => path_item.delete = Some(operation),
+            _ => {}
+        }
+    }
+
+    spec
+}
