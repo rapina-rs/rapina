@@ -145,7 +145,42 @@ pub enum Schema {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct Components {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub schemas: BTreeMap<String, schemars::Schema>,
+    pub schemas: BTreeMap<String, serde_json::Value>,
+}
+
+/// Create the standard Rapina error response schema
+fn error_response_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "required": ["error", "trace_id"],
+        "properties": {
+        "error": {
+                "type": "object",
+                "required": ["code", "message"],
+                "properties": {
+                    "code": {"type": "string", "description": "Machine-readable error code"},
+                    "message": {"type": "string", "description": "Human-readable error message"},
+                    "details": {"type": "object", "description": "Optional additional details", "additionalProperties": true}
+                }
+            }
+    }
+    })
+}
+
+fn error_response_ref() -> Response {
+    let mut content = BTreeMap::new();
+    content.insert(
+        "application/json".to_string(),
+        MediaType {
+            schema: Schema::Ref {
+                reference: "#/components/schemas/ErrorResponse".to_string(),
+            },
+        },
+    );
+    Response {
+        description: "Error response".to_string(),
+        content: Some(content),
+    }
 }
 
 pub fn build_openapi_spec(
@@ -154,6 +189,11 @@ pub fn build_openapi_spec(
     routes: &[crate::introspection::RouteInfo],
 ) -> OpenApiSpec {
     let mut spec = OpenApiSpec::new(title, version);
+
+    let mut schemas = BTreeMap::new();
+    schemas.insert("ErrorResponse".to_string(), error_response_schema());
+
+    spec.components = Some(Components { schemas });
 
     for route in routes {
         // skip internal rapina routes
@@ -188,11 +228,15 @@ pub fn build_openapi_spec(
             .collect::<Vec<_>>()
             .join("/");
 
-        let operation = Operation {
+        let mut operation = Operation {
             operation_id: Some(route.handler_name.clone()),
             parameters: params,
             ..Default::default()
         };
+
+        operation
+            .responses
+            .insert("default".to_string(), error_response_ref());
 
         let path_item = spec.paths.entry(openapi_path).or_default();
 

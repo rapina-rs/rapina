@@ -105,6 +105,7 @@ async fn main() -> std::io::Result<()> {
         .post("/users", create_user);
 
     Rapina::new()
+        .openapi("Rapina Test", "1.0.0")
         .state(config)
         .router(router)
         .listen("127.0.0.1:3000")
