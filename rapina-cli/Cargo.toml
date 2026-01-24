@@ -21,3 +21,4 @@ notify = { version = "6", default-features = false, features = ["macos_kqueue"] 
 notify-debouncer-mini = "0.4"
 ctrlc = "3"
 toml = "0.8"
+serde_json = "1"

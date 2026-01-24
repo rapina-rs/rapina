@@ -75,6 +75,11 @@ rapina dev
 
 # Custom port and host
 rapina dev -p 8080 --host 0.0.0.0
+
+# OpenAPI tools
+rapina openapi export -o openapi.json  # Export spec
+rapina openapi check                    # Verify spec is up to date
+rapina openapi diff --base main         # Detect breaking changes
 ```
 
 ### Typed Extractors
@@ -164,7 +169,7 @@ Rapina::new()
     .await
 ```
 
-Access routes at `http://localhost:3000/.__rapina/routes`:
+Access routes at `http://localhost:3000/__rapina/routes`:
 
 ```json
 [
@@ -172,6 +177,64 @@ Access routes at `http://localhost:3000/.__rapina/routes`:
   {"method": "GET", "path": "/users/:id", "handler_name": "get_user"}
 ]
 ```
+
+### OpenAPI Specification
+
+Rapina automatically generates OpenAPI 3.0 specs from your code:
+
+```rust
+#[derive(Serialize, JsonSchema)]  // Add JsonSchema for response schemas
+struct User {
+    id: u64,
+    name: String,
+}
+
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>) -> Json<User> {
+    // ...
+}
+
+Rapina::new()
+    .openapi("My API", "1.0.0")  // Enable OpenAPI
+    .router(router)
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Access the spec at `http://localhost:3000/__rapina/openapi.json`
+
+**CLI Tools for API Contract Management:**
+
+```bash
+# Export OpenAPI spec to file
+rapina openapi export -o openapi.json
+
+# Check if committed spec matches current code
+rapina openapi check
+
+# Detect breaking changes against another branch
+rapina openapi diff --base main
+```
+
+**Breaking change detection:**
+
+```bash
+$ rapina openapi diff --base main
+
+  → Comparing OpenAPI spec with main branch...
+
+  ✗ Breaking changes:
+    • Removed endpoint: /health
+    • Removed method: DELETE /users/{id}
+
+  ⚠ Non-breaking changes:
+    • Added endpoint: /posts
+    • Added field 'avatar' in GET /users/{id}
+
+Error: Found 2 breaking change(s)
+```
+
+The `openapi.json` file becomes your API contract — commit it to your repo and CI will catch breaking changes before they're merged.
 
 ### Testing
 
@@ -219,10 +282,11 @@ Rapina::new()
 - [x] Route introspection endpoint
 - [x] Test client for integration testing
 - [x] CLI (`rapina new`, `rapina dev`)
+- [x] Automatic OpenAPI with response schemas
+- [x] OpenAPI CLI tools (`export`, `check`, `diff`)
 - [ ] Validation (`Validated<T>`)
 - [ ] Auth (Bearer JWT, `CurrentUser`)
 - [ ] Observability (tracing, structured logs)
-- [ ] Automatic OpenAPI
 
 ## Philosophy
 
