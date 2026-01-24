@@ -194,10 +194,7 @@ pub fn build_openapi_spec(
             ..Default::default()
         };
 
-        let path_item = spec
-            .paths
-            .entry(openapi_path)
-            .or_insert_with(PathItem::default);
+        let path_item = spec.paths.entry(openapi_path).or_default();
 
         match route.method.to_uppercase().as_str() {
             "GET" => path_item.get = Some(operation),
