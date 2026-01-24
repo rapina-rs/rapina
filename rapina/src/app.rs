@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use crate::introspection::{RouteRegistry, list_routes};
 use crate::middleware::{Middleware, MiddlewareStack};
 use crate::observability::TracingConfig;
+use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
 use crate::server::serve;
 use crate::state::AppState;
@@ -19,10 +20,15 @@ use crate::state::AppState;
 /// ```rust,no_run
 /// use rapina::prelude::*;
 ///
+/// #[get("/")]
+/// async fn hello() -> &'static str {
+///     "Hello!"
+/// }
+///
 /// #[tokio::main]
 /// async fn main() -> std::io::Result<()> {
 ///     let router = Router::new()
-///         .get("/", |_, _, _| async { "Hello!" });
+///         .get("/", hello);
 ///
 ///     Rapina::new()
 ///         .router(router)
@@ -39,6 +45,10 @@ pub struct Rapina {
     pub(crate) middlewares: MiddlewareStack,
     /// Whether introspection is enabled.
     pub(crate) introspection: bool,
+    /// Whether OpenAPI is enabled
+    pub(crate) openapi: bool,
+    pub(crate) openapi_title: String,
+    pub(crate) openapi_version: String,
 }
 
 impl Rapina {
@@ -51,6 +61,9 @@ impl Rapina {
             state: AppState::new(),
             middlewares: MiddlewareStack::new(),
             introspection: cfg!(debug_assertions),
+            openapi: false,
+            openapi_title: "API".to_string(),
+            openapi_version: "1.0.0".to_string(),
         }
     }
 
@@ -89,6 +102,18 @@ impl Rapina {
         self
     }
 
+    /// Enables or disables openapi endpoint
+    ///
+    /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
+    /// that returns all routes as OpenAPI specification
+    /// OpenAPI is disbaled by default
+    pub fn openapi(mut self, title: impl Into<String>, version: impl Into<String>) -> Self {
+        self.openapi = true;
+        self.openapi_title = title.into();
+        self.openapi_version = version.into();
+        self
+    }
+
     /// Starts the HTTP server on the given address.
     ///
     /// # Panics
@@ -105,7 +130,17 @@ impl Rapina {
             // Register the introspection endpoint
             self.router = self
                 .router
-                .get_named("/.__rapina/routes", "list_routes", list_routes);
+                .get_named("/__rapina/routes", "list_routes", list_routes);
+        }
+
+        if self.openapi {
+            let routes = self.router.routes();
+            let spec = build_openapi_spec(&self.openapi_title, &self.openapi_version, &routes);
+            self.state = self.state.with(OpenApiRegistry::new(spec));
+
+            self.router =
+                self.router
+                    .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
         }
 
         serve(self.router, self.state, self.middlewares, addr).await
@@ -139,7 +174,11 @@ mod tests {
 
     #[test]
     fn test_rapina_with_router() {
-        let router = Router::new().get("/health", |_req, _params, _state| async { StatusCode::OK });
+        let router = Router::new().route(
+            http::Method::GET,
+            "/health",
+            |_req, _params, _state| async { StatusCode::OK },
+        );
 
         let app = Rapina::new().router(router);
         assert!(!app.router.routes.is_empty());
@@ -176,10 +215,14 @@ mod tests {
         }
 
         let router = Router::new()
-            .get("/", |_req, _params, _state| async { StatusCode::OK })
-            .post("/users", |_req, _params, _state| async {
-                StatusCode::CREATED
-            });
+            .route(http::Method::GET, "/", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(
+                http::Method::POST,
+                "/users",
+                |_req, _params, _state| async { StatusCode::CREATED },
+            );
 
         let app = Rapina::new()
             .router(router)

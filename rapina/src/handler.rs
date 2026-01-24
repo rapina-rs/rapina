@@ -1,24 +1,31 @@
+//! Handler trait for named route handlers.
+
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
-use crate::response::IntoResponse;
+use http::Request;
+use hyper::body::Incoming;
 
-pub trait Handler<Args>: Clone + Send + 'static {
-    type Output: IntoResponse;
-    type Future: Future<Output = Self::Output> + Send;
+use crate::extract::PathParams;
+use crate::response::BoxBody;
+use crate::state::AppState;
 
-    fn call(self, args: Args) -> Self::Future;
-}
+type BoxFuture = Pin<Box<dyn Future<Output = hyper::Response<BoxBody>> + Send>>;
 
-impl<F, Fut, Out> Handler<()> for F
-where
-    F: FnOnce() -> Fut + Clone + Send + 'static,
-    Fut: Future<Output = Out> + Send,
-    Out: IntoResponse,
-{
-    type Output = Out;
-    type Future = Fut;
+/// A named request handler.
+///
+/// Implemented by route macros (`#[get]`, `#[post]`, etc.) to provide
+/// both handler logic and name for OpenAPI generation.
+pub trait Handler: Clone + Send + Sync + 'static {
+    /// Handler name used as operationId in OpenAPI.
+    const NAME: &'static str;
 
-    fn call(self, _args: ()) -> Self::Future {
-        (self)()
+    /// JSON Schema for the sucess response (if available)
+    fn response_schema() -> Option<serde_json::Value> {
+        None // Default: no schema
     }
+
+    /// Handle the request.
+    fn call(&self, req: Request<Incoming>, params: PathParams, state: Arc<AppState>) -> BoxFuture;
 }

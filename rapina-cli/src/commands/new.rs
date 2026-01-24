@@ -110,8 +110,6 @@ hyper = "1"
 fn generate_main_rs() -> String {
     r#"use rapina::prelude::*;
 use rapina::middleware::RequestLogMiddleware;
-use serde::Serialize;
-use std::sync::Arc;
 
 #[derive(Serialize)]
 struct MessageResponse {
@@ -124,11 +122,26 @@ struct HealthResponse {
     version: String,
 }
 
+#[get("/")]
+async fn hello() -> Json<MessageResponse> {
+    Json(MessageResponse {
+        message: "Hello from Rapina!".to_string(),
+    })
+}
+
+#[get("/health")]
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let router = Router::new()
-        .get_named("/", "hello", hello)
-        .get_named("/health", "health_check", health);
+        .get("/", hello)
+        .get("/health", health);
 
     Rapina::new()
         .with_tracing(TracingConfig::new())
@@ -136,27 +149,6 @@ async fn main() -> std::io::Result<()> {
         .router(router)
         .listen("127.0.0.1:3000")
         .await
-}
-
-async fn hello(
-    _req: hyper::Request<hyper::body::Incoming>,
-    _params: rapina::extract::PathParams,
-    _state: Arc<rapina::state::AppState>,
-) -> Json<MessageResponse> {
-    Json(MessageResponse {
-        message: "Hello from Rapina!".to_string(),
-    })
-}
-
-async fn health(
-    _req: hyper::Request<hyper::body::Incoming>,
-    _params: rapina::extract::PathParams,
-    _state: Arc<rapina::state::AppState>,
-) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })
 }
 "#
     .to_string()

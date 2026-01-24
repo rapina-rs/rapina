@@ -6,7 +6,7 @@ struct CreateUser {
     email: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 struct User {
     id: u64,
     name: String,

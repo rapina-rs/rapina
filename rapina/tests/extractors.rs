@@ -18,12 +18,14 @@ struct User {
 async fn test_json_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            let user: User = serde_json::from_slice(&body).unwrap();
-            Json(user)
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                let user: User = serde_json::from_slice(&body).unwrap();
+                Json(user)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -45,14 +47,16 @@ async fn test_json_extraction() {
 async fn test_json_extraction_invalid_json() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            match serde_json::from_slice::<User>(&body) {
-                Ok(user) => Json(serde_json::json!(user)).into_response(),
-                Err(_) => Error::bad_request("invalid JSON").into_response(),
-            }
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                match serde_json::from_slice::<User>(&body) {
+                    Ok(user) => Json(serde_json::json!(user)).into_response(),
+                    Err(_) => Error::bad_request("invalid JSON").into_response(),
+                }
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -69,12 +73,14 @@ async fn test_json_extraction_invalid_json() {
 async fn test_json_response() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/user", |_, _, _| async {
-            Json(User {
-                name: "Bob".to_string(),
-                email: "bob@test.com".to_string(),
-            })
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/user", |_, _, _| async {
+                Json(User {
+                    name: "Bob".to_string(),
+                    email: "bob@test.com".to_string(),
+                })
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/user").send().await;
@@ -106,18 +112,20 @@ struct Pagination {
 async fn test_query_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/items", |req, _, _| async move {
-            let query = req.uri().query().unwrap_or("");
-            let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
-                page: None,
-                limit: None,
-            });
-            format!(
-                "page={}, limit={}",
-                params.page.unwrap_or(1),
-                params.limit.unwrap_or(10)
-            )
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/items", |req, _, _| async move {
+                let query = req.uri().query().unwrap_or("");
+                let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
+                    page: None,
+                    limit: None,
+                });
+                format!(
+                    "page={}, limit={}",
+                    params.page.unwrap_or(1),
+                    params.limit.unwrap_or(10)
+                )
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/items?page=2&limit=20").send().await;
@@ -130,18 +138,20 @@ async fn test_query_extraction() {
 async fn test_query_extraction_optional_params() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/items", |req, _, _| async move {
-            let query = req.uri().query().unwrap_or("");
-            let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
-                page: None,
-                limit: None,
-            });
-            format!(
-                "page={}, limit={}",
-                params.page.unwrap_or(1),
-                params.limit.unwrap_or(10)
-            )
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/items", |req, _, _| async move {
+                let query = req.uri().query().unwrap_or("");
+                let params: Pagination = serde_urlencoded::from_str(query).unwrap_or(Pagination {
+                    page: None,
+                    limit: None,
+                });
+                format!(
+                    "page={}, limit={}",
+                    params.page.unwrap_or(1),
+                    params.limit.unwrap_or(10)
+                )
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -160,10 +170,12 @@ async fn test_query_extraction_optional_params() {
 async fn test_path_extraction_u64() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/users/:id", |_, params, _| async move {
-            let id = params.get("id").cloned().unwrap_or_default();
-            format!("User ID: {}", id)
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/users/:id", |_, params, _| async move {
+                let id = params.get("id").cloned().unwrap_or_default();
+                format!("User ID: {}", id)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/users/42").send().await;
@@ -176,12 +188,14 @@ async fn test_path_extraction_u64() {
 async fn test_path_extraction_string() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(
-            Router::new().get("/users/:username", |_, params, _| async move {
+        .router(Router::new().route(
+            http::Method::GET,
+            "/users/:username",
+            |_, params, _| async move {
                 let username = params.get("username").cloned().unwrap_or_default();
                 format!("Hello, {}!", username)
-            }),
-        );
+            },
+        ));
 
     let client = TestClient::new(app).await;
     let response = client.get("/users/alice").send().await;
@@ -194,7 +208,8 @@ async fn test_path_extraction_string() {
 async fn test_path_extraction_multiple_params() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get(
+        .router(Router::new().route(
+            http::Method::GET,
             "/users/:user_id/posts/:post_id",
             |_, params, _| async move {
                 let user_id = params.get("user_id").cloned().unwrap_or_default();
@@ -216,14 +231,16 @@ async fn test_path_extraction_multiple_params() {
 async fn test_headers_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/auth", |req, _, _| async move {
-            let auth = req
-                .headers()
-                .get("authorization")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("none");
-            format!("Auth: {}", auth)
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/auth", |req, _, _| async move {
+                let auth = req
+                    .headers()
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("none");
+                format!("Auth: {}", auth)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -240,12 +257,14 @@ async fn test_headers_extraction() {
 async fn test_headers_extraction_missing() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/auth", |req, _, _| async move {
-            match req.headers().get("authorization") {
-                Some(_) => "authenticated".to_string(),
-                None => "not authenticated".to_string(),
-            }
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/auth", |req, _, _| async move {
+                match req.headers().get("authorization") {
+                    Some(_) => "authenticated".to_string(),
+                    None => "not authenticated".to_string(),
+                }
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/auth").send().await;
@@ -258,14 +277,16 @@ async fn test_headers_extraction_missing() {
 async fn test_custom_header() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/custom", |req, _, _| async move {
-            let custom = req
-                .headers()
-                .get("x-custom-header")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("missing");
-            format!("Custom: {}", custom)
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/custom", |req, _, _| async move {
+                let custom = req
+                    .headers()
+                    .get("x-custom-header")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("missing");
+                format!("Custom: {}", custom)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -290,25 +311,27 @@ struct LoginForm {
 async fn test_form_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/login", |req, _, _| async move {
-            use http_body_util::BodyExt;
+        .router(
+            Router::new().route(http::Method::POST, "/login", |req, _, _| async move {
+                use http_body_util::BodyExt;
 
-            let content_type = req
-                .headers()
-                .get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
+                let content_type = req
+                    .headers()
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
 
-            if !content_type.contains("application/x-www-form-urlencoded") {
-                return Error::bad_request("expected form data").into_response();
-            }
+                if !content_type.contains("application/x-www-form-urlencoded") {
+                    return Error::bad_request("expected form data").into_response();
+                }
 
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            match serde_urlencoded::from_bytes::<LoginForm>(&body) {
-                Ok(form) => format!("Welcome, {}!", form.username).into_response(),
-                Err(_) => Error::bad_request("invalid form").into_response(),
-            }
-        }));
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                match serde_urlencoded::from_bytes::<LoginForm>(&body) {
+                    Ok(form) => format!("Welcome, {}!", form.username).into_response(),
+                    Err(_) => Error::bad_request("invalid form").into_response(),
+                }
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -342,12 +365,14 @@ async fn test_state_extraction() {
             app_name: "MyApp".to_string(),
             version: "1.0.0".to_string(),
         })
-        .router(
-            Router::new().get("/info", |_, _, state: Arc<AppState>| async move {
+        .router(Router::new().route(
+            http::Method::GET,
+            "/info",
+            |_, _, state: Arc<AppState>| async move {
                 let config = state.get::<AppConfig>().unwrap();
                 format!("{} v{}", config.app_name, config.version)
-            }),
-        );
+            },
+        ));
 
     let client = TestClient::new(app).await;
     let response = client.get("/info").send().await;
@@ -376,13 +401,15 @@ async fn test_multiple_state_types() {
             url: "postgres://localhost".to_string(),
         })
         .state(CacheConfig { ttl: 3600 })
-        .router(
-            Router::new().get("/config", |_, _, state: Arc<AppState>| async move {
+        .router(Router::new().route(
+            http::Method::GET,
+            "/config",
+            |_, _, state: Arc<AppState>| async move {
                 let db = state.get::<DbConfig>().unwrap();
                 let cache = state.get::<CacheConfig>().unwrap();
                 format!("DB: {}, Cache TTL: {}", db.url, cache.ttl)
-            }),
-        );
+            },
+        ));
 
     let client = TestClient::new(app).await;
     let response = client.get("/config").send().await;
@@ -397,11 +424,13 @@ async fn test_multiple_state_types() {
 async fn test_context_trace_id() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/trace", |req, _, _| async move {
-            use rapina::context::RequestContext;
-            let ctx = req.extensions().get::<RequestContext>().unwrap();
-            format!("Trace ID length: {}", ctx.trace_id.len())
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/trace", |req, _, _| async move {
+                use rapina::context::RequestContext;
+                let ctx = req.extensions().get::<RequestContext>().unwrap();
+                format!("Trace ID length: {}", ctx.trace_id.len())
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/trace").send().await;
@@ -425,22 +454,24 @@ struct CreateUser {
 async fn test_validated_extraction_valid() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            let user: CreateUser = match serde_json::from_slice(&body) {
-                Ok(u) => u,
-                Err(_) => return Error::bad_request("invalid JSON").into_response(),
-            };
+        .router(
+            Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                let user: CreateUser = match serde_json::from_slice(&body) {
+                    Ok(u) => u,
+                    Err(_) => return Error::bad_request("invalid JSON").into_response(),
+                };
 
-            if let Err(e) = user.validate() {
-                return Error::validation("validation failed")
-                    .with_details(serde_json::to_value(e).unwrap_or_default())
-                    .into_response();
-            }
+                if let Err(e) = user.validate() {
+                    return Error::validation("validation failed")
+                        .with_details(serde_json::to_value(e).unwrap_or_default())
+                        .into_response();
+                }
 
-            format!("Created user: {}", user.name).into_response()
-        }));
+                format!("Created user: {}", user.name).into_response()
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -460,22 +491,24 @@ async fn test_validated_extraction_valid() {
 async fn test_validated_extraction_invalid_email() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            let user: CreateUser = match serde_json::from_slice(&body) {
-                Ok(u) => u,
-                Err(_) => return Error::bad_request("invalid JSON").into_response(),
-            };
+        .router(
+            Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                let user: CreateUser = match serde_json::from_slice(&body) {
+                    Ok(u) => u,
+                    Err(_) => return Error::bad_request("invalid JSON").into_response(),
+                };
 
-            if let Err(e) = user.validate() {
-                return Error::validation("validation failed")
-                    .with_details(serde_json::to_value(e).unwrap_or_default())
-                    .into_response();
-            }
+                if let Err(e) = user.validate() {
+                    return Error::validation("validation failed")
+                        .with_details(serde_json::to_value(e).unwrap_or_default())
+                        .into_response();
+                }
 
-            format!("Created user: {}", user.name).into_response()
-        }));
+                format!("Created user: {}", user.name).into_response()
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client
@@ -494,22 +527,24 @@ async fn test_validated_extraction_invalid_email() {
 async fn test_validated_extraction_empty_name() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |req, _, _| async move {
-            use http_body_util::BodyExt;
-            let body = req.into_body().collect().await.unwrap().to_bytes();
-            let user: CreateUser = match serde_json::from_slice(&body) {
-                Ok(u) => u,
-                Err(_) => return Error::bad_request("invalid JSON").into_response(),
-            };
+        .router(
+            Router::new().route(http::Method::POST, "/users", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                let user: CreateUser = match serde_json::from_slice(&body) {
+                    Ok(u) => u,
+                    Err(_) => return Error::bad_request("invalid JSON").into_response(),
+                };
 
-            if let Err(e) = user.validate() {
-                return Error::validation("validation failed")
-                    .with_details(serde_json::to_value(e).unwrap_or_default())
-                    .into_response();
-            }
+                if let Err(e) = user.validate() {
+                    return Error::validation("validation failed")
+                        .with_details(serde_json::to_value(e).unwrap_or_default())
+                        .into_response();
+                }
 
-            format!("Created user: {}", user.name).into_response()
-        }));
+                format!("Created user: {}", user.name).into_response()
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client

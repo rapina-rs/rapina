@@ -6,11 +6,13 @@ use rapina::testing::TestClient;
 
 #[tokio::test]
 async fn test_error_400_bad_request() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/bad", |_, _, _| async {
-            Error::bad_request("invalid input")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/bad", |_, _, _| async {
+                Error::bad_request("invalid input")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/bad").send().await;
@@ -25,11 +27,13 @@ async fn test_error_400_bad_request() {
 
 #[tokio::test]
 async fn test_error_401_unauthorized() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/protected", |_, _, _| async {
-            Error::unauthorized("authentication required")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/protected", |_, _, _| async {
+                Error::unauthorized("authentication required")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/protected").send().await;
@@ -43,11 +47,13 @@ async fn test_error_401_unauthorized() {
 
 #[tokio::test]
 async fn test_error_403_forbidden() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/admin", |_, _, _| async {
-            Error::forbidden("access denied")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/admin", |_, _, _| async {
+                Error::forbidden("access denied")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/admin").send().await;
@@ -61,11 +67,13 @@ async fn test_error_403_forbidden() {
 
 #[tokio::test]
 async fn test_error_404_not_found() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/users/:id", |_, _, _| async {
-            Error::not_found("user not found")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/users/:id", |_, _, _| async {
+                Error::not_found("user not found")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/users/999").send().await;
@@ -79,11 +87,13 @@ async fn test_error_404_not_found() {
 
 #[tokio::test]
 async fn test_error_409_conflict() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().post("/users", |_, _, _| async {
-            Error::conflict("user already exists")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                Error::conflict("user already exists")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -97,11 +107,13 @@ async fn test_error_409_conflict() {
 
 #[tokio::test]
 async fn test_error_422_validation() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().post("/users", |_, _, _| async {
-            Error::validation("validation failed")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                Error::validation("validation failed")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -115,11 +127,13 @@ async fn test_error_422_validation() {
 
 #[tokio::test]
 async fn test_error_429_rate_limited() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/api", |_, _, _| async {
-            Error::rate_limited("too many requests")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/api", |_, _, _| async {
+                Error::rate_limited("too many requests")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/api").send().await;
@@ -133,11 +147,13 @@ async fn test_error_429_rate_limited() {
 
 #[tokio::test]
 async fn test_error_500_internal() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/crash", |_, _, _| async {
-            Error::internal("something went wrong")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/crash", |_, _, _| async {
+                Error::internal("something went wrong")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/crash").send().await;
@@ -153,14 +169,16 @@ async fn test_error_500_internal() {
 async fn test_error_with_details() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |_, _, _| async {
-            Error::validation("validation failed").with_details(serde_json::json!({
-                "errors": [
-                    {"field": "email", "message": "invalid email format"},
-                    {"field": "password", "message": "too short"}
-                ]
-            }))
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                Error::validation("validation failed").with_details(serde_json::json!({
+                    "errors": [
+                        {"field": "email", "message": "invalid email format"},
+                        {"field": "password", "message": "too short"}
+                    ]
+                }))
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -178,11 +196,13 @@ async fn test_error_with_details() {
 
 #[tokio::test]
 async fn test_error_with_custom_trace_id() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/error", |_, _, _| async {
-            Error::bad_request("test error").with_trace_id("custom-trace-123")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/error", |_, _, _| async {
+                Error::bad_request("test error").with_trace_id("custom-trace-123")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/error").send().await;
@@ -195,11 +215,13 @@ async fn test_error_with_custom_trace_id() {
 
 #[tokio::test]
 async fn test_error_trace_id_is_uuid_by_default() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/error", |_, _, _| async {
-            Error::bad_request("test error")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/error", |_, _, _| async {
+                Error::bad_request("test error")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/error").send().await;
@@ -216,7 +238,11 @@ async fn test_error_trace_id_is_uuid_by_default() {
 async fn test_error_response_content_type() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/error", |_, _, _| async { Error::bad_request("test") }));
+        .router(
+            Router::new().route(http::Method::GET, "/error", |_, _, _| async {
+                Error::bad_request("test")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/error").send().await;
@@ -234,10 +260,12 @@ async fn test_error_response_content_type() {
 async fn test_result_ok_returns_success() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/result", |_, _, _| async {
-            let result: std::result::Result<&str, Error> = Ok("success");
-            result
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/result", |_, _, _| async {
+                let result: std::result::Result<&str, Error> = Ok("success");
+                result
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/result").send().await;
@@ -250,10 +278,12 @@ async fn test_result_ok_returns_success() {
 async fn test_result_err_returns_error() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/result", |_, _, _| async {
-            let result: std::result::Result<&str, Error> = Err(Error::not_found("not found"));
-            result
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/result", |_, _, _| async {
+                let result: std::result::Result<&str, Error> = Err(Error::not_found("not found"));
+                result
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/result").send().await;
@@ -263,11 +293,13 @@ async fn test_result_err_returns_error() {
 
 #[tokio::test]
 async fn test_custom_error_status() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/custom", |_, _, _| async {
-            Error::new(418, "IM_A_TEAPOT", "I'm a teapot")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/custom", |_, _, _| async {
+                Error::new(418, "IM_A_TEAPOT", "I'm a teapot")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/custom").send().await;
@@ -281,11 +313,13 @@ async fn test_custom_error_status() {
 
 #[tokio::test]
 async fn test_error_without_details_omits_field() {
-    let app = Rapina::new().with_introspection(false).router(
-        Router::new().get("/error", |_, _, _| async {
-            Error::bad_request("simple error")
-        }),
-    );
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/error", |_, _, _| async {
+                Error::bad_request("simple error")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/error").send().await;
@@ -299,11 +333,13 @@ async fn test_error_without_details_omits_field() {
 async fn test_error_chaining() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |_, _, _| async {
-            Error::validation("invalid input")
-                .with_details(serde_json::json!({"field": "email"}))
-                .with_trace_id("trace-abc-123")
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                Error::validation("invalid input")
+                    .with_details(serde_json::json!({"field": "email"}))
+                    .with_trace_id("trace-abc-123")
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -321,7 +357,7 @@ async fn test_error_chaining() {
 async fn test_router_404_response() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/exists", |_, _, _| async { "found" }));
+        .router(Router::new().route(http::Method::GET, "/exists", |_, _, _| async { "found" }));
 
     let client = TestClient::new(app).await;
     let response = client.get("/not-exists").send().await;

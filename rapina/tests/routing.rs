@@ -8,7 +8,7 @@ use rapina::testing::TestClient;
 async fn test_basic_get_route() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/", |_, _, _| async { "Hello, World!" }));
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "Hello, World!" }));
 
     let client = TestClient::new(app).await;
     let response = client.get("/").send().await;
@@ -21,7 +21,11 @@ async fn test_basic_get_route() {
 async fn test_basic_post_route() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().post("/users", |_, _, _| async { StatusCode::CREATED }));
+        .router(
+            Router::new().route(http::Method::POST, "/users", |_, _, _| async {
+                StatusCode::CREATED
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.post("/users").send().await;
@@ -65,7 +69,7 @@ async fn test_delete_route() {
 async fn test_404_for_unknown_route() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/exists", |_, _, _| async { "found" }));
+        .router(Router::new().route(http::Method::GET, "/exists", |_, _, _| async { "found" }));
 
     let client = TestClient::new(app).await;
     let response = client.get("/does-not-exist").send().await;
@@ -77,7 +81,11 @@ async fn test_404_for_unknown_route() {
 async fn test_method_not_matching() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/resource", |_, _, _| async { "get response" }));
+        .router(
+            Router::new().route(http::Method::GET, "/resource", |_, _, _| async {
+                "get response"
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -94,10 +102,12 @@ async fn test_method_not_matching() {
 async fn test_path_parameter_extraction() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/users/:id", |_, params, _| async move {
-            let id = params.get("id").cloned().unwrap_or_default();
-            format!("User ID: {}", id)
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/users/:id", |_, params, _| async move {
+                let id = params.get("id").cloned().unwrap_or_default();
+                format!("User ID: {}", id)
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/users/42").send().await;
@@ -110,7 +120,8 @@ async fn test_path_parameter_extraction() {
 async fn test_multiple_path_parameters() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get(
+        .router(Router::new().route(
+            http::Method::GET,
             "/users/:user_id/posts/:post_id",
             |_, params, _| async move {
                 let user_id = params.get("user_id").cloned().unwrap_or_default();
@@ -130,10 +141,12 @@ async fn test_multiple_path_parameters() {
 async fn test_multiple_routes() {
     let app = Rapina::new().with_introspection(false).router(
         Router::new()
-            .get("/", |_, _, _| async { "home" })
-            .get("/about", |_, _, _| async { "about" })
-            .get("/contact", |_, _, _| async { "contact" })
-            .post("/submit", |_, _, _| async { "submitted" }),
+            .route(http::Method::GET, "/", |_, _, _| async { "home" })
+            .route(http::Method::GET, "/about", |_, _, _| async { "about" })
+            .route(http::Method::GET, "/contact", |_, _, _| async { "contact" })
+            .route(http::Method::POST, "/submit", |_, _, _| async {
+                "submitted"
+            }),
     );
 
     let client = TestClient::new(app).await;
@@ -148,7 +161,11 @@ async fn test_multiple_routes() {
 async fn test_route_with_trailing_slash() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().get("/users", |_, _, _| async { "users list" }));
+        .router(
+            Router::new().route(http::Method::GET, "/users", |_, _, _| async {
+                "users list"
+            }),
+        );
 
     let client = TestClient::new(app).await;
 

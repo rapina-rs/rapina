@@ -36,7 +36,7 @@ use crate::state::AppState;
 /// #[tokio::test]
 /// async fn test_hello() {
 ///     let app = Rapina::new()
-///         .router(Router::new().get("/", |_, _, _| async { "Hello!" }));
+///         .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "Hello!" }));
 ///
 ///     let client = TestClient::new(app).await;
 ///     let response = client.get("/").send().await;
@@ -304,7 +304,7 @@ mod tests {
     async fn test_client_get() {
         let app = Rapina::new()
             .with_introspection(false)
-            .router(Router::new().get("/", |_, _, _| async { "Hello!" }));
+            .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "Hello!" }));
 
         let client = TestClient::new(app).await;
         let response = client.get("/").send().await;
@@ -317,11 +317,13 @@ mod tests {
     async fn test_client_post_json() {
         let app = Rapina::new()
             .with_introspection(false)
-            .router(Router::new().post("/echo", |req, _, _| async move {
-                use http_body_util::BodyExt;
-                let body = req.into_body().collect().await.unwrap().to_bytes();
-                String::from_utf8_lossy(&body).to_string()
-            }));
+            .router(
+                Router::new().route(http::Method::POST, "/echo", |req, _, _| async move {
+                    use http_body_util::BodyExt;
+                    let body = req.into_body().collect().await.unwrap().to_bytes();
+                    String::from_utf8_lossy(&body).to_string()
+                }),
+            );
 
         let client = TestClient::new(app).await;
         let response = client
@@ -338,14 +340,16 @@ mod tests {
     async fn test_client_with_headers() {
         let app = Rapina::new()
             .with_introspection(false)
-            .router(Router::new().get("/headers", |req, _, _| async move {
-                let auth = req
-                    .headers()
-                    .get("authorization")
-                    .map(|v| v.to_str().unwrap_or(""))
-                    .unwrap_or("");
-                auth.to_string()
-            }));
+            .router(
+                Router::new().route(http::Method::GET, "/headers", |req, _, _| async move {
+                    let auth = req
+                        .headers()
+                        .get("authorization")
+                        .map(|v| v.to_str().unwrap_or(""))
+                        .unwrap_or("");
+                    auth.to_string()
+                }),
+            );
 
         let client = TestClient::new(app).await;
         let response = client
@@ -374,15 +378,17 @@ mod tests {
     async fn test_client_json_response() {
         let app = Rapina::new()
             .with_introspection(false)
-            .router(Router::new().get("/json", |_, _, _| async {
-                http::Response::builder()
-                    .status(StatusCode::OK)
-                    .header("content-type", "application/json")
-                    .body(http_body_util::Full::new(bytes::Bytes::from(
-                        r#"{"id":1,"name":"test"}"#,
-                    )))
-                    .unwrap()
-            }));
+            .router(
+                Router::new().route(http::Method::GET, "/json", |_, _, _| async {
+                    http::Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "application/json")
+                        .body(http_body_util::Full::new(bytes::Bytes::from(
+                            r#"{"id":1,"name":"test"}"#,
+                        )))
+                        .unwrap()
+                }),
+            );
 
         let client = TestClient::new(app).await;
         let response = client.get("/json").send().await;
@@ -414,12 +420,14 @@ mod tests {
             .state(AppConfig {
                 name: "TestApp".to_string(),
             })
-            .router(
-                Router::new().get("/config", |_, _, state: Arc<AppState>| async move {
+            .router(Router::new().route(
+                http::Method::GET,
+                "/config",
+                |_, _, state: Arc<AppState>| async move {
                     let config = state.get::<AppConfig>().unwrap();
                     config.name.clone()
-                }),
-            );
+                },
+            ));
 
         let client = TestClient::new(app).await;
         let response = client.get("/config").send().await;
@@ -464,7 +472,9 @@ mod tests {
     async fn test_response_bytes() {
         let app = Rapina::new()
             .with_introspection(false)
-            .router(Router::new().get("/bytes", |_, _, _| async { "raw bytes" }));
+            .router(
+                Router::new().route(http::Method::GET, "/bytes", |_, _, _| async { "raw bytes" }),
+            );
 
         let client = TestClient::new(app).await;
         let response = client.get("/bytes").send().await;
