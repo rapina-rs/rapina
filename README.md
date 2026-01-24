@@ -432,9 +432,9 @@ Features:
 - [x] CLI (`rapina new`, `rapina dev`)
 - [x] Automatic OpenAPI with response schemas
 - [x] OpenAPI CLI tools (`export`, `check`, `diff`)
-- [ ] Validation (`Validated<T>`)
+- [x] Validation (`Validated<T>`)
 - [x] Auth (Bearer JWT, `CurrentUser`)
-- [ ] Observability (tracing, structured logs)
+- [x] Observability (tracing, structured logs)
 
 ## Philosophy
 
