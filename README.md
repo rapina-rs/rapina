@@ -80,6 +80,10 @@ rapina dev -p 8080 --host 0.0.0.0
 rapina openapi export -o openapi.json  # Export spec
 rapina openapi check                    # Verify spec is up to date
 rapina openapi diff --base main         # Detect breaking changes
+
+# Introspection
+rapina routes                           # List all registered routes
+rapina doctor                           # Run API health checks
 ```
 
 ### Typed Extractors

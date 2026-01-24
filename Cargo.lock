@@ -945,6 +945,7 @@ dependencies = [
  "ctrlc",
  "notify",
  "notify-debouncer-mini",
+ "serde",
  "serde_json",
  "toml",
 ]

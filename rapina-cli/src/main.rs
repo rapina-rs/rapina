@@ -39,6 +39,10 @@ enum Commands {
         #[command(subcommand)]
         command: OpenapiCommands,
     },
+    /// List all registered routes
+    Routes,
+    /// Run health checks on your API
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -101,6 +105,18 @@ fn main() {
                 OpenapiCommands::Diff { base, file } => commands::openapi::diff(&base, &file),
             };
             if let Err(e) = result {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Routes) => {
+            if let Err(e) = commands::routes::execute() {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Doctor) => {
+            if let Err(e) = commands::doctor::execute() {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
