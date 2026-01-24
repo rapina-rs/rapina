@@ -356,6 +356,69 @@ Rapina::new()
     .await
 ```
 
+### Authentication
+
+JWT authentication with a "protected by default" approach:
+
+```rust
+use rapina::prelude::*;
+
+// Public route - no authentication required
+#[public]
+#[get("/health")]
+async fn health() -> &'static str {
+    "ok"
+}
+
+// Public route - login to get a token
+#[public]
+#[post("/login")]
+async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+    let req = body.into_inner();
+    let auth_config = auth.into_inner();
+
+    if req.username == "admin" && req.password == "secret" {
+        let token = auth_config.create_token(&req.username)?;
+        Ok(Json(TokenResponse::new(token, auth_config.expiration())))
+    } else {
+        Err(Error::unauthorized("invalid credentials"))
+    }
+}
+
+// Protected route - requires valid JWT
+#[get("/me")]
+async fn me(user: CurrentUser) -> Json<UserResponse> {
+    Json(UserResponse { id: user.id })
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    load_dotenv();
+    let auth_config = AuthConfig::from_env().expect("JWT_SECRET required");
+
+    let router = Router::new()
+        .get("/health", health)
+        .post("/login", login)
+        .get("/me", me);
+
+    Rapina::new()
+        .with_auth(auth_config.clone())
+        .public_route("GET", "/health")
+        .public_route("POST", "/login")
+        .state(auth_config)
+        .router(router)
+        .listen("127.0.0.1:3000")
+        .await
+}
+```
+
+Features:
+- **Protected by default** - All routes require authentication unless marked `#[public]`
+- **JWT Bearer tokens** - Standard `Authorization: Bearer <token>` header
+- **`CurrentUser` extractor** - Access authenticated user in handlers
+- **`TokenResponse`** - Built-in response type for login endpoints
+- **Environment configuration** - `JWT_SECRET` and `JWT_EXPIRATION` from env
+
 ## Roadmap
 
 - [x] Basic router with path parameters
@@ -370,7 +433,7 @@ Rapina::new()
 - [x] Automatic OpenAPI with response schemas
 - [x] OpenAPI CLI tools (`export`, `check`, `diff`)
 - [ ] Validation (`Validated<T>`)
-- [ ] Auth (Bearer JWT, `CurrentUser`)
+- [x] Auth (Bearer JWT, `CurrentUser`)
 - [ ] Observability (tracing, structured logs)
 
 ## Philosophy

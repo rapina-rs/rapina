@@ -78,6 +78,7 @@
 //! - [`TestClient`](testing::TestClient) - Test client for integration testing
 
 pub mod app;
+pub mod auth;
 pub mod config;
 pub mod context;
 pub mod error;
@@ -104,12 +105,13 @@ pub mod testing;
 /// ```
 pub mod prelude {
     pub use crate::app::Rapina;
+    pub use crate::auth::{AuthConfig, CurrentUser, TokenResponse};
     pub use crate::config::{
         ConfigError, get_env, get_env_or, get_env_parsed, get_env_parsed_or, load_dotenv,
     };
     pub use crate::context::RequestContext;
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
-    pub use crate::extract::{Context, Form, Headers, Json, Path, Query, Validated};
+    pub use crate::extract::{Context, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
     pub use crate::middleware::{Middleware, Next};
     pub use crate::observability::TracingConfig;
@@ -122,7 +124,7 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, post, put};
+    pub use rapina_macros::{Config, delete, get, post, public, put};
 }
 
 // Re-export schemars so users don't need to add it to their Cargo.toml

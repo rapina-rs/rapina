@@ -45,5 +45,8 @@ dotenvy = "0.15.7"
 # OpenAPI
 schemars = "1.2.0"
 
+# JWT Authentication
+jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
+
 # Our macros
-rapina-macros = { version = "0.1.0-alpha.3", path = "../rapina-macros/" }
+rapina-macros = { version = "0.1.0-alpha.4", path = "../rapina-macros/" }

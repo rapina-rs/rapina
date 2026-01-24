@@ -2,6 +2,7 @@
 
 use std::net::SocketAddr;
 
+use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
 use crate::middleware::{Middleware, MiddlewareStack};
 use crate::observability::TracingConfig;
@@ -49,6 +50,10 @@ pub struct Rapina {
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
     pub(crate) openapi_version: String,
+    /// Authentication configuration (if enabled)
+    pub(crate) auth_config: Option<AuthConfig>,
+    /// Public routes registry
+    pub(crate) public_routes: PublicRoutes,
 }
 
 impl Rapina {
@@ -64,6 +69,8 @@ impl Rapina {
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
+            auth_config: None,
+            public_routes: PublicRoutes::new(),
         }
     }
 
@@ -82,6 +89,48 @@ impl Rapina {
     /// Adds a middleware to the application.
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
+        self
+    }
+
+    /// Enables JWT authentication with the given configuration.
+    ///
+    /// When enabled, all routes require a valid `Authorization: Bearer <token>` header
+    /// unless marked with `#[public]` or registered via [`public_route`](Self::public_route).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let auth_config = AuthConfig::from_env().expect("JWT_SECRET required");
+    ///
+    /// Rapina::new()
+    ///     .with_auth(auth_config)
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn with_auth(mut self, config: AuthConfig) -> Self {
+        self.auth_config = Some(config);
+        self
+    }
+
+    /// Registers a route as public (no authentication required).
+    ///
+    /// Use this for routes that should be accessible without a JWT token.
+    /// Routes starting with `/__rapina` are automatically public.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .with_auth(auth_config)
+    ///     .public_route("GET", "/health")
+    ///     .public_route("POST", "/login")
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn public_route(mut self, method: &str, path: &str) -> Self {
+        self.public_routes.add(method, path);
         self
     }
 
@@ -121,6 +170,13 @@ impl Rapina {
     /// Panics if the address cannot be parsed.
     pub async fn listen(mut self, addr: &str) -> std::io::Result<()> {
         let addr: SocketAddr = addr.parse().expect("invalid address");
+
+        // Add auth middleware if configured
+        if let Some(auth_config) = self.auth_config.take() {
+            let auth_middleware =
+                AuthMiddleware::with_public_routes(auth_config, self.public_routes.clone());
+            self.middlewares.add(auth_middleware);
+        }
 
         if self.introspection {
             // Store route metadata in state for the introspection endpoint

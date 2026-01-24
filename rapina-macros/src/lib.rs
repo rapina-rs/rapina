@@ -22,6 +22,39 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro(attr, item)
 }
 
+/// Marks a route as public (no authentication required).
+///
+/// When authentication is enabled via `Rapina::with_auth()`, all routes
+/// require a valid JWT token by default. Use `#[public]` to allow
+/// unauthenticated access to specific routes.
+///
+/// # Example
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[public]
+/// #[get("/health")]
+/// async fn health() -> &'static str {
+///     "ok"
+/// }
+///
+/// #[public]
+/// #[post("/login")]
+/// async fn login(body: Json<LoginRequest>) -> Result<Json<TokenResponse>> {
+///     // ... authenticate and return token
+/// }
+/// ```
+///
+/// Note: Routes starting with `/__rapina` are automatically public.
+#[proc_macro_attribute]
+pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // The #[public] attribute is a marker that doesn't modify the item.
+    // It's used by the application to register public routes.
+    // We just pass through the item unchanged.
+    item
+}
+
 fn route_macro_core(
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,
@@ -141,6 +174,7 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
         || type_str.contains("Headers")
         || type_str.contains("State")
         || type_str.contains("Context")
+        || type_str.contains("CurrentUser")
 }
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
