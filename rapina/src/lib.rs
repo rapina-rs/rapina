@@ -113,8 +113,12 @@ pub mod prelude {
     pub use crate::router::Router;
 
     pub use http::{Method, StatusCode};
+    pub use http_body_util;
+    pub use hyper;
+    pub use schemars;
     pub use schemars::JsonSchema;
     pub use serde::{Deserialize, Serialize};
+    pub use serde_json;
     pub use tracing;
     pub use validator::Validate;
 
