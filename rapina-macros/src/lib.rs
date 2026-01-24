@@ -33,6 +33,21 @@ fn route_macro_core(
     let func_name_str = func_name.to_string();
     let func_vis = &func.vis;
 
+    // Extract return type for schema generation
+    let response_schema_impl = if let syn::ReturnType::Type(_, return_type) = &func.sig.output {
+        if let Some(inner_type) = extract_json_inner_type(return_type) {
+            quote! {
+                fn response_schema() -> Option<serde_json::Value> {
+                    Some(serde_json::to_value(rapina::schemars::schema_for!(#inner_type)).unwrap())
+                }
+            }
+        } else {
+            quote! {}
+        }
+    } else {
+        quote! {}
+    };
+
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
     // Build the handler body
@@ -104,6 +119,8 @@ fn route_macro_core(
         impl rapina::handler::Handler for #func_name {
             const NAME: &'static str = #func_name_str;
 
+            #response_schema_impl
+
             fn call(
                 &self,
                 req: hyper::Request<hyper::body::Incoming>,
@@ -124,6 +141,21 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
         || type_str.contains("Headers")
         || type_str.contains("State")
         || type_str.contains("Context")
+}
+
+/// Extracts the inner type from Json<T> wrapper for schema generation
+fn extract_json_inner_type(return_type: &syn::Type) -> Option<proc_macro2::TokenStream> {
+    if let syn::Type::Path(type_path) = return_type {
+        let last_segment = type_path.path.segments.last()?;
+        if last_segment.ident == "Json" {
+            if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
+                    return Some(quote!(#inner_type));
+                }
+            }
+        }
+    }
+    None
 }
 
 fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -219,5 +251,40 @@ mod tests {
         let invalid_input = quote! { not_a_function };
 
         route_macro_core(path, invalid_input);
+    }
+
+    #[test]
+    fn test_json_return_type_generates_response_schema() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn get_user() -> Json<UserResponse> {
+                Json(UserResponse { id: 1 })
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        // Check response_schema method is generated with schema_for!
+        assert!(output_str.contains("fn response_schema"));
+        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("UserResponse"));
+    }
+
+    #[test]
+    fn test_non_json_return_type_no_response_schema() {
+        let path = quote!("/health");
+        let input = quote! {
+            async fn health() -> &'static str {
+                "ok"
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        // Check response_schema method is NOT generated for non-Json types
+        assert!(!output_str.contains("fn response_schema"));
+        assert!(!output_str.contains("schema_for"));
     }
 }

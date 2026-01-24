@@ -113,9 +113,13 @@ pub mod prelude {
     pub use crate::router::Router;
 
     pub use http::{Method, StatusCode};
+    pub use schemars::JsonSchema;
     pub use serde::{Deserialize, Serialize};
     pub use tracing;
     pub use validator::Validate;
 
     pub use rapina_macros::{delete, get, post, put};
 }
+
+// Re-export schemars so users don't need to add it to their Cargo.toml
+pub use schemars;

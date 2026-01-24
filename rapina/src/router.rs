@@ -23,6 +23,7 @@ type HandlerFn =
 pub(crate) struct Route {
     pub(crate) pattern: String,
     pub(crate) handler_name: String,
+    pub(crate) response_schema: Option<serde_json::Value>,
     handler: HandlerFn,
 }
 
@@ -68,6 +69,7 @@ impl Router {
         method: Method,
         pattern: &str,
         handler_name: &str,
+        response_schema: Option<serde_json::Value>,
         handler: F,
     ) -> Self
     where
@@ -88,6 +90,7 @@ impl Router {
         let route = Route {
             pattern: pattern.to_string(),
             handler_name: handler_name.to_string(),
+            response_schema,
             handler,
         };
 
@@ -105,7 +108,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", handler)
+        self.route_named(method, pattern, "handler", None, handler)
     }
 
     /// Adds a GET route with a handler name.
@@ -115,7 +118,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(Method::GET, pattern, handler_name, handler)
+        self.route_named(Method::GET, pattern, handler_name, None, handler)
     }
 
     /// Adds a POST route with a handler name.
@@ -125,31 +128,49 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(Method::POST, pattern, handler_name, handler)
+        self.route_named(Method::POST, pattern, handler_name, None, handler)
     }
 
     /// Adds a GET route with a Handler.
     pub fn get<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(Method::GET, pattern, H::NAME, move |req, params, state| {
-            let h = handler.clone();
-            async move { h.call(req, params, state).await }
-        })
+        self.route_named(
+            Method::GET,
+            pattern,
+            H::NAME,
+            H::response_schema(),
+            move |req, params, state| {
+                let h = handler.clone();
+                async move { h.call(req, params, state).await }
+            },
+        )
     }
 
     /// Adds a POST route with a Handler.
     pub fn post<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(Method::POST, pattern, H::NAME, move |req, params, state| {
-            let h = handler.clone();
-            async move { h.call(req, params, state).await }
-        })
+        self.route_named(
+            Method::POST,
+            pattern,
+            H::NAME,
+            H::response_schema(),
+            move |req, params, state| {
+                let h = handler.clone();
+                async move { h.call(req, params, state).await }
+            },
+        )
     }
 
     /// Adds a PUT route with a Handler.
     pub fn put<H: Handler>(self, pattern: &str, handler: H) -> Self {
-        self.route_named(Method::PUT, pattern, H::NAME, move |req, params, state| {
-            let h = handler.clone();
-            async move { h.call(req, params, state).await }
-        })
+        self.route_named(
+            Method::PUT,
+            pattern,
+            H::NAME,
+            H::response_schema(),
+            move |req, params, state| {
+                let h = handler.clone();
+                async move { h.call(req, params, state).await }
+            },
+        )
     }
 
     /// Adds a DELETE route with a Handler.
@@ -158,6 +179,7 @@ impl Router {
             Method::DELETE,
             pattern,
             H::NAME,
+            H::response_schema(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -189,7 +211,12 @@ impl Router {
         self.routes
             .iter()
             .map(|(method, route)| {
-                RouteInfo::new(method.as_str(), &route.pattern, &route.handler_name)
+                RouteInfo::new(
+                    method.as_str(),
+                    &route.pattern,
+                    &route.handler_name,
+                    route.response_schema.clone(),
+                )
             })
             .collect()
     }
@@ -355,6 +382,7 @@ mod tests {
             Method::PUT,
             "/users/:id",
             "update_user",
+            None,
             |_req, _params, _state| async { StatusCode::OK },
         );
 

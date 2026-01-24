@@ -13,7 +13,7 @@ struct CreateUser {
     email: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, JsonSchema)]
 struct User {
     id: u64,
     name: String,

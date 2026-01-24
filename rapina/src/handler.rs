@@ -21,6 +21,11 @@ pub trait Handler: Clone + Send + Sync + 'static {
     /// Handler name used as operationId in OpenAPI.
     const NAME: &'static str;
 
+    /// JSON Schema for the sucess response (if available)
+    fn response_schema() -> Option<serde_json::Value> {
+        None // Default: no schema
+    }
+
     /// Handle the request.
     fn call(&self, req: Request<Incoming>, params: PathParams, state: Arc<AppState>) -> BoxFuture;
 }

@@ -138,7 +138,7 @@ pub enum Schema {
         #[serde(rename = "$ref")]
         reference: String,
     },
-    Inline(schemars::Schema),
+    Inline(serde_json::Value),
 }
 
 /// Reusable components
@@ -228,12 +228,34 @@ pub fn build_openapi_spec(
             .collect::<Vec<_>>()
             .join("/");
 
+        let success_response = if let Some(schema) = &route.response_schema {
+            let mut content = BTreeMap::new();
+            content.insert(
+                "application/json".to_string(),
+                MediaType {
+                    schema: Schema::Inline(schema.clone()),
+                },
+            );
+            Response {
+                description: "Success".to_string(),
+                content: Some(content),
+            }
+        } else {
+            Response {
+                description: "Success".to_string(),
+                content: None,
+            }
+        };
+
         let mut operation = Operation {
             operation_id: Some(route.handler_name.clone()),
             parameters: params,
             ..Default::default()
         };
 
+        operation
+            .responses
+            .insert("200".to_string(), success_response);
         operation
             .responses
             .insert("default".to_string(), error_response_ref());
