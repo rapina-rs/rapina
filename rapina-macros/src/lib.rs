@@ -145,15 +145,13 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
 fn extract_json_inner_type(return_type: &syn::Type) -> Option<proc_macro2::TokenStream> {
-    if let syn::Type::Path(type_path) = return_type {
-        let last_segment = type_path.path.segments.last()?;
-        if last_segment.ident == "Json" {
-            if let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
-                    return Some(quote!(#inner_type));
-                }
-            }
-        }
+    if let syn::Type::Path(type_path) = return_type
+        && let Some(last_segment) = type_path.path.segments.last()
+        && last_segment.ident == "Json"
+        && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+        && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+    {
+        return Some(quote!(#inner_type));
     }
     None
 }
