@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }} - Rapina{% endblock %}
+
+{% block content %}
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <nav class="docs-nav">
+            <h4>{{ section.title }}</h4>
+            <ul>
+                {% for page in section.pages %}
+                <li>
+                    <a href="{{ page.permalink }}" {% if current_path == page.path %}class="active"{% endif %}>
+                        {{ page.title }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </aside>
+    <article class="docs-content">
+        <h1>{{ section.title }}</h1>
+        {{ section.content | safe }}
+
+        {% if section.pages %}
+        <div class="section-pages">
+            <h2>In this section</h2>
+            <ul>
+                {% for page in section.pages %}
+                <li>
+                    <a href="{{ page.permalink }}">
+                        <strong>{{ page.title }}</strong>
+                        {% if page.description %}<br><span>{{ page.description }}</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </article>
+</div>
+{% endblock %}

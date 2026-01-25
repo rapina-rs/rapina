@@ -1,0 +1,40 @@
+<!doctype html><html lang=en><head><meta charset=UTF-8><meta content="width=device-width,initial-scale=1.0" name=viewport><meta content="Opinionated, type-safe, contracts over chaos." name=description><title>Getting Started - Rapina</title><link href=https://arferreira.github.io/rapina/style.css rel=stylesheet><link href=https://arferreira.github.io/rapina/images/rapina-icon.png rel=icon type=image/png><body><nav class=navbar><div class=nav-container><a class=nav-logo href=https://arferreira.github.io/rapina> <img alt=Rapina height=32 src=https://arferreira.github.io/rapina/images/rapina-icon.png> <span>Rapina</span> </a><div class=nav-links><a href=https://arferreira.github.io/rapina/guide> Guide </a><a href=https://arferreira.github.io/rapina/cli> CLI </a><a href=https://arferreira.github.io/rapina/philosophy> Philosophy </a><a href=https://docs.rs/rapina rel=noopener target=_blank> API </a><a class=nav-github href=https://github.com/arferreira/rapina rel=noopener target=_blank> GitHub </a></div></div></nav><main><div class=docs-layout><aside class=docs-sidebar><nav class=docs-nav><h4><a href=https://arferreira.github.io/rapina/guide/>Guide</a></h4><ul><li><a class=active href=https://arferreira.github.io/rapina/guide/getting-started/> Getting Started </a><li><a href=https://arferreira.github.io/rapina/guide/configuration/> Configuration </a><li><a href=https://arferreira.github.io/rapina/guide/extractors/> Extractors </a><li><a href=https://arferreira.github.io/rapina/guide/authentication/> Authentication </a><li><a href=https://arferreira.github.io/rapina/guide/errors/> Error Handling </a></ul></nav></aside><article class=docs-content><h1>Getting Started</h1><p class=page-description>Install Rapina and create your first API<h2 id=installation>Installation</h2><h3 id=using-the-cli-recommended>Using the CLI (Recommended)</h3><p>The fastest way to get started is with the Rapina CLI:<pre class=language-bash data-lang=bash style=color:#c0c5ce;background-color:#2b303b><code class=language-bash data-lang=bash><span style=color:#65737e># Install the CLI
+</span><span style=color:#bf616a>cargo</span><span> install rapina-cli
+</span><span>
+</span><span style=color:#65737e># Create a new project
+</span><span style=color:#bf616a>rapina</span><span> new my-app
+</span><span style=color:#96b5b4>cd</span><span> my-app
+</span><span>
+</span><span style=color:#65737e># Start the development server
+</span><span style=color:#bf616a>rapina</span><span> dev
+</span></code></pre><p>Your API is now running at <code>http://127.0.0.1:3000</code>.<h3 id=manual-setup>Manual Setup</h3><p>Add Rapina to your <code>Cargo.toml</code>:<pre class=language-toml data-lang=toml style=color:#c0c5ce;background-color:#2b303b><code class=language-toml data-lang=toml><span>[dependencies]
+</span><span style=color:#bf616a>rapina </span><span>= "</span><span style=color:#a3be8c>0.1.0-alpha.4</span><span>"
+</span><span style=color:#bf616a>tokio </span><span>= { </span><span style=color:#bf616a>version </span><span>= "</span><span style=color:#a3be8c>1</span><span>", </span><span style=color:#bf616a>features </span><span>= ["</span><span style=color:#a3be8c>full</span><span>"] }
+</span><span style=color:#bf616a>serde </span><span>= { </span><span style=color:#bf616a>version </span><span>= "</span><span style=color:#a3be8c>1</span><span>", </span><span style=color:#bf616a>features </span><span>= ["</span><span style=color:#a3be8c>derive</span><span>"] }
+</span></code></pre><h2 id=your-first-api>Your First API</h2><p>Create a simple API with a few endpoints:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span style=color:#b48ead>use </span><span>rapina::prelude::*;
+</span><span>
+</span><span>#[</span><span style=color:#bf616a>get</span><span>("</span><span style=color:#a3be8c>/</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>hello</span><span>() -> &</span><span style=color:#b48ead>'static str </span><span>{
+</span><span>    "</span><span style=color:#a3be8c>Hello, Rapina!</span><span>"
+</span><span>}
+</span><span>
+</span><span>#[</span><span style=color:#bf616a>get</span><span>("</span><span style=color:#a3be8c>/users/:id</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>get_user</span><span>(</span><span style=color:#bf616a>id</span><span>: Path<</span><span style=color:#b48ead>u64</span><span>>) -> Result&LTJson&LTserde_json::Value>> {
+</span><span>    Ok(Json(serde_json::json!({
+</span><span>        "</span><span style=color:#a3be8c>id</span><span>": id.</span><span style=color:#96b5b4>into_inner</span><span>(),
+</span><span>        "</span><span style=color:#a3be8c>name</span><span>": "</span><span style=color:#a3be8c>Alice</span><span>"
+</span><span>    })))
+</span><span>}
+</span><span>
+</span><span>#[</span><span style=color:#bf616a>tokio</span><span>::</span><span style=color:#bf616a>main</span><span>]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>main</span><span>() -> std::io::Result<()> {
+</span><span>    </span><span style=color:#b48ead>let</span><span> router = Router::new()
+</span><span>        .</span><span style=color:#96b5b4>get</span><span>("</span><span style=color:#a3be8c>/</span><span>", hello)
+</span><span>        .</span><span style=color:#96b5b4>get</span><span>("</span><span style=color:#a3be8c>/users/:id</span><span>", get_user);
+</span><span>
+</span><span>    Rapina::new()
+</span><span>        .</span><span style=color:#96b5b4>router</span><span>(router)
+</span><span>        .</span><span style=color:#96b5b4>listen</span><span>("</span><span style=color:#a3be8c>127.0.0.1:3000</span><span>")
+</span><span>        .await
+</span><span>}
+</span></code></pre><h2 id=what-s-next>What's Next?</h2><ul><li><a href=/guide/configuration/>Configuration</a> - Set up environment variables and type-safe config<li><a href=/guide/routing/>Routing</a> - Define routes and handle parameters<li><a href=/guide/extractors/>Extractors</a> - Parse request data with type safety<li><a href=/guide/authentication/>Authentication</a> - Add JWT authentication</ul><div class=page-meta></div></article></div></main><footer class=footer><div class=footer-container><p>Built with Rust. Documented with <a href=https://www.getzola.org/ target=_blank>Zola</a>.<p>MIT License</div></footer>

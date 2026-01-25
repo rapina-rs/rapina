@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Rapina - Fast, Type-Safe Web Framework for Rust{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-container">
+        <img src="{{ get_url(path='images/logo.png') }}" alt="Rapina" class="hero-logo">
+        <h1>Rapina</h1>
+        <p class="hero-tagline">{{ config.extra.tagline }}</p>
+        <p class="hero-description">{{ config.description }}</p>
+        <div class="hero-badges">
+            <a href="https://crates.io/crates/rapina"><img src="https://img.shields.io/crates/v/rapina.svg" alt="Crates.io"></a>
+            <a href="https://docs.rs/rapina"><img src="https://docs.rs/rapina/badge.svg" alt="Documentation"></a>
+            <a href="https://github.com/arferreira/rapina/actions/workflows/ci.yml"><img src="https://github.com/arferreira/rapina/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+            <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+        </div>
+        <div class="hero-buttons">
+            <a href="{{ get_url(path='guide/getting-started/') }}" class="btn btn-primary">Get Started</a>
+            <a href="{{ config.extra.github }}" class="btn btn-secondary" target="_blank">GitHub</a>
+        </div>
+    </div>
+</section>
+
+<section class="intro">
+    <div class="intro-container">
+        <p class="intro-text">
+            Rapina is a modern, high-performance web framework for building APIs with Rust,
+            inspired by FastAPI's developer experience. Built on predictable patterns and strong conventions.
+        </p>
+        <div class="key-features">
+            <h3>Key Features</h3>
+            <ul>
+                <li><strong>Fast:</strong> Native Rust performance. No garbage collector, no runtime overhead.</li>
+                <li><strong>Type-safe:</strong> Typed extractors, typed errors, everything checked at compile time. If it compiles, it works.</li>
+                <li><strong>Opinionated:</strong> Convention over configuration. 90% of apps need 10% of decisions. We made them for you.</li>
+                <li><strong>AI-friendly:</strong> Predictable patterns that humans and LLMs understand equally well. Better completions, safer refactoring.</li>
+                <li><strong>Secure:</strong> Protected by default. All routes require authentication unless explicitly marked public.</li>
+                <li><strong>Production-ready:</strong> Standardized errors with trace_id, JWT auth, and OpenAPI generation out of the box.</li>
+                <li><strong>Standards-based:</strong> Built on OpenAPI 3.0 with automatic spec generation and breaking change detection.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="foreword">
+    <div class="foreword-container">
+        <div class="audience">
+            <h3>Who This Is For</h3>
+            <p>
+                You know Rust and you're tired of boilerplate. You want to ship APIs fast without sacrificing type safety.
+                If you're new to Rust, start with <a href="https://doc.rust-lang.org/book/" target="_blank">The Rust Book</a> — then come back.
+                HTTP and REST basics help, but Rapina handles the ceremony so you can focus on building.
+            </p>
+        </div>
+        <div class="philosophy">
+            <h3>Philosophy</h3>
+            <p>Rapina is built around three core beliefs:</p>
+            <ul>
+                <li>
+                    <strong>Decisions should be made for you, not by you.</strong>
+                    Most APIs need the same things: JSON handling, authentication, validation, error formatting.
+                    Rapina makes these decisions upfront so you can ship faster. When you need to diverge, escape hatches exist.
+                </li>
+                <li>
+                    <strong>If it compiles, it should work.</strong>
+                    The type system is your first line of defense. Extractors are typed, errors are typed,
+                    routes are checked at compile time. Runtime surprises should be rare.
+                </li>
+                <li>
+                    <strong>Code should be readable by humans and machines alike.</strong>
+                    Predictable patterns make onboarding faster, code reviews easier, and AI assistance more effective.
+                    A handler's signature tells you everything: what it expects, what it returns, whether it's protected.
+                </li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="quickstart">
+    <div class="quickstart-container">
+        <h2>Quick Start</h2>
+        <pre><code class="language-bash"># Install the CLI
+cargo install rapina-cli
+
+# Create a new project
+rapina new my-app
+cd my-app
+
+# Start development server
+rapina dev</code></pre>
+    </div>
+</section>
+
+<section class="cta">
+    <div class="cta-container">
+        <h2>Ready to build?</h2>
+        <p>Read the guide to learn how Rapina can help you build better APIs.</p>
+        <a href="{{ get_url(path='guide/') }}" class="btn btn-primary">Read the Guide</a>
+    </div>
+</section>
+{% endblock %}

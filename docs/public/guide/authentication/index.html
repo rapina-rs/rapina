@@ -1,0 +1,74 @@
+<!doctype html><html lang=en><head><meta charset=UTF-8><meta content="width=device-width,initial-scale=1.0" name=viewport><meta content="Opinionated, type-safe, contracts over chaos." name=description><title>Authentication - Rapina</title><link href=https://arferreira.github.io/rapina/style.css rel=stylesheet><link href=https://arferreira.github.io/rapina/images/rapina-icon.png rel=icon type=image/png><body><nav class=navbar><div class=nav-container><a class=nav-logo href=https://arferreira.github.io/rapina> <img alt=Rapina height=32 src=https://arferreira.github.io/rapina/images/rapina-icon.png> <span>Rapina</span> </a><div class=nav-links><a href=https://arferreira.github.io/rapina/guide> Guide </a><a href=https://arferreira.github.io/rapina/cli> CLI </a><a href=https://arferreira.github.io/rapina/philosophy> Philosophy </a><a href=https://docs.rs/rapina rel=noopener target=_blank> API </a><a class=nav-github href=https://github.com/arferreira/rapina rel=noopener target=_blank> GitHub </a></div></div></nav><main><div class=docs-layout><aside class=docs-sidebar><nav class=docs-nav><h4><a href=https://arferreira.github.io/rapina/guide/>Guide</a></h4><ul><li><a href=https://arferreira.github.io/rapina/guide/getting-started/> Getting Started </a><li><a href=https://arferreira.github.io/rapina/guide/configuration/> Configuration </a><li><a href=https://arferreira.github.io/rapina/guide/extractors/> Extractors </a><li><a class=active href=https://arferreira.github.io/rapina/guide/authentication/> Authentication </a><li><a href=https://arferreira.github.io/rapina/guide/errors/> Error Handling </a></ul></nav></aside><article class=docs-content><h1>Authentication</h1><p class=page-description>JWT authentication with protected-by-default routes<p>Rapina provides JWT authentication with a "protected by default" approach. All routes require authentication unless explicitly marked as public.<h2 id=setup>Setup</h2><p>Set the <code>JWT_SECRET</code> environment variable:<pre class=language-bash data-lang=bash style=color:#c0c5ce;background-color:#2b303b><code class=language-bash data-lang=bash><span style=color:#bf616a>JWT_SECRET</span><span>=</span><span style=color:#a3be8c>your-secret-key-here
+</span><span style=color:#bf616a>JWT_EXPIRATION</span><span>=</span><span style=color:#a3be8c>3600  </span><span style=color:#65737e># Optional, defaults to 3600 seconds
+</span></code></pre><p>Enable authentication in your application:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span style=color:#b48ead>use </span><span>rapina::prelude::*;
+</span><span>
+</span><span>#[</span><span style=color:#bf616a>tokio</span><span>::</span><span style=color:#bf616a>main</span><span>]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>main</span><span>() -> std::io::Result<()> {
+</span><span>    </span><span style=color:#96b5b4>load_dotenv</span><span>();
+</span><span>
+</span><span>    </span><span style=color:#b48ead>let</span><span> auth_config = AuthConfig::from_env()
+</span><span>        .</span><span style=color:#96b5b4>expect</span><span>("</span><span style=color:#a3be8c>JWT_SECRET is required</span><span>");
+</span><span>
+</span><span>    Rapina::new()
+</span><span>        .</span><span style=color:#96b5b4>with_auth</span><span>(auth_config.</span><span style=color:#96b5b4>clone</span><span>())
+</span><span>        .</span><span style=color:#96b5b4>state</span><span>(auth_config)
+</span><span>        .</span><span style=color:#96b5b4>router</span><span>(router)
+</span><span>        .</span><span style=color:#96b5b4>listen</span><span>("</span><span style=color:#a3be8c>127.0.0.1:3000</span><span>")
+</span><span>        .await
+</span><span>}
+</span></code></pre><h2 id=public-routes>Public Routes</h2><p>Mark routes that don't require authentication with <code>#[public]</code>:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span>#[</span><span style=color:#bf616a>public</span><span>]
+</span><span>#[</span><span style=color:#bf616a>get</span><span>("</span><span style=color:#a3be8c>/health</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>health</span><span>() -> &</span><span style=color:#b48ead>'static str </span><span>{
+</span><span>    "</span><span style=color:#a3be8c>ok</span><span>"
+</span><span>}
+</span><span>
+</span><span>#[</span><span style=color:#bf616a>public</span><span>]
+</span><span>#[</span><span style=color:#bf616a>post</span><span>("</span><span style=color:#a3be8c>/login</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>login</span><span>(</span><span style=color:#bf616a>body</span><span>: Json&LTLoginRequest>, </span><span style=color:#bf616a>auth</span><span>: State&LTAuthConfig>) -> Result&LTJson&LTTokenResponse>> {
+</span><span>    </span><span style=color:#65737e>// Authenticate and return token
+</span><span>}
+</span></code></pre><p>You can also register public routes programmatically:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span>Rapina::new()
+</span><span>    .</span><span style=color:#96b5b4>with_auth</span><span>(auth_config)
+</span><span>    .</span><span style=color:#96b5b4>public_route</span><span>("</span><span style=color:#a3be8c>GET</span><span>", "</span><span style=color:#a3be8c>/health</span><span>")
+</span><span>    .</span><span style=color:#96b5b4>public_route</span><span>("</span><span style=color:#a3be8c>POST</span><span>", "</span><span style=color:#a3be8c>/login</span><span>")
+</span><span>    </span><span style=color:#65737e>// ...
+</span></code></pre><h2 id=protected-routes>Protected Routes</h2><p>All routes without <code>#[public]</code> require a valid JWT token:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span>#[</span><span style=color:#bf616a>get</span><span>("</span><span style=color:#a3be8c>/me</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>me</span><span>(</span><span style=color:#bf616a>user</span><span>: CurrentUser) -> Json&LTUserResponse> {
+</span><span>    Json(UserResponse {
+</span><span>        id: user.id,
+</span><span>        </span><span style=color:#65737e>// ...
+</span><span>    })
+</span><span>}
+</span></code></pre><p>The <code>CurrentUser</code> extractor provides:<ul><li><code>user.id</code> - The user ID from the JWT <code>sub</code> claim<li><code>user.claims</code> - The full JWT claims</ul><h2 id=creating-tokens>Creating Tokens</h2><p>Use <code>AuthConfig</code> to create tokens:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span>#[</span><span style=color:#bf616a>public</span><span>]
+</span><span>#[</span><span style=color:#bf616a>post</span><span>("</span><span style=color:#a3be8c>/login</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>login</span><span>(</span><span style=color:#bf616a>body</span><span>: Json&LTLoginRequest>, </span><span style=color:#bf616a>auth</span><span>: State&LTAuthConfig>) -> Result&LTJson&LTTokenResponse>> {
+</span><span>    </span><span style=color:#b48ead>let</span><span> req = body.</span><span style=color:#96b5b4>into_inner</span><span>();
+</span><span>    </span><span style=color:#b48ead>let</span><span> auth_config = auth.</span><span style=color:#96b5b4>into_inner</span><span>();
+</span><span>
+</span><span>    </span><span style=color:#65737e>// Validate credentials (example)
+</span><span>    </span><span style=color:#b48ead>if</span><span> req.username == "</span><span style=color:#a3be8c>admin</span><span>" && req.password == "</span><span style=color:#a3be8c>secret</span><span>" {
+</span><span>        </span><span style=color:#b48ead>let</span><span> token = auth_config.</span><span style=color:#96b5b4>create_token</span><span>(&req.username)?;
+</span><span>        Ok(Json(TokenResponse::new(token, auth_config.</span><span style=color:#96b5b4>expiration</span><span>())))
+</span><span>    } </span><span style=color:#b48ead>else </span><span>{
+</span><span>        Err(Error::unauthorized("</span><span style=color:#a3be8c>invalid credentials</span><span>"))
+</span><span>    }
+</span><span>}
+</span></code></pre><p><code>TokenResponse</code> is provided by Rapina - no need to define it yourself.<h2 id=making-authenticated-requests>Making Authenticated Requests</h2><p>Include the JWT in the <code>Authorization</code> header:<pre class=language-bash data-lang=bash style=color:#c0c5ce;background-color:#2b303b><code class=language-bash data-lang=bash><span style=color:#bf616a>curl</span><span> http://localhost:3000/me \
+</span><span style=color:#bf616a>  -H </span><span>"</span><span style=color:#a3be8c>Authorization: Bearer eyJhbGciOiJIUzI1NiIs...</span><span>"
+</span></code></pre><h2 id=error-responses>Error Responses</h2><table><thead><tr><th>Scenario<th>Status<th>Code<tbody><tr><td>Missing token<td>401<td><code>UNAUTHORIZED</code><tr><td>Invalid token<td>401<td><code>UNAUTHORIZED</code><tr><td>Expired token<td>401<td><code>UNAUTHORIZED</code></table><p>All errors include a <code>trace_id</code> for debugging:<pre class=language-json data-lang=json style=color:#c0c5ce;background-color:#2b303b><code class=language-json data-lang=json><span>{
+</span><span>  "</span><span style=color:#a3be8c>error</span><span>": {
+</span><span>    "</span><span style=color:#a3be8c>code</span><span>": "</span><span style=color:#a3be8c>UNAUTHORIZED</span><span>",
+</span><span>    "</span><span style=color:#a3be8c>message</span><span>": "</span><span style=color:#a3be8c>token expired</span><span>"
+</span><span>  },
+</span><span>  "</span><span style=color:#a3be8c>trace_id</span><span>": "</span><span style=color:#a3be8c>550e8400-e29b-41d4-a716-446655440000</span><span>"
+</span><span>}
+</span></code></pre><h2 id=jwt-claims>JWT Claims</h2><p>The default claims structure:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span style=color:#b48ead>pub struct </span><span>Claims {
+</span><span>    </span><span style=color:#b48ead>pub </span><span style=color:#bf616a>sub</span><span>: String,  </span><span style=color:#65737e>// Subject (user ID)
+</span><span>    </span><span style=color:#b48ead>pub </span><span style=color:#bf616a>exp</span><span>: </span><span style=color:#b48ead>u64</span><span>,     </span><span style=color:#65737e>// Expiration timestamp
+</span><span>    </span><span style=color:#b48ead>pub </span><span style=color:#bf616a>iat</span><span>: </span><span style=color:#b48ead>u64</span><span>,     </span><span style=color:#65737e>// Issued at timestamp
+</span><span>}
+</span></code></pre><p>Access claims in handlers:<pre class=language-rust data-lang=rust style=color:#c0c5ce;background-color:#2b303b><code class=language-rust data-lang=rust><span>#[</span><span style=color:#bf616a>get</span><span>("</span><span style=color:#a3be8c>/token/info</span><span>")]
+</span><span>async </span><span style=color:#b48ead>fn </span><span style=color:#8fa1b3>token_info</span><span>(</span><span style=color:#bf616a>user</span><span>: CurrentUser) -> Json&LTClaims> {
+</span><span>    Json(user.claims)
+</span><span>}
+</span></code></pre><div class=page-meta></div></article></div></main><footer class=footer><div class=footer-container><p>Built with Rust. Documented with <a href=https://www.getzola.org/ target=_blank>Zola</a>.<p>MIT License</div></footer>

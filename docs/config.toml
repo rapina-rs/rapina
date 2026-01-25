@@ -1,0 +1,49 @@
+# Rapina Documentation Site
+# Built with Zola - https://www.getzola.org/
+
+base_url = "https://userapina.com"
+title = "Rapina"
+description = "Opinionated, type-safe, contracts over chaos."
+default_language = "en"
+compile_sass = true
+minify_html = true
+generate_feeds = false
+build_search_index = true
+
+[markdown]
+highlight_code = true
+highlight_theme = "base16-ocean-dark"
+
+[extra]
+# Branding
+logo = "/images/logo.png"
+tagline = "FastAPI's simplicity. Rust's performance."
+
+# Colors (for reference in templates)
+color_primary = "#3B82F6"      # Electric Blue
+color_base = "#1E293B"         # Deep Slate
+color_accent = "#94A3B8"       # Silver
+color_optional = "#CE422B"     # Rust Orange
+
+# Links
+github = "https://github.com/arferreira/rapina"
+crates_io = "https://crates.io/crates/rapina"
+docs_rs = "https://docs.rs/rapina"
+
+# Navigation
+[[extra.nav]]
+name = "Guide"
+url = "/guide/"
+
+[[extra.nav]]
+name = "CLI"
+url = "/cli/"
+
+[[extra.nav]]
+name = "Philosophy"
+url = "/philosophy/"
+
+[[extra.nav]]
+name = "API"
+url = "https://docs.rs/rapina"
+external = true

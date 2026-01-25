@@ -1,26 +1,25 @@
-# Rapina
+<p align="center">
+  <img src="docs/static/images/logo.png" alt="Rapina" width="120" />
+</p>
 
-[![Crates.io](https://img.shields.io/crates/v/rapina.svg)](https://crates.io/crates/rapina)
-[![Documentation](https://docs.rs/rapina/badge.svg)](https://docs.rs/rapina)
-[![CI](https://github.com/arferreira/rapina/actions/workflows/ci.yml/badge.svg)](https://github.com/arferreira/rapina/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">Rapina</h1>
 
-> Predictable, auditable, and secure APIs — written by humans, accelerated by AI.
+<p align="center">
+  <strong>Predictable, auditable, and secure APIs — written by humans, accelerated by AI.</strong>
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/rapina"><img src="https://img.shields.io/crates/v/rapina.svg" alt="Crates.io"></a>
+  <a href="https://docs.rs/rapina"><img src="https://docs.rs/rapina/badge.svg" alt="Documentation"></a>
+  <a href="https://github.com/arferreira/rapina/actions/workflows/ci.yml"><img src="https://github.com/arferreira/rapina/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+---
 
 Rapina is a web framework for Rust inspired by FastAPI, focused on **productivity**, **type safety**, and **clear conventions**.
 
-## Installation
-
-Add Rapina to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rapina = "0.1.0-alpha.3"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-```
-
-Or use the CLI to create a new project:
+## Quick Start
 
 ```bash
 cargo install rapina-cli
@@ -29,26 +28,33 @@ cd my-app
 rapina dev
 ```
 
-## Why Rapina?
+Or add to an existing project:
 
-- **Opinionated** — Convention over configuration. 90% of apps require 10% of decisions.
-- **Type-safe** — Typed extractors, typed errors, everything checked at compile time.
-- **AI-friendly** — Predictable structure that humans and models understand.
-- **Production-ready** — Standardized errors with `trace_id`, ready for observability.
-
-## Quick Start
+```toml
+[dependencies]
+rapina = "0.2.0"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+```
 
 ```rust
 use rapina::prelude::*;
 
+#[get("/")]
+async fn hello() -> &'static str {
+    "Hello, Rapina!"
+}
+
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>) -> String {
+    format!("User ID: {}", id.into_inner())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let router = Router::new()
-        .get("/", |_, _, _| async { "Hello, Rapina!" })
-        .get("/users/:id", |_, params, _| async move {
-            let id = params.get("id").cloned().unwrap_or_default();
-            format!("User ID: {}", id)
-        });
+        .get("/", hello)
+        .get("/users/:id", get_user);
 
     Rapina::new()
         .router(router)
@@ -57,42 +63,48 @@ async fn main() -> std::io::Result<()> {
 }
 ```
 
+## Why Rapina?
+
+| Principle | Description |
+|-----------|-------------|
+| **Opinionated** | Convention over configuration. Clear defaults, escape hatches when needed. |
+| **Type-safe** | Typed extractors, typed errors, everything checked at compile time. |
+| **AI-friendly** | Predictable patterns that humans and LLMs understand equally well. |
+| **Production-ready** | Standardized errors with `trace_id`, JWT auth, observability built-in. |
+
 ## Features
 
-### CLI Tools
+### Typed Extractors
 
-Rapina comes with a powerful CLI for development:
+Clean, type-safe parameter extraction:
 
-```bash
-# Install the CLI
-cargo install rapina-cli
+```rust
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>) -> Result<Json<User>> {
+    let user = find_user(id.into_inner()).await?;
+    Ok(Json(user))
+}
 
-# Create a new project
-rapina new my-app
+#[post("/users")]
+async fn create_user(body: Json<CreateUser>) -> Result<Json<User>> {
+    let user = save_user(body.into_inner()).await?;
+    Ok(Json(user))
+}
 
-# Start development server with hot reload
-rapina dev
-
-# Custom port and host
-rapina dev -p 8080 --host 0.0.0.0
-
-# OpenAPI tools
-rapina openapi export -o openapi.json  # Export spec
-rapina openapi check                    # Verify spec is up to date
-rapina openapi diff --base main         # Detect breaking changes
-
-# Introspection
-rapina routes                           # List all registered routes
-rapina doctor                           # Run API health checks
+#[get("/search")]
+async fn search(query: Query<SearchParams>) -> Json<Vec<Item>> {
+    let results = search_items(&query).await;
+    Json(results)
+}
 ```
+
+Available extractors: `Path`, `Json`, `Query`, `Form`, `Headers`, `State`, `CurrentUser`
 
 ### Configuration
 
-Type-safe configuration with the `Config` derive macro:
+Type-safe configuration with fail-fast validation:
 
 ```rust
-use rapina::prelude::*;
-
 #[derive(Config)]
 struct Settings {
     #[env = "DATABASE_URL"]
@@ -101,81 +113,36 @@ struct Settings {
     #[env = "PORT"]
     #[default = "3000"]
     port: u16,
-
-    #[env = "HOST"]
-    #[default = "127.0.0.1"]
-    host: String,
 }
 
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
+fn main() {
     load_dotenv();
-
     let config = Settings::from_env().expect("Missing config");
-
-    Rapina::new()
-        .router(router)
-        .listen(format!("{}:{}", config.host, config.port))
-        .await
 }
 ```
 
-Features:
-- Loads from environment variables and `.env` files
-- Fail-fast validation with clear error messages
-- Type-safe parsing with defaults
+### Authentication
 
-Create a `.env` file for local development:
-
-```bash
-DATABASE_URL=postgres://localhost/myapp
-PORT=3000
-JWT_SECRET=your-secret-key
-```
-
-### Typed Extractors
+Protected by default — all routes require JWT unless marked `#[public]`:
 
 ```rust
-// Path parameters
-Router::new().get("/users/:id", |_, params, _| async move {
-    let id = params.get("id").cloned().unwrap_or_default();
-    format!("User: {}", id)
-});
+#[public]
+#[post("/login")]
+async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+    let token = auth.create_token(&body.username)?;
+    Ok(Json(TokenResponse::new(token, auth.expiration())))
+}
 
-// JSON body
-Router::new().post("/users", |req, _, _| async move {
-    use http_body_util::BodyExt;
-    let body = req.into_body().collect().await.unwrap().to_bytes();
-    let user: User = serde_json::from_slice(&body).unwrap();
-    Json(user)
-});
-
-// Query parameters
-Router::new().get("/search", |req, _, _| async move {
-    let query = req.uri().query().unwrap_or("");
-    let params: SearchParams = serde_urlencoded::from_str(query).unwrap();
-    Json(params)
-});
-
-// Application state
-Router::new().get("/config", |_, _, state| async move {
-    let config = state.get::<AppConfig>().unwrap();
-    format!("DB: {}", config.db_url)
-});
+#[get("/me")]
+async fn me(user: CurrentUser) -> Json<UserResponse> {
+    Json(UserResponse { id: user.id })
+}
 ```
 
-Available extractors: `Json`, `Path`, `Query`, `Form`, `Headers`, `State`, `Context`
-
-### Middleware
-
 ```rust
-use rapina::middleware::{TimeoutMiddleware, BodyLimitMiddleware, TraceIdMiddleware};
-use std::time::Duration;
-
 Rapina::new()
-    .middleware(TraceIdMiddleware::new())
-    .middleware(TimeoutMiddleware::new(Duration::from_secs(30)))
-    .middleware(BodyLimitMiddleware::new(1024 * 1024)) // 1MB
+    .with_auth(AuthConfig::from_env()?)
+    .public_route("POST", "/login")
     .router(router)
     .listen("127.0.0.1:3000")
     .await
@@ -183,258 +150,50 @@ Rapina::new()
 
 ### Standardized Errors
 
-Every error returns a consistent envelope with `trace_id`:
+Every error includes a `trace_id` for debugging:
 
 ```json
 {
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "user not found"
-  },
+  "error": { "code": "NOT_FOUND", "message": "user not found" },
   "trace_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-Built-in error constructors:
-
 ```rust
-Error::bad_request("invalid input")      // 400
-Error::unauthorized("login required")    // 401
-Error::forbidden("access denied")        // 403
-Error::not_found("user not found")       // 404
-Error::conflict("already exists")        // 409
-Error::validation("invalid email")       // 422
-Error::rate_limited("too many requests") // 429
-Error::internal("something went wrong")  // 500
+Error::bad_request("invalid input")   // 400
+Error::unauthorized("login required") // 401
+Error::not_found("user not found")    // 404
+Error::validation("invalid email")    // 422
+Error::internal("something went wrong") // 500
 ```
 
-### Domain Errors
+### OpenAPI
 
-Define typed domain errors with automatic API conversion:
-
-```rust
-use rapina::prelude::*;
-
-enum UserError {
-    NotFound(u64),
-    EmailTaken(String),
-}
-
-impl IntoApiError for UserError {
-    fn into_api_error(self) -> Error {
-        match self {
-            UserError::NotFound(id) => Error::not_found(format!("user {} not found", id)),
-            UserError::EmailTaken(email) => Error::conflict(format!("email {} taken", email)),
-        }
-    }
-}
-
-#[get("/users/:id")]
-async fn get_user(id: Path<u64>) -> Result<Json<User>, UserError> {
-    let user = find_user(id).ok_or(UserError::NotFound(id))?;
-    Ok(Json(user))
-}
-```
-
-Benefits:
-- Type-safe error handling
-- Automatic conversion with `?` operator
-- Consistent API responses
-- Self-documenting code
-
-### Route Introspection
-
-Enable introspection to see all registered routes:
-
-```rust
-Rapina::new()
-    .with_introspection(true)  // Enabled by default in debug builds
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-Access routes at `http://localhost:3000/__rapina/routes`:
-
-```json
-[
-  {"method": "GET", "path": "/", "handler_name": "hello"},
-  {"method": "GET", "path": "/users/:id", "handler_name": "get_user"}
-]
-```
-
-### OpenAPI Specification
-
-Rapina automatically generates OpenAPI 3.0 specs from your code:
-
-```rust
-#[derive(Serialize, JsonSchema)]  // Add JsonSchema for response schemas
-struct User {
-    id: u64,
-    name: String,
-}
-
-#[get("/users/:id")]
-async fn get_user(id: Path<u64>) -> Json<User> {
-    // ...
-}
-
-Rapina::new()
-    .openapi("My API", "1.0.0")  // Enable OpenAPI
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-Access the spec at `http://localhost:3000/__rapina/openapi.json`
-
-**CLI Tools for API Contract Management:**
+Automatic OpenAPI 3.0 generation with CLI tools:
 
 ```bash
-# Export OpenAPI spec to file
-rapina openapi export -o openapi.json
-
-# Check if committed spec matches current code
-rapina openapi check
-
-# Detect breaking changes against another branch
-rapina openapi diff --base main
+rapina openapi export -o openapi.json  # Export spec
+rapina openapi check                    # Verify spec matches code
+rapina openapi diff --base main         # Detect breaking changes
 ```
 
-**Breaking change detection:**
+### CLI
 
 ```bash
-$ rapina openapi diff --base main
-
-  → Comparing OpenAPI spec with main branch...
-
-  ✗ Breaking changes:
-    • Removed endpoint: /health
-    • Removed method: DELETE /users/{id}
-
-  ⚠ Non-breaking changes:
-    • Added endpoint: /posts
-    • Added field 'avatar' in GET /users/{id}
-
-Error: Found 2 breaking change(s)
+rapina new my-app          # Create new project
+rapina dev                 # Dev server with hot reload
+rapina routes              # List all routes
+rapina doctor              # Health checks
 ```
 
-The `openapi.json` file becomes your API contract — commit it to your repo and CI will catch breaking changes before they're merged.
+## Documentation
 
-### Testing
+Full documentation available at [rapina.dev](https://userapina.com/)
 
-Built-in test client for integration testing:
-
-```rust
-use rapina::testing::TestClient;
-
-#[tokio::test]
-async fn test_hello() {
-    let app = Rapina::new()
-        .router(Router::new().get("/", |_, _, _| async { "Hello!" }));
-
-    let client = TestClient::new(app).await;
-    let response = client.get("/").send().await;
-
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.text(), "Hello!");
-}
-```
-
-### Application State
-
-```rust
-#[derive(Clone)]
-struct AppConfig {
-    db_url: String,
-}
-
-Rapina::new()
-    .state(AppConfig { db_url: "postgres://...".to_string() })
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-### Authentication
-
-JWT authentication with a "protected by default" approach:
-
-```rust
-use rapina::prelude::*;
-
-// Public route - no authentication required
-#[public]
-#[get("/health")]
-async fn health() -> &'static str {
-    "ok"
-}
-
-// Public route - login to get a token
-#[public]
-#[post("/login")]
-async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
-    let req = body.into_inner();
-    let auth_config = auth.into_inner();
-
-    if req.username == "admin" && req.password == "secret" {
-        let token = auth_config.create_token(&req.username)?;
-        Ok(Json(TokenResponse::new(token, auth_config.expiration())))
-    } else {
-        Err(Error::unauthorized("invalid credentials"))
-    }
-}
-
-// Protected route - requires valid JWT
-#[get("/me")]
-async fn me(user: CurrentUser) -> Json<UserResponse> {
-    Json(UserResponse { id: user.id })
-}
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    load_dotenv();
-    let auth_config = AuthConfig::from_env().expect("JWT_SECRET required");
-
-    let router = Router::new()
-        .get("/health", health)
-        .post("/login", login)
-        .get("/me", me);
-
-    Rapina::new()
-        .with_auth(auth_config.clone())
-        .public_route("GET", "/health")
-        .public_route("POST", "/login")
-        .state(auth_config)
-        .router(router)
-        .listen("127.0.0.1:3000")
-        .await
-}
-```
-
-Features:
-- **Protected by default** - All routes require authentication unless marked `#[public]`
-- **JWT Bearer tokens** - Standard `Authorization: Bearer <token>` header
-- **`CurrentUser` extractor** - Access authenticated user in handlers
-- **`TokenResponse`** - Built-in response type for login endpoints
-- **Environment configuration** - `JWT_SECRET` and `JWT_EXPIRATION` from env
-
-## Roadmap
-
-- [x] Basic router with path parameters
-- [x] Extractors (`Json`, `Path`, `Query`, `Form`, `Headers`, `State`, `Context`)
-- [x] Standardized error handling with `trace_id`
-- [x] Middleware system (`Timeout`, `BodyLimit`, `TraceId`)
-- [x] Dependency Injection / State
-- [x] Request context with tracing
-- [x] Route introspection endpoint
-- [x] Test client for integration testing
-- [x] CLI (`rapina new`, `rapina dev`)
-- [x] Automatic OpenAPI with response schemas
-- [x] OpenAPI CLI tools (`export`, `check`, `diff`)
-- [x] Validation (`Validated<T>`)
-- [x] Auth (Bearer JWT, `CurrentUser`)
-- [x] Observability (tracing, structured logs)
+- [Getting Started](https://userapina.com/guide/getting-started/)
+- [Configuration](https://userapina.com/guide/configuration/)
+- [Authentication](https://userapina.com/guide/authentication/)
+- [CLI Reference](https://userapina.com/cli/)
 
 ## Philosophy
 
@@ -442,9 +201,10 @@ Rapina is opinionated by design: a clear happy path, with escape hatches when ne
 
 | Principle | Description |
 |-----------|-------------|
-| Predictability | Clear conventions, obvious structure |
-| Auditability | Typed contracts, traceable errors |
-| Security | Guard rails by default |
+| **Predictability** | Clear conventions, obvious structure |
+| **Auditability** | Typed contracts, traceable errors |
+| **Security** | Protected by default, guard rails built-in |
+| **AI-friendly** | Patterns that LLMs can understand and generate |
 
 ## License
 

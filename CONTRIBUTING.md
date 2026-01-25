@@ -1,0 +1,125 @@
+# Contributing to Rapina
+
+Thanks for your interest in contributing to Rapina. This document outlines the process for contributing.
+
+## Getting Started
+
+1. Fork the repository
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/rapina.git
+   cd rapina
+   ```
+3. Add the upstream remote:
+   ```bash
+   git remote add upstream https://github.com/arferreira/rapina.git
+   ```
+
+## Development Setup
+
+### Prerequisites
+
+- Rust 1.75 or later
+- Cargo
+
+### Building
+
+```bash
+# Build all packages
+cargo build
+
+# Run tests
+cargo test
+
+# Run the CLI locally
+cargo run -p rapina-cli -- new test-app
+```
+
+### Project Structure
+
+```
+rapina/
+├── rapina/          # Core framework
+├── rapina-macros/   # Procedural macros
+├── rapina-cli/      # CLI tool
+└── docs/            # Documentation site (Zola)
+```
+
+## Making Changes
+
+### Branch Naming
+
+- `feat/description` - New features
+- `fix/description` - Bug fixes
+- `docs/description` - Documentation changes
+- `refactor/description` - Code refactoring
+
+### Commit Messages
+
+Write clear, concise commit messages:
+
+```
+feat: add rate limiting middleware
+
+- Implement token bucket algorithm
+- Add configuration options
+- Include tests
+```
+
+Use conventional commit prefixes:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation
+- `refactor:` - Code refactoring
+- `test:` - Tests
+- `chore:` - Maintenance
+
+### Code Style
+
+- Run `cargo fmt` before committing
+- Run `cargo clippy` and address warnings
+- Follow existing patterns in the codebase
+- Add tests for new functionality
+
+## Pull Requests
+
+1. Create a feature branch from `develop`:
+   ```bash
+   git checkout develop
+   git pull upstream develop
+   git checkout -b feat/my-feature
+   ```
+
+2. Make your changes and commit
+
+3. Push to your fork:
+   ```bash
+   git push origin feat/my-feature
+   ```
+
+4. Open a Pull Request against `develop`
+
+### PR Checklist
+
+- [ ] Tests pass (`cargo test`)
+- [ ] Code is formatted (`cargo fmt`)
+- [ ] No clippy warnings (`cargo clippy`)
+- [ ] Documentation updated if needed
+- [ ] CHANGELOG.md updated for user-facing changes
+
+## Reporting Issues
+
+When reporting issues, include:
+
+- Rust version (`rustc --version`)
+- Rapina version
+- Minimal reproduction case
+- Expected vs actual behavior
+
+## Questions?
+
+Open a discussion on GitHub or reach out to the maintainers.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.

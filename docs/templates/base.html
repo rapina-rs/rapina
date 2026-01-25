@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{{ config.description }}">
+    <title>{% block title %}{{ config.title }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ get_url(path='images/rapina-icon.png') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ get_url(path='/') }}" class="nav-logo">
+                <img src="{{ get_url(path='images/rapina-icon.png') }}" alt="Rapina" height="32">
+                <span>Rapina</span>
+            </a>
+            <div class="nav-links">
+                {% for item in config.extra.nav %}
+                <a href="{% if item.external %}{{ item.url }}{% else %}{{ get_url(path=item.url) }}{% endif %}"
+                   {% if item.external %}target="_blank" rel="noopener"{% endif %}>
+                    {{ item.name }}
+                </a>
+                {% endfor %}
+                <a href="{{ config.extra.github }}" target="_blank" rel="noopener" class="nav-github">
+                    GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <p>Built with Rust. Documented with <a href="https://www.getzola.org/" target="_blank">Zola</a>.</p>
+            <p>MIT License</p>
+        </div>
+    </footer>
+</body>
+</html>
