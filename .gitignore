@@ -1,4 +1,9 @@
 /target
 Cargo.lock
 
+# macOS
 .DS_Store
+**/.DS_Store
+
+# Zola build output
+docs/public/

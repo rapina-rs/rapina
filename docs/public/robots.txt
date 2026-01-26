@@ -1,4 +1,0 @@
-User-agent: *
-Disallow:
-Allow: /
-Sitemap: https://arferreira.github.io/rapina/sitemap.xml
