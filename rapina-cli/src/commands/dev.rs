@@ -80,6 +80,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
         );
 
         // Main loop
+        let mut server_crashed = false;
         while running.load(Ordering::SeqCst) {
             // Check for file changes (non-blocking with timeout)
             if rx.recv_timeout(Duration::from_millis(100)).is_ok() {
@@ -97,6 +98,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
                 match build_and_run(&config) {
                     Ok(new_process) => {
                         server_process = new_process;
+                        server_crashed = false;
                     }
                     Err(e) => {
                         eprintln!("{} {}", "ERROR".custom_color(colors::red()).bold(), e);
@@ -108,7 +110,9 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
             // Check if server process has exited unexpectedly
             if let Ok(Some(status)) = server_process.try_wait()
                 && !status.success()
+                && !server_crashed
             {
+                server_crashed = true;
                 eprintln!(
                     "{} Server exited with status: {}",
                     "ERROR".custom_color(colors::red()).bold(),
