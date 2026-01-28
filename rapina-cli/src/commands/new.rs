@@ -110,13 +110,14 @@ hyper = "1"
 fn generate_main_rs() -> String {
     r#"use rapina::prelude::*;
 use rapina::middleware::RequestLogMiddleware;
+use rapina::schemars;
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 struct MessageResponse {
     message: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 struct HealthResponse {
     status: String,
     version: String,
@@ -177,6 +178,7 @@ mod tests {
     #[test]
     fn test_validate_project_name_invalid() {
         assert!(validate_project_name("").is_err());
+        assert!(validate_project_name(".").is_err());
         assert!(validate_project_name("123app").is_err());
         assert!(validate_project_name("my app").is_err());
         assert!(validate_project_name("my.app").is_err());
