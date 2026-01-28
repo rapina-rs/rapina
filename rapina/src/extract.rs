@@ -18,6 +18,9 @@ use crate::error::Error;
 use crate::response::{BoxBody, IntoResponse};
 use crate::state::AppState;
 
+const JSON_CONTENT_TYPE: &str = "application/json";
+const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
+
 /// Extracts and deserializes JSON request bodies.
 ///
 /// Parses the request body as JSON into the specified type `T`.
@@ -323,7 +326,7 @@ impl<T: serde::Serialize> IntoResponse for Json<T> {
         let body = serde_json::to_vec(&self.0).unwrap_or_default();
         http::Response::builder()
             .status(200)
-            .header("content-type", "application/json")
+            .header("content-type", JSON_CONTENT_TYPE)
             .body(http_body_util::Full::new(Bytes::from(body)))
             .unwrap()
     }
@@ -341,11 +344,11 @@ impl<T: DeserializeOwned + Send> FromRequest for Form<T> {
             .and_then(|v| v.to_str().ok());
 
         if !content_type
-            .map(|ct| ct.starts_with("application/x-www-form-urlencoded"))
+            .map(|ct| ct.starts_with(FORM_CONTENT_TYPE))
             .unwrap_or(false)
         {
             return Err(Error::bad_request(
-                "expected content-type: application/x-www-form-urlencoded",
+                "expected content-type: FORM_CONTENT_TYPE",
             ));
         }
 

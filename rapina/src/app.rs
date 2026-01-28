@@ -155,7 +155,7 @@ impl Rapina {
     ///
     /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
     /// that returns all routes as OpenAPI specification
-    /// OpenAPI is disbaled by default
+    /// OpenAPI is disabled by default
     pub fn openapi(mut self, title: impl Into<String>, version: impl Into<String>) -> Self {
         self.openapi = true;
         self.openapi_title = title.into();

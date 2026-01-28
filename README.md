@@ -65,12 +65,19 @@ async fn main() -> std::io::Result<()> {
 
 ## Why Rapina?
 
-| Principle | Description |
-|-----------|-------------|
-| **Opinionated** | Convention over configuration. Clear defaults, escape hatches when needed. |
-| **Type-safe** | Typed extractors, typed errors, everything checked at compile time. |
-| **AI-friendly** | Predictable patterns that humans and LLMs understand equally well. |
-| **Production-ready** | Standardized errors with `trace_id`, JWT auth, observability built-in. |
+| Principle              | Description |
+|------------------------|-------------|
+| **Opinionated**        | Convention over configuration. Clear defaults, escape hatches when needed. |
+| **Type-safe**          | Typed extractors, typed errors, everything checked at compile time. |
+| **AI-friendly**        | Predictable patterns that humans and LLMs understand equally well. |
+| **Batteries-included** | Standardized errors with `trace_id`, JWT auth, observability built-in. |
+
+## Project Status
+
+This project is currently in **Alpha** 🚧.
+
+We are committed to **minimizing breaking changes** to ensure a smooth developer experience. However, until the `1.0.0`
+release, major architectural changes may still happen if strictly necessary for long-term stability.
 
 ## Features
 
