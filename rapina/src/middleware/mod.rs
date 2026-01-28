@@ -18,7 +18,7 @@ mod trace_id;
 pub use body_limit::BodyLimitMiddleware;
 pub use request_log::RequestLogMiddleware;
 pub use timeout::TimeoutMiddleware;
-pub use trace_id::TraceIdMiddleware;
+pub use trace_id::{TRACE_ID_HEADER, TraceIdMiddleware};
 
 use std::future::Future;
 use std::pin::Pin;
