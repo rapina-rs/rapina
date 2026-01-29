@@ -1,5 +1,7 @@
-//! Cors
+//! CORS (Cross-Origin Resource Sharing) middleware.
 //!
+//! Provides configurable CORS support for Rapina applications,
+//! handling preflight OPTIONS requests and adding appropriate headers.
 
 use http::{HeaderValue, Method, Request, Response, StatusCode, header};
 use hyper::body::Incoming;
@@ -9,16 +11,24 @@ use crate::response::BoxBody;
 
 use super::{BoxFuture, Middleware, Next};
 
+/// Configuration for CORS middleware.
+///
+/// Use `permissive()` for development or `with_origins()` for production.
 #[derive(Debug, Clone)]
 pub struct CorsConfig {
+    /// Allowed origins for CORS requests.
     pub allowed_origins: AllowedOrigins,
+    /// Allowed HTTP methods.
     pub allowed_methods: AllowedMethods,
+    /// Allowed request headers.
     pub allowed_headers: AllowedHeaders,
 }
 
 impl CorsConfig {
+    /// Creates a permissive CORS config that allows all origins, methods, and headers.
+    ///
+    /// Suitable for development. Do not use in production.
     pub fn permissive() -> Self {
-        // Allow everything for dev
         Self {
             allowed_origins: AllowedOrigins::Any,
             allowed_methods: AllowedMethods::Any,
@@ -26,8 +36,11 @@ impl CorsConfig {
         }
     }
 
+    /// Creates a CORS config with specific allowed origins.
+    ///
+    /// Uses sensible defaults for methods (GET, POST, PUT, PATCH, DELETE, OPTIONS)
+    /// and headers (Accept, Authorization).
     pub fn with_origins(origins: Vec<String>) -> Self {
-        // Specific origins
         Self {
             allowed_methods: AllowedMethods::List(vec![
                 Method::GET,
@@ -43,29 +56,40 @@ impl CorsConfig {
     }
 }
 
+/// Specifies which headers are allowed in CORS requests.
 #[derive(Debug, Clone)]
 pub enum AllowedHeaders {
+    /// Allow any headers.
     Any,
+    /// Allow only specific headers.
     List(Vec<header::HeaderName>),
 }
 
+/// Specifies which HTTP methods are allowed in CORS requests.
 #[derive(Debug, Clone)]
 pub enum AllowedMethods {
+    /// Allow any method.
     Any,
+    /// Allow only specific methods.
     List(Vec<Method>),
 }
 
+/// Specifies which origins are allowed for CORS requests.
 #[derive(Debug, Clone)]
 pub enum AllowedOrigins {
+    /// Allow any origin (`*`).
     Any,
+    /// Allow only specific origins.
     Exact(Vec<String>),
 }
 
+/// Middleware that handles CORS headers and preflight requests.
 pub struct CorsMiddleware {
     config: CorsConfig,
 }
 
 impl CorsMiddleware {
+    /// Creates a new CORS middleware with the given configuration.
     pub fn new(config: CorsConfig) -> Self {
         Self { config }
     }
@@ -111,15 +135,34 @@ impl CorsMiddleware {
         };
         builder = builder.header(header::ACCESS_CONTROL_ALLOW_HEADERS, headers_value);
 
-        // Vary header for caching
         builder = builder.header(header::VARY, "Origin");
 
         builder.body(BoxBody::default()).unwrap()
     }
 
     fn add_cors_headers(&self, response: &mut Response<BoxBody>, origin: &Option<HeaderValue>) {
-        // Add CORS headers to the response
-        todo!()
+        let headers = response.headers_mut();
+
+        // Set Access-Control-Allow-Origin
+        match &self.config.allowed_origins {
+            AllowedOrigins::Any => {
+                headers.insert(
+                    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                    HeaderValue::from_static("*"),
+                );
+            }
+            AllowedOrigins::Exact(origins) => {
+                if let Some(req_origin) = origin {
+                    let origin_str = req_origin.to_str().unwrap_or("");
+                    if origins.iter().any(|o| o == origin_str) {
+                        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, req_origin.clone());
+                    }
+                }
+            }
+        }
+
+        // Vary header
+        headers.insert(header::VARY, HeaderValue::from_static("Origin"));
     }
 }
 
@@ -131,8 +174,6 @@ impl Middleware for CorsMiddleware {
         next: Next<'a>,
     ) -> BoxFuture<'a, Response<BoxBody>> {
         Box::pin(async move {
-            // TODO: CORS logic
-
             let origin = req.headers().get(header::ORIGIN).cloned();
 
             // if it's OPTIONS (preflight), return early with 204 + CORS headers
