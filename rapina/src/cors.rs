@@ -20,7 +20,7 @@ impl CorsConfig {
     pub fn with_origins(origins: Vec<String>) -> Self {
         // Specific origins
         Self {
-            allowed_origins: AllowedOrigins::Exact(vec![
+            allowed_methods: AllowedMethods::List(vec![
                 "GET".to_string(),
                 "POST".to_string(),
                 "PUT".to_string(),
@@ -28,8 +28,11 @@ impl CorsConfig {
                 "PATCH".to_string(),
                 "OPTIONS".to_string(),
             ]),
-            allowed_methods: AllowedMethods::Any,
-            allowed_headers: AllowedHeaders::Any,
+            allowed_origins: AllowedOrigins::Exact(origins),
+            allowed_headers: AllowedHeaders::List(vec![
+                "Content-Type".to_string(),
+                "Authorization".to_string(),
+            ]),
         }
     }
 }
