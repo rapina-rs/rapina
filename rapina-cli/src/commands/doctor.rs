@@ -20,7 +20,7 @@ pub fn execute() -> Result<(), String> {
     println!();
 
     let routes = fetch_json(ROUTES_URL)?;
-    let openapi = fetch_json(OPENAPI_URL)?;
+    let openapi = fetch_json(OPENAPI_URL);
 
     let mut result = DiagnosticResult {
         warnings: Vec::new(),
@@ -110,7 +110,17 @@ fn check_error_documentation(routes: &Value, result: &mut DiagnosticResult) {
 }
 
 /// Check OpenAPI metadata.
-fn check_openapi_metadata(openapi: &Value, result: &mut DiagnosticResult) {
+fn check_openapi_metadata(openapi: &Result<Value, String>, result: &mut DiagnosticResult) {
+    let openapi = match openapi {
+        Ok(openapi) => openapi,
+        Err(_) => {
+            result
+                .warnings
+                .push("OpenAPI endpoint: not enabled (add .openapi() to enable)".to_string());
+            return;
+        }
+    };
+
     let paths = match openapi.get("paths").and_then(|p| p.as_object()) {
         Some(p) => p,
         None => return,
