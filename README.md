@@ -5,13 +5,14 @@
 <h1 align="center">Rapina</h1>
 
 <p align="center">
-  <strong>Predictable, auditable, and secure APIs — written by humans, accelerated by AI.</strong>
+  <strong>Predictable, auditable, and secure APIs — Easy to learn, hard to break.</strong>
 </p>
 
 <p align="center">
   <a href="https://crates.io/crates/rapina"><img src="https://img.shields.io/crates/v/rapina.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/rapina"><img src="https://docs.rs/rapina/badge.svg" alt="Documentation"></a>
   <a href="https://github.com/arferreira/rapina/actions/workflows/ci.yml"><img src="https://github.com/arferreira/rapina/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://discord.gg/ttRYzbHh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
