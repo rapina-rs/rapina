@@ -7,6 +7,8 @@ use crate::response::BoxBody;
 
 use super::{BoxFuture, Middleware, Next};
 
+pub const TRACE_ID_HEADER: &str = "x-trace-id";
+
 pub struct TraceIdMiddleware;
 
 impl TraceIdMiddleware {
@@ -32,7 +34,7 @@ impl Middleware for TraceIdMiddleware {
             // Check for incoming x-trace-id header for distributed tracing
             let incoming_trace_id = req
                 .headers()
-                .get("x-trace-id")
+                .get(TRACE_ID_HEADER)
                 .and_then(|v| v.to_str().ok())
                 .map(String::from);
 
@@ -49,7 +51,7 @@ impl Middleware for TraceIdMiddleware {
 
             // Add x-trace-id to response headers
             if let Ok(header_value) = HeaderValue::from_str(&trace_id) {
-                response.headers_mut().insert("x-trace-id", header_value);
+                response.headers_mut().insert(TRACE_ID_HEADER, header_value);
             }
 
             response

@@ -5,7 +5,7 @@
 <h1 align="center">Rapina</h1>
 
 <p align="center">
-  <strong>Predictable, auditable, and secure APIs — written by humans, accelerated by AI.</strong>
+  <strong>Predictable, auditable, and secure APIs — Easy to learn, hard to break.</strong>
 </p>
 
 <p align="center">

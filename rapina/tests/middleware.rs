@@ -1,7 +1,9 @@
 //! Integration tests for middleware functionality.
 
 use http::StatusCode;
-use rapina::middleware::{BodyLimitMiddleware, TimeoutMiddleware, TraceIdMiddleware};
+use rapina::middleware::{
+    BodyLimitMiddleware, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
+};
 use rapina::prelude::*;
 use rapina::testing::TestClient;
 use std::time::Duration;
@@ -18,7 +20,7 @@ async fn test_middleware_execution() {
 
     assert_eq!(response.status(), StatusCode::OK);
     // TraceIdMiddleware should add x-trace-id header
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
 }
 
 #[tokio::test]
@@ -33,7 +35,7 @@ async fn test_trace_id_middleware_adds_header() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let trace_id = response.headers().get("x-trace-id");
+    let trace_id = response.headers().get(TRACE_ID_HEADER);
     assert!(trace_id.is_some());
 
     // Trace ID should be a valid UUID (36 characters)
@@ -55,13 +57,13 @@ async fn test_trace_id_unique_per_request() {
 
     let trace_id1 = response1
         .headers()
-        .get("x-trace-id")
+        .get(TRACE_ID_HEADER)
         .unwrap()
         .to_str()
         .unwrap();
     let trace_id2 = response2
         .headers()
-        .get("x-trace-id")
+        .get(TRACE_ID_HEADER)
         .unwrap()
         .to_str()
         .unwrap();
@@ -123,7 +125,7 @@ async fn test_multiple_middlewares() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.text(), "ok");
     // TraceIdMiddleware should still add the header
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
 }
 
 #[tokio::test]
@@ -139,7 +141,7 @@ async fn test_middleware_order_trace_id_first() {
     let response = client.get("/").send().await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
 }
 
 #[tokio::test]
@@ -163,7 +165,7 @@ async fn test_middleware_with_post_request() {
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
     assert!(response.text().contains("key"));
 }
 
@@ -233,7 +235,7 @@ async fn test_middleware_with_error_response() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     // Middleware should still add trace ID even for errors
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
 }
 
 #[tokio::test]
@@ -248,5 +250,5 @@ async fn test_middleware_with_404() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     // Middleware runs even for non-existent routes
-    assert!(response.headers().get("x-trace-id").is_some());
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
 }
