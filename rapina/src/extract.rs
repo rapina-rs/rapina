@@ -321,14 +321,20 @@ impl<T: DeserializeOwned + Send> FromRequest for Json<T> {
     }
 }
 
-impl<T: serde::Serialize> IntoResponse for Json<T> {
+impl<T: serde::Serialize> IntoResponse for (http::StatusCode, Json<T>) {
     fn into_response(self) -> http::Response<BoxBody> {
-        let body = serde_json::to_vec(&self.0).unwrap_or_default();
+        let body = serde_json::to_vec(&(self.1).0).unwrap_or_default();
         http::Response::builder()
-            .status(200)
+            .status(self.0)
             .header("content-type", JSON_CONTENT_TYPE)
             .body(http_body_util::Full::new(Bytes::from(body)))
             .unwrap()
+    }
+}
+
+impl<T: serde::Serialize> IntoResponse for Json<T> {
+    fn into_response(self) -> http::Response<BoxBody> {
+        (http::StatusCode::OK, self).into_response()
     }
 }
 
