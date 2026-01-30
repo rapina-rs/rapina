@@ -9,6 +9,7 @@ use super::{BoxFuture, Middleware, Next};
 
 const DEFAULT_MAX_SIZE: usize = 1024 * 1024; // 1MB
 
+#[derive(Debug, Clone)]
 pub struct BodyLimitMiddleware {
     pub(crate) max_size: usize,
 }
