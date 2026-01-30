@@ -84,6 +84,7 @@ pub enum AllowedOrigins {
 }
 
 /// Middleware that handles CORS headers and preflight requests.
+#[derive(Debug, Clone)]
 pub struct CorsMiddleware {
     config: CorsConfig,
 }
