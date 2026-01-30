@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "rapina"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytes",
  "dotenvy",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "colored",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-macros"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro2",
  "quote",
