@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
-use crate::middleware::{Middleware, MiddlewareStack};
+use crate::middleware::{CorsConfig, CorsMiddleware, Middleware, MiddlewareStack};
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
@@ -89,6 +89,24 @@ impl Rapina {
     /// Adds a middleware to the application.
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
+        self
+    }
+
+    /// Enables CORS for the application.
+    ///
+    /// Use `CorsConfig::permisive()` for development (it allows all origins),
+    /// or `CorsConfig::with_origins()` for production with specific origins.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    ///  Rapina::new()
+    ///  .with_cors(CorsConfig::permisive())
+    ///  .router(router)
+    ///  .listen("127.0.0.1:3000")
+    ///  .await
+    pub fn with_cors(mut self, config: CorsConfig) -> Self {
+        self.middlewares.add(CorsMiddleware::new(config));
         self
     }
 

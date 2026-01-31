@@ -2,7 +2,7 @@
 
 use http::StatusCode;
 use rapina::middleware::{
-    BodyLimitMiddleware, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
+    BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
 };
 use rapina::prelude::*;
 use rapina::testing::TestClient;
@@ -251,4 +251,104 @@ async fn test_middleware_with_404() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     // Middleware runs even for non-existent routes
     assert!(response.headers().get(TRACE_ID_HEADER).is_some());
+}
+
+#[tokio::test]
+async fn test_cors_preflight_returns_204() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_cors(CorsConfig::permissive())
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    let response = client
+        .request(http::Method::OPTIONS, "/")
+        .header("Origin", "http://userapina.com")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_some()
+    );
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-methods")
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn test_cors_rejects_disallowed_origin() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_cors(CorsConfig::with_origins(vec![
+            "http://userapina.com".to_string(),
+        ]))
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .request(http::Method::GET, "/")
+        .header("Origin", "http://evil.com")
+        .send()
+        .await;
+
+    // Request goes through but NO Access-Control-Allow-Origin header
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn test_cors_allows_matching_origin() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_cors(CorsConfig::with_origins(vec![
+            "http://userapina.com".to_string(),
+        ]))
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .request(http::Method::GET, "/")
+        .header("Origin", "http://userapina.com")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let origin_header = response.headers().get("access-control-allow-origin");
+    assert!(origin_header.is_some());
+    assert_eq!(
+        origin_header.unwrap().to_str().unwrap(),
+        "http://userapina.com"
+    );
+}
+
+#[tokio::test]
+async fn test_cors_permissive_returns_wildcard() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_cors(CorsConfig::permissive())
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    let response = client
+        .request(http::Method::OPTIONS, "/")
+        .header("Origin", "http://any.com")
+        .send()
+        .await;
+
+    let origin_header = response.headers().get("access-control-allow-origin");
+    assert_eq!(origin_header.unwrap().to_str().unwrap(), "*");
 }
