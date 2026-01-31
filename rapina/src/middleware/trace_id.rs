@@ -9,6 +9,7 @@ use super::{BoxFuture, Middleware, Next};
 
 pub const TRACE_ID_HEADER: &str = "x-trace-id";
 
+#[derive(Debug, Clone, Copy)]
 pub struct TraceIdMiddleware;
 
 impl TraceIdMiddleware {

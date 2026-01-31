@@ -9,6 +9,7 @@ use crate::response::{BoxBody, IntoResponse};
 
 use super::{BoxFuture, Middleware, Next};
 
+#[derive(Debug, Clone)]
 pub struct TimeoutMiddleware {
     pub(crate) duration: Duration,
 }
