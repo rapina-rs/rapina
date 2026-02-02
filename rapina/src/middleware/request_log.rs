@@ -7,6 +7,7 @@ use crate::response::BoxBody;
 
 use super::{BoxFuture, Middleware, Next};
 
+#[derive(Debug, Clone, Copy)]
 pub struct RequestLogMiddleware;
 
 impl RequestLogMiddleware {
