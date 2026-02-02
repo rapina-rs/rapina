@@ -311,11 +311,11 @@ impl<T: DeserializeOwned + Send> FromRequest for Json<T> {
         let bytes = body
             .collect()
             .await
-            .map_err(|_| Error::bad_request("failed to read body"))?
+            .map_err(|_| Error::bad_request("Failed to read request body"))?
             .to_bytes();
 
         let value: T = serde_json::from_slice(&bytes)
-            .map_err(|e| Error::bad_request(format!("invalid JSON: {}", e)))?;
+            .map_err(|e| Error::bad_request(format!("Invalid JSON in request body: {}", e)))?;
 
         Ok(Json(value))
     }
@@ -347,20 +347,22 @@ impl<T: DeserializeOwned + Send> FromRequest for Form<T> {
             .map(|ct| ct.starts_with(FORM_CONTENT_TYPE))
             .unwrap_or(false)
         {
-            return Err(Error::bad_request(
-                "expected content-type: FORM_CONTENT_TYPE",
-            ));
+            return Err(Error::bad_request(format!(
+                "Expected Content-Type '{}', got '{}'",
+                FORM_CONTENT_TYPE,
+                content_type.unwrap_or("none")
+            )));
         }
 
         let body = req.into_body();
         let bytes = body
             .collect()
             .await
-            .map_err(|_| Error::bad_request("failed to read body"))?
+            .map_err(|_| Error::bad_request("Failed to read form data from request body"))?
             .to_bytes();
 
         let value: T = serde_urlencoded::from_bytes(&bytes)
-            .map_err(|e| Error::bad_request(format!("invalid form data: {}", e)))?;
+            .map_err(|e| Error::bad_request(format!("Invalid URL-encoded form data: {}", e)))?;
 
         Ok(Form(value))
     }
@@ -402,9 +404,12 @@ impl<T: Clone + Send + Sync + 'static> FromRequestParts for State<T> {
         _params: &PathParams,
         state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let value = state
-            .get::<T>()
-            .ok_or_else(|| Error::internal("state not found"))?;
+        let value = state.get::<T>().ok_or_else(|| {
+            Error::internal(format!(
+                "State not registered for type '{}'. Did you forget to call .state()?",
+                std::any::type_name::<T>()
+            ))
+        })?;
         Ok(State(value.clone()))
     }
 }
@@ -420,7 +425,11 @@ impl FromRequestParts for Context {
             .get::<RequestContext>()
             .cloned()
             .map(Context)
-            .ok_or_else(|| Error::internal("RequestContext not found"))
+            .ok_or_else(|| {
+                Error::internal(
+                    "RequestContext not found in request extensions. This is a framework bug.",
+                )
+            })
     }
 }
 
@@ -432,7 +441,7 @@ impl<T: DeserializeOwned + Send> FromRequestParts for Query<T> {
     ) -> Result<Self, Error> {
         let query = parts.uri.query().unwrap_or("");
         let value: T = serde_urlencoded::from_str(query)
-            .map_err(|e| Error::bad_request(format!("invalid query: {}", e)))?;
+            .map_err(|e| Error::bad_request(format!("Invalid query string parameters: {}", e)))?;
         Ok(Query(value))
     }
 }
@@ -456,14 +465,19 @@ where
         params: &PathParams,
         _state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let value = params
-            .values()
-            .next()
-            .ok_or_else(|| Error::bad_request("missing path param"))?;
+        let (param_name, value) = params.iter().next().ok_or_else(|| {
+            Error::bad_request("Missing path parameter in route. This is a framework bug.")
+        })?;
 
-        let parsed = value
-            .parse::<T>()
-            .map_err(|e| Error::bad_request(format!("invalid path param: {}", e)))?;
+        let parsed = value.parse::<T>().map_err(|e| {
+            Error::bad_request(format!(
+                "Path parameter '{}' must be a valid {}, got '{}': {}",
+                param_name,
+                std::any::type_name::<T>(),
+                value,
+                e
+            ))
+        })?;
 
         Ok(Path(parsed))
     }
