@@ -75,21 +75,6 @@ async fn get_user(id: Path<u64>) -> String {
 }
 ```
 
-### Multiple Parameters
-
-You can define multiple path parameters:
-
-```rust
-#[get("/users/:user_id/posts/:post_id")]
-async fn get_post(user_id: Path<u64>, post_id: Path<u64>) -> String {
-    format!(
-        "User: {}, Post: {}",
-        user_id.into_inner(),
-        post_id.into_inner()
-    )
-}
-```
-
 ### Parameter Types
 
 Path parameters are automatically parsed to their target type:
