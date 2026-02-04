@@ -433,7 +433,8 @@ impl FromRequestParts for Context {
             .map(Context)
             .ok_or_else(|| {
                 Error::internal(
-                    "RequestContext not found in request extensions. This is a framework bug.",
+                    "RequestContext missing from request extensions. \
+                     The request pipeline did not initialize the request context.",
                 )
             })
     }
@@ -472,7 +473,7 @@ where
         _state: &Arc<AppState>,
     ) -> Result<Self, Error> {
         let (param_name, value) = params.iter().next().ok_or_else(|| {
-            Error::bad_request("Missing path parameter in route. This is a framework bug.")
+            Error::bad_request("Missing path parameter. Ensure your route pattern includes a parameter like /:id")
         })?;
 
         let parsed = value.parse::<T>().map_err(|e| {
