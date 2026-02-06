@@ -55,21 +55,22 @@ pub enum ConfigError {
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigError::Missing(key) => write!(
-                f,
-                "missing
-  required config: {}",
-                key
-            ),
+            ConfigError::Missing(key) => {
+                write!(f, "Missing required environment variable '{}'", key)
+            }
             ConfigError::MissingMultiple(keys) => {
-                writeln!(f, "missing required configuration:")?;
+                writeln!(f, "Missing required environment variables:")?;
                 for key in keys {
                     writeln!(f, "  - {}", key)?;
                 }
                 Ok(())
             }
             ConfigError::Invalid { key, value } => {
-                write!(f, "invalid config for {}: '{}'", key, value)
+                write!(
+                    f,
+                    "Invalid value '{}' for environment variable '{}' (failed to parse as expected type)",
+                    value, key
+                )
             }
         }
     }
@@ -102,12 +103,18 @@ mod tests {
     #[test]
     fn test_config_error_display() {
         let err = ConfigError::Missing("DATABASE_URL".to_string());
-        assert_eq!(err.to_string(), "missing\n  required config: DATABASE_URL");
+        assert_eq!(
+            err.to_string(),
+            "Missing required environment variable 'DATABASE_URL'"
+        );
 
         let err = ConfigError::Invalid {
             key: "PORT".to_string(),
             value: "abc".to_string(),
         };
-        assert_eq!(err.to_string(), "invalid config for PORT: 'abc'");
+        assert_eq!(
+            err.to_string(),
+            "Invalid value 'abc' for environment variable 'PORT' (failed to parse as expected type)"
+        );
     }
 }
