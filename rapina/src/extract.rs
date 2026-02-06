@@ -473,7 +473,9 @@ where
         _state: &Arc<AppState>,
     ) -> Result<Self, Error> {
         let (param_name, value) = params.iter().next().ok_or_else(|| {
-            Error::bad_request("Missing path parameter. Ensure your route pattern includes a parameter like /:id")
+            Error::bad_request(
+                "Missing path parameter. Ensure your route pattern includes a parameter like /:id",
+            )
         })?;
 
         let parsed = value.parse::<T>().map_err(|e| {
