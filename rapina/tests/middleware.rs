@@ -2,7 +2,8 @@
 
 use http::StatusCode;
 use rapina::middleware::{
-    BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
+    BodyLimitMiddleware, CorsConfig, RateLimitConfig, RateLimitMiddleware, TRACE_ID_HEADER,
+    TimeoutMiddleware, TraceIdMiddleware,
 };
 use rapina::prelude::*;
 use rapina::testing::TestClient;
@@ -351,4 +352,109 @@ async fn test_cors_permissive_returns_wildcard() {
 
     let origin_header = response.headers().get("access-control-allow-origin");
     assert_eq!(origin_header.unwrap().to_str().unwrap(), "*");
+}
+
+#[tokio::test]
+async fn test_rate_limit_allows_under_limit() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_rate_limit(RateLimitConfig::new(100.0, 10)) // 10 burst
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    // Should allow requests under the burst limit
+    for _ in 0..5 {
+        let response = client.get("/").send().await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
+
+#[tokio::test]
+async fn test_rate_limit_returns_429_when_exceeded() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(RateLimitMiddleware::new(RateLimitConfig::new(1.0, 2))) // 2 burst
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    // First two requests allowed (burst)
+    assert_eq!(client.get("/").send().await.status(), StatusCode::OK);
+    assert_eq!(client.get("/").send().await.status(), StatusCode::OK);
+
+    // Third request should be rate limited
+    let response = client.get("/").send().await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn test_rate_limit_includes_retry_after_header() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_rate_limit(RateLimitConfig::new(1.0, 1)) // 1 burst, 1 req/sec
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    // First request allowed
+    assert_eq!(client.get("/").send().await.status(), StatusCode::OK);
+
+    // Second request rate limited with Retry-After
+    let response = client.get("/").send().await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let retry_after = response.headers().get("retry-after");
+    assert!(retry_after.is_some());
+
+    let retry_secs: u64 = retry_after.unwrap().to_str().unwrap().parse().unwrap();
+    assert!(retry_secs >= 1);
+}
+
+#[tokio::test]
+async fn test_rate_limit_returns_json_error() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_rate_limit(RateLimitConfig::new(1.0, 1))
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    // Exhaust the limit
+    client.get("/").send().await;
+
+    // Check the error response body
+    let response = client.get("/").send().await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let json: serde_json::Value = response.json();
+    assert_eq!(json["error"]["code"], "RATE_LIMITED");
+    assert_eq!(json["error"]["message"], "too many requests");
+    assert!(json["trace_id"].is_string());
+}
+
+#[tokio::test]
+async fn test_rate_limit_per_minute_convenience() {
+    // Test the per_minute convenience constructor
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_rate_limit(RateLimitConfig::per_minute(60)) // 1 req/sec, 60 burst
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+
+    // Should allow 60 rapid requests (burst capacity)
+    for i in 0..60 {
+        let response = client.get("/").send().await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Request {} should succeed",
+            i + 1
+        );
+    }
+
+    // 61st should be rate limited
+    let response = client.get("/").send().await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 }

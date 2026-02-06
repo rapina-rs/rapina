@@ -4,7 +4,9 @@ use std::net::SocketAddr;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
-use crate::middleware::{CorsConfig, CorsMiddleware, Middleware, MiddlewareStack};
+use crate::middleware::{
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+};
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
@@ -107,6 +109,25 @@ impl Rapina {
     ///  .await
     pub fn with_cors(mut self, config: CorsConfig) -> Self {
         self.middlewares.add(CorsMiddleware::new(config));
+        self
+    }
+
+    /// Enables rate limiting for the application.
+    ///
+    /// Uses a token bucket algorithm to limit requests per client.
+    /// By default, clients are identified by IP address.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .with_rate_limit(RateLimitConfig::per_minute(100))
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn with_rate_limit(mut self, config: RateLimitConfig) -> Self {
+        self.middlewares.add(RateLimitMiddleware::new(config));
         self
     }
 
