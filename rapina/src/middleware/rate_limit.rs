@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
@@ -11,6 +11,9 @@ use crate::error::Error;
 use crate::response::{BoxBody, IntoResponse};
 
 use super::{BoxFuture, Middleware, Next};
+
+/// Type alias for custom key extractor functions
+type KeyExtractorFn = Arc<dyn Fn(&Request<Incoming>) -> String + Send + Sync>;
 
 /// How often to run cleanup (every N requests)
 const CLEANUP_INTERVAL: u64 = 1000;
@@ -31,7 +34,7 @@ pub enum KeyExtractor {
     /// Extract from X-Forwarded-For, X-Real-IP, or fallback to "unknown"
     Ip,
     /// Custom extraction function
-    Custom(Arc<dyn Fn(&Request<Incoming>) -> String + Send + Sync>),
+    Custom(KeyExtractorFn),
 }
 
 impl std::fmt::Debug for KeyExtractor {
@@ -65,11 +68,7 @@ impl KeyExtractor {
         }
 
         // Fallback to X-Real-IP (common with nginx)
-        if let Some(ip) = req
-            .headers()
-            .get("x-real-ip")
-            .and_then(|v| v.to_str().ok())
-        {
+        if let Some(ip) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
             return ip.trim().to_string();
         }
 
@@ -149,17 +148,18 @@ impl RateLimitMiddleware {
     fn check_rate_limit(&self, key: &str) -> Option<u64> {
         // Periodic cleanup: every CLEANUP_INTERVAL requests, prune stale buckets
         let count = self.request_count.fetch_add(1, Ordering::Relaxed);
-        if count % CLEANUP_INTERVAL == 0 && count > 0 {
+        if count > 0 && count.is_multiple_of(CLEANUP_INTERVAL) {
             self.cleanup_stale_buckets();
         }
 
         let now = Instant::now();
-        let mut bucket = self.buckets.entry(key.to_string()).or_insert_with(|| {
-            TokenBucket {
+        let mut bucket = self
+            .buckets
+            .entry(key.to_string())
+            .or_insert_with(|| TokenBucket {
                 tokens: self.config.burst as f64,
                 last_refill: now,
-            }
-        });
+            });
 
         // Refill tokens based on elapsed time
         let elapsed = now.duration_since(bucket.last_refill).as_secs_f64();
@@ -195,10 +195,9 @@ impl Middleware for RateLimitMiddleware {
                     .with_trace_id(&ctx.trace_id)
                     .into_response();
 
-                response.headers_mut().insert(
-                    "retry-after",
-                    retry_after.to_string().parse().unwrap(),
-                );
+                response
+                    .headers_mut()
+                    .insert("retry-after", retry_after.to_string().parse().unwrap());
 
                 return response;
             }
