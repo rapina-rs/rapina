@@ -185,6 +185,20 @@ rapina openapi check                    # Verify spec matches code
 rapina openapi diff --base main         # Detect breaking changes
 ```
 
+### Rate Limiting
+
+Protect your API from abuse with token bucket rate limiting:
+
+```rust
+Rapina::new()
+    .with_rate_limit(RateLimitConfig::per_minute(100))
+    .router(router)
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Returns `429 Too Many Requests` with `Retry-After` header when exceeded.
+
 ### CLI
 
 ```bash
