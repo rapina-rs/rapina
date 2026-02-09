@@ -1,12 +1,12 @@
 use std::io::Write;
 
 use bytes::Bytes;
-use flate2::write::{DeflateEncoder, GzEncoder};
 use flate2::Compression;
-use http::{header, HeaderValue, Response};
+use flate2::write::{DeflateEncoder, GzEncoder};
+use http::{HeaderValue, Response, header};
 use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
 use hyper::Request;
+use hyper::body::Incoming;
 
 use crate::context::RequestContext;
 use crate::response::BoxBody;

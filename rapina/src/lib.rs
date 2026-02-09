@@ -115,7 +115,9 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
-    pub use crate::middleware::{CompressionConfig, KeyExtractor, Middleware, Next, RateLimitConfig};
+    pub use crate::middleware::{
+        CompressionConfig, KeyExtractor, Middleware, Next, RateLimitConfig,
+    };
     pub use crate::observability::TracingConfig;
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;

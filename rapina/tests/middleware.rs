@@ -480,14 +480,8 @@ async fn test_compression_gzip() {
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-encoding").unwrap(),
-        "gzip"
-    );
-    assert_eq!(
-        response.headers().get("vary").unwrap(),
-        "Accept-Encoding"
-    );
+    assert_eq!(response.headers().get("content-encoding").unwrap(), "gzip");
+    assert_eq!(response.headers().get("vary").unwrap(), "Accept-Encoding");
 }
 
 #[tokio::test]
