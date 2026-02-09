@@ -51,5 +51,8 @@ jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 # Rate Limiting
 dashmap = "6.1.0"
 
+# Compression
+flate2 = "1.1"
+
 # Our macros
 rapina-macros = { version = "0.2.0", path = "../rapina-macros/" }

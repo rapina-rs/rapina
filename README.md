@@ -199,6 +199,18 @@ Rapina::new()
 
 Returns `429 Too Many Requests` with `Retry-After` header when exceeded.
 
+### Response Compression
+
+Automatic gzip/deflate compression for large responses:
+
+```rust
+Rapina::new()
+    .with_compression(CompressionConfig::default())
+    .router(router)
+    .listen("127.0.0.1:3000")
+    .await
+```
+
 ### CLI
 
 ```bash
