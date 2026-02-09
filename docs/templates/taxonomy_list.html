@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}{{ taxonomy.name | title }} - Rapina{% endblock %}
+
+{% block content %}
+<div class="docs-layout">
+    <article class="docs-content">
+        <h1>All {{ taxonomy.name | title }}</h1>
+        <p class="page-description">Browse all {{ taxonomy.name }}</p>
+
+        <div class="section-pages">
+            <ul>
+                {% for term in terms %}
+                <li>
+                    <a href="{{ term.permalink }}">
+                        <strong>{{ term.name | replace(from="-", to=" ") | title }}</strong>
+                        <br><span>{{ term.pages | length }} posts</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </article>
+</div>
+{% endblock %}
