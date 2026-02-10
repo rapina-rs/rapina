@@ -83,13 +83,19 @@ fn route_macro_core(
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
+    // Extract return type for type annotation (helps with type inference in async blocks)
+    let return_type_annotation = match &func.sig.output {
+        syn::ReturnType::Type(_, ty) => quote! { : #ty },
+        syn::ReturnType::Default => quote! {},
+    };
+
     // Build the handler body
     // Use __rapina_ prefix for internal variables to avoid shadowing user's variables
     let handler_body = if args.is_empty() {
         let inner_block = &func.block;
         quote! {
-            let __rapina_result = async #inner_block;
-            rapina::response::IntoResponse::into_response(__rapina_result.await)
+            let __rapina_result #return_type_annotation = (async #inner_block).await;
+            rapina::response::IntoResponse::into_response(__rapina_result)
         }
     } else {
         let mut parts_extractions = Vec::new();
@@ -141,8 +147,8 @@ fn route_macro_core(
             let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
             #(#parts_extractions)*
             #body_extraction
-            let __rapina_result = async #inner_block;
-            rapina::response::IntoResponse::into_response(__rapina_result.await)
+            let __rapina_result #return_type_annotation = (async #inner_block).await;
+            rapina::response::IntoResponse::into_response(__rapina_result)
         }
     };
 
@@ -453,7 +459,8 @@ mod tests {
 
         // Should NOT use closure wrapper (|| async ...)
         assert!(!output_str.contains("|| async"));
-        // Should use direct async block
-        assert!(output_str.contains("let __rapina_result = async"));
+        // Should use typed result with async block (: ReturnType = (async ...).await)
+        assert!(output_str.contains("__rapina_result"));
+        assert!(output_str.contains("Result < String , Error >"));
     }
 }
