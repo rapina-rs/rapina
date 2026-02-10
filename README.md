@@ -204,6 +204,9 @@ Returns `429 Too Many Requests` with `Retry-After` header when exceeded.
 ```bash
 rapina new my-app          # Create new project
 rapina dev                 # Dev server with hot reload
+rapina test                # Run tests with pretty output
+rapina test -w             # Watch mode
+rapina test --coverage     # Coverage report
 rapina routes              # List all routes
 rapina doctor              # Health checks
 ```
