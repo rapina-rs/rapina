@@ -19,6 +19,7 @@ Extractors automatically parse request data and inject it into your handlers. If
 | `Context` | Request context (trace_id) |
 | `CurrentUser` | Authenticated user (JWT) |
 | `Validated<T>` | Validated extractor |
+| `Db` | Database connection (requires feature) |
 
 ## Path Parameters
 
