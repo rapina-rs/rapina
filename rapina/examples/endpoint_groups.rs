@@ -7,7 +7,7 @@ async fn hello() -> &'static str {
 
 #[get("")]
 async fn list_users() -> String {
-    "list_users() of users_router, this would typically be located in users.rs"
+    "list_users() of users_router, this would typically be located in users.rs".to_string()
 }
 
 #[get("/:id")]
