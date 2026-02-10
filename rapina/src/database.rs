@@ -127,7 +127,7 @@ impl DatabaseConfig {
         let sqlx_logging = std::env::var("DATABASE_LOGGING")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or_else(|| cfg!(debug_assertions));
+            .unwrap_or(cfg!(debug_assertions));
 
         Ok(Self {
             url,
