@@ -127,7 +127,7 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, post, public, put};
+    pub use rapina_macros::{Config, delete, get, post, public, put, schema};
 }
 
 // Re-export dependencies so users don't need to add them to their Cargo.toml
