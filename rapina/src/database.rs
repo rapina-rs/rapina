@@ -207,12 +207,8 @@ impl IntoApiError for DbError {
 
         match &self.0 {
             DbErr::RecordNotFound(msg) => Error::not_found(msg.clone()),
-            DbErr::RecordNotInserted => {
-                Error::internal("failed to insert record")
-            }
-            DbErr::RecordNotUpdated => {
-                Error::internal("failed to update record")
-            }
+            DbErr::RecordNotInserted => Error::internal("failed to insert record"),
+            DbErr::RecordNotUpdated => Error::internal("failed to update record"),
             DbErr::Custom(msg) => Error::internal(msg.clone()),
             DbErr::Query(err) => {
                 tracing::error!(error = %err, "database query error");
