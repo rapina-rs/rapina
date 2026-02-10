@@ -48,9 +48,9 @@ fn check_coverage_tool() -> Result<(), String> {
 
     match output {
         Ok(o) if o.status.success() => Ok(()),
-        _ => Err(
-            "cargo-llvm-cov not found. Install with: cargo install cargo-llvm-cov".to_string(),
-        ),
+        _ => {
+            Err("cargo-llvm-cov not found. Install with: cargo install cargo-llvm-cov".to_string())
+        }
     }
 }
 
@@ -117,7 +117,9 @@ fn run_tests(config: &TestConfig) -> Result<(), String> {
         eprintln!("{}", line);
     }
 
-    let status = child.wait().map_err(|e| format!("Failed to wait for tests: {}", e))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for tests: {}", e))?;
 
     println!();
     print_summary(&summary, status.success());
@@ -260,7 +262,10 @@ fn process_test_line(line: &str, summary: &mut TestSummary) {
             "○".custom_color(colors::yellow()),
             extract_test_name(line).custom_color(colors::subtext())
         );
-    } else if line.starts_with("running ") || line.contains("Compiling") || line.contains("Finished") {
+    } else if line.starts_with("running ")
+        || line.contains("Compiling")
+        || line.contains("Finished")
+    {
         println!("{}", line.custom_color(colors::subtext()));
     } else if !line.trim().is_empty() && !line.starts_with("test ") {
         // Print other relevant output (doc tests header, etc.)
@@ -280,10 +285,7 @@ fn extract_test_name(line: &str) -> &str {
 fn print_summary(summary: &TestSummary, success: bool) {
     let total = summary.passed + summary.failed + summary.ignored;
 
-    println!(
-        "{}",
-        "─".repeat(50).custom_color(colors::subtext())
-    );
+    println!("{}", "─".repeat(50).custom_color(colors::subtext()));
 
     if success {
         println!(
