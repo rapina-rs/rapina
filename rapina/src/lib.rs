@@ -130,7 +130,9 @@ pub mod prelude {
     pub use rapina_macros::{Config, delete, get, post, public, put};
 }
 
-// Re-export schemars so users don't need to add it to their Cargo.toml
+// Re-export dependencies so users don't need to add them to their Cargo.toml
+pub use http;
+pub use hyper;
 pub use schemars;
 
 // Re-export sea-orm when database feature is enabled

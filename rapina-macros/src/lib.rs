@@ -127,7 +127,7 @@ fn route_macro_core(
         } else if body_extractors.len() == 1 {
             let (arg_name, arg_type) = &body_extractors[0];
             quote! {
-                let __rapina_req = http::Request::from_parts(__rapina_parts, __rapina_body);
+                let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
                 let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                     Ok(v) => v,
                     Err(e) => return rapina::response::IntoResponse::into_response(e),
@@ -165,10 +165,10 @@ fn route_macro_core(
 
             fn call(
                 &self,
-                __rapina_req: hyper::Request<hyper::body::Incoming>,
+                __rapina_req: rapina::hyper::Request<rapina::hyper::body::Incoming>,
                 __rapina_params: rapina::extract::PathParams,
                 __rapina_state: std::sync::Arc<rapina::state::AppState>,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = hyper::Response<rapina::response::BoxBody>> + Send>> {
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = rapina::hyper::Response<rapina::response::BoxBody>> + Send>> {
                 Box::pin(async move {
                     #handler_body
                 })
