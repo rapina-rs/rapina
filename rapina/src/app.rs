@@ -236,9 +236,10 @@ impl Rapina {
         mut self,
         config: crate::database::DatabaseConfig,
     ) -> Result<Self, std::io::Error> {
-        let conn = config.connect().await.map_err(|e| {
-            std::io::Error::other(format!("Database connection failed: {}", e))
-        })?;
+        let conn = config
+            .connect()
+            .await
+            .map_err(|e| std::io::Error::other(format!("Database connection failed: {}", e)))?;
         self.state = self.state.with(conn);
         Ok(self)
     }
