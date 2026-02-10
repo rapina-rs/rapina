@@ -82,6 +82,8 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod context;
+#[cfg(feature = "database")]
+pub mod database;
 pub mod error;
 pub mod extract;
 pub mod handler;
@@ -130,3 +132,7 @@ pub mod prelude {
 
 // Re-export schemars so users don't need to add it to their Cargo.toml
 pub use schemars;
+
+// Re-export sea-orm when database feature is enabled
+#[cfg(feature = "database")]
+pub use sea_orm;
