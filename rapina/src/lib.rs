@@ -65,6 +65,7 @@
 //! - [`TraceIdMiddleware`](middleware::TraceIdMiddleware) - Add trace IDs to requests
 //! - [`RequestLogMiddleware`](middleware::RequestLogMiddleware) - Structured request logging
 //! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting
+//! - [`CompressionMiddleware`](middleware::CompressionMiddleware) - Response compression (gzip, deflate)
 //!
 //! ## Introspection
 //!
@@ -114,7 +115,9 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
-    pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
+    pub use crate::middleware::{
+        CompressionConfig, KeyExtractor, Middleware, Next, RateLimitConfig,
+    };
     pub use crate::observability::TracingConfig;
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;

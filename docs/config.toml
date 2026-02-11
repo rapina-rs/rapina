@@ -10,6 +10,11 @@ minify_html = true
 generate_feeds = false
 build_search_index = true
 
+taxonomies = [
+    { name = "categories", paginate_by = 10, feed = false },
+    { name = "tags", paginate_by = 10, feed = false }
+]
+
 [markdown]
 highlight_code = true
 highlight_theme = "base16-ocean-dark"
@@ -42,6 +47,10 @@ url = "/cli/"
 [[extra.nav]]
 name = "Philosophy"
 url = "/philosophy/"
+
+[[extra.nav]]
+name = "Blog"
+url = "/blog/"
 
 [[extra.nav]]
 name = "API"

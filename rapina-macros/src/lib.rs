@@ -83,11 +83,19 @@ fn route_macro_core(
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
+    // Extract return type for type annotation (helps with type inference in async blocks)
+    let return_type_annotation = match &func.sig.output {
+        syn::ReturnType::Type(_, ty) => quote! { : #ty },
+        syn::ReturnType::Default => quote! {},
+    };
+
     // Build the handler body
+    // Use __rapina_ prefix for internal variables to avoid shadowing user's variables
     let handler_body = if args.is_empty() {
         let inner_block = &func.block;
         quote! {
-            rapina::response::IntoResponse::into_response((|| async #inner_block)().await)
+            let __rapina_result #return_type_annotation = (async #inner_block).await;
+            rapina::response::IntoResponse::into_response(__rapina_result)
         }
     } else {
         let mut parts_extractions = Vec::new();
@@ -103,7 +111,7 @@ fn route_macro_core(
                 let type_str = quote!(#arg_type).to_string();
                 if is_parts_only_extractor(&type_str) {
                     parts_extractions.push(quote! {
-                        let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&parts, &params, &state).await {
+                        let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
                             Ok(v) => v,
                             Err(e) => return rapina::response::IntoResponse::into_response(e),
                         };
@@ -119,8 +127,8 @@ fn route_macro_core(
         } else if body_extractors.len() == 1 {
             let (arg_name, arg_type) = &body_extractors[0];
             quote! {
-                let req = http::Request::from_parts(parts, body);
-                let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(req, &params, &state).await {
+                let __rapina_req = http::Request::from_parts(__rapina_parts, __rapina_body);
+                let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                     Ok(v) => v,
                     Err(e) => return rapina::response::IntoResponse::into_response(e),
                 };
@@ -136,10 +144,11 @@ fn route_macro_core(
         let inner_block = &func.block;
 
         quote! {
-            let (parts, body) = req.into_parts();
+            let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
             #(#parts_extractions)*
             #body_extraction
-            rapina::response::IntoResponse::into_response((|| async #inner_block)().await)
+            let __rapina_result #return_type_annotation = (async #inner_block).await;
+            rapina::response::IntoResponse::into_response(__rapina_result)
         }
     };
 
@@ -156,9 +165,9 @@ fn route_macro_core(
 
             fn call(
                 &self,
-                req: hyper::Request<hyper::body::Incoming>,
-                params: rapina::extract::PathParams,
-                state: std::sync::Arc<rapina::state::AppState>,
+                __rapina_req: hyper::Request<hyper::body::Incoming>,
+                __rapina_params: rapina::extract::PathParams,
+                __rapina_state: std::sync::Arc<rapina::state::AppState>,
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = hyper::Response<rapina::response::BoxBody>> + Send>> {
                 Box::pin(async move {
                     #handler_body
@@ -412,5 +421,46 @@ mod tests {
         // Check response_schema method is NOT generated for non-Json types
         assert!(!output_str.contains("fn response_schema"));
         assert!(!output_str.contains("schema_for"));
+    }
+
+    #[test]
+    fn test_user_state_variable_not_shadowed() {
+        // Regression test for issue #134 - user naming their extractor 'state'
+        // should not conflict with internal macro variables
+        let path = quote!("/users");
+        let input = quote! {
+            async fn list_users(state: rapina::extract::State<MyState>) -> String {
+                "ok".to_string()
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        // Internal variables should use __rapina_ prefix
+        assert!(output_str.contains("__rapina_state"));
+        assert!(output_str.contains("__rapina_params"));
+        // User's variable 'state' should still be extracted
+        assert!(output_str.contains("let state ="));
+    }
+
+    #[test]
+    fn test_no_closure_wrapper_for_type_inference() {
+        // Regression test for issue #134 - Result type inference should work
+        let path = quote!("/users");
+        let input = quote! {
+            async fn get_user() -> Result<String, Error> {
+                Ok("user".to_string())
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        // Should NOT use closure wrapper (|| async ...)
+        assert!(!output_str.contains("|| async"));
+        // Should use typed result with async block (: ReturnType = (async ...).await)
+        assert!(output_str.contains("__rapina_result"));
+        assert!(output_str.contains("Result < String , Error >"));
     }
 }
