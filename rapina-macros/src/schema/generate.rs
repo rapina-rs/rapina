@@ -48,6 +48,19 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     let relation_variants = generate_relation_variants(entity, schema);
     let related_impls = generate_related_impls(entity, schema);
 
+    // Generate timestamp fields based on entity attrs
+    let created_at_field = if entity.attrs.has_created_at {
+        quote! { pub created_at: DateTimeUtc, }
+    } else {
+        quote! {}
+    };
+
+    let updated_at_field = if entity.attrs.has_updated_at {
+        quote! { pub updated_at: DateTimeUtc, }
+    } else {
+        quote! {}
+    };
+
     quote! {
         pub mod #mod_name {
             use rapina::sea_orm;
@@ -60,8 +73,8 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
                 #[sea_orm(primary_key)]
                 pub id: i32,
                 #model_fields
-                pub created_at: DateTimeUtc,
-                pub updated_at: DateTimeUtc,
+                #created_at_field
+                #updated_at_field
             }
 
             #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -108,6 +121,11 @@ fn generate_model_field(field: &AnalyzedField) -> Option<TokenStream> {
             // Add unique if specified
             if field.attrs.unique {
                 sea_orm_parts.push(quote! { unique });
+            }
+
+            // Add indexed if specified
+            if field.attrs.indexed {
+                sea_orm_parts.push(quote! { indexed });
             }
 
             // Add custom column name if specified
@@ -445,5 +463,76 @@ mod tests {
         assert_eq!(to_pascal_case("hello_world"), "HelloWorld");
         assert_eq!(to_pascal_case("user"), "User");
         assert_eq!(to_pascal_case("author_id"), "AuthorId");
+    }
+
+    #[test]
+    fn test_generate_no_timestamps() {
+        let input = quote! {
+            #[timestamps(none)]
+            User {
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(!output.contains("created_at"));
+        assert!(!output.contains("updated_at"));
+    }
+
+    #[test]
+    fn test_generate_only_created_at() {
+        let input = quote! {
+            #[timestamps(created_at)]
+            User {
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("created_at"));
+        assert!(!output.contains("updated_at"));
+    }
+
+    #[test]
+    fn test_generate_only_updated_at() {
+        let input = quote! {
+            #[timestamps(updated_at)]
+            User {
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(!output.contains("created_at"));
+        assert!(output.contains("updated_at"));
+    }
+
+    #[test]
+    fn test_generate_indexed_field() {
+        let input = quote! {
+            User {
+                #[index]
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("indexed"));
     }
 }

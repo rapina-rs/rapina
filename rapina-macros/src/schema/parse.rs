@@ -16,10 +16,24 @@ pub struct Schema {
 }
 
 /// Attributes that can be applied to an entity.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct EntityAttrs {
     /// Custom table name, e.g., #[table_name = "people"]
     pub table_name: Option<String>,
+    /// Include created_at timestamp (default: true)
+    pub has_created_at: bool,
+    /// Include updated_at timestamp (default: true)
+    pub has_updated_at: bool,
+}
+
+impl Default for EntityAttrs {
+    fn default() -> Self {
+        Self {
+            table_name: None,
+            has_created_at: true,
+            has_updated_at: true,
+        }
+    }
 }
 
 /// Attributes that can be applied to a field.
@@ -29,6 +43,8 @@ pub struct FieldAttrs {
     pub unique: bool,
     /// Custom column name, e.g., #[column = "email_address"]
     pub column_name: Option<String>,
+    /// Mark field as indexed, e.g., #[index]
+    pub indexed: bool,
 }
 
 /// A single entity definition.
@@ -131,7 +147,7 @@ impl Parse for EntityDef {
     }
 }
 
-/// Parse entity-level attributes like #[table_name = "people"]
+/// Parse entity-level attributes like #[table_name = "people"] or #[timestamps(created_at)]
 fn parse_entity_attrs(input: ParseStream) -> Result<EntityAttrs> {
     let mut attrs = EntityAttrs::default();
 
@@ -149,11 +165,42 @@ fn parse_entity_attrs(input: ParseStream) -> Result<EntityAttrs> {
                 let value: syn::LitStr = content.parse()?;
                 attrs.table_name = Some(value.value());
             }
+            "timestamps" => {
+                // Parse timestamps(created_at) or timestamps(updated_at) or timestamps(none)
+                let inner;
+                syn::parenthesized!(inner in content);
+                let ts_type: Ident = inner.parse()?;
+                let ts_str = ts_type.to_string();
+
+                match ts_str.as_str() {
+                    "created_at" => {
+                        attrs.has_created_at = true;
+                        attrs.has_updated_at = false;
+                    }
+                    "updated_at" => {
+                        attrs.has_created_at = false;
+                        attrs.has_updated_at = true;
+                    }
+                    "none" => {
+                        attrs.has_created_at = false;
+                        attrs.has_updated_at = false;
+                    }
+                    _ => {
+                        return Err(syn::Error::new(
+                            ts_type.span(),
+                            format!(
+                                "unknown timestamps option '{}'. Supported: created_at, updated_at, none",
+                                ts_str
+                            ),
+                        ));
+                    }
+                }
+            }
             _ => {
                 return Err(syn::Error::new(
                     attr_name.span(),
                     format!(
-                        "unknown entity attribute '{}'. Supported: table_name",
+                        "unknown entity attribute '{}'. Supported: table_name, timestamps",
                         attr_name_str
                     ),
                 ));
@@ -199,6 +246,9 @@ fn parse_field_attrs(input: ParseStream) -> Result<FieldAttrs> {
             "unique" => {
                 attrs.unique = true;
             }
+            "index" => {
+                attrs.indexed = true;
+            }
             "column" => {
                 content.parse::<Token![=]>()?;
                 let value: syn::LitStr = content.parse()?;
@@ -208,7 +258,7 @@ fn parse_field_attrs(input: ParseStream) -> Result<FieldAttrs> {
                 return Err(syn::Error::new(
                     attr_name.span(),
                     format!(
-                        "unknown field attribute '{}'. Supported: unique, column",
+                        "unknown field attribute '{}'. Supported: unique, index, column",
                         attr_name_str
                     ),
                 ));
@@ -481,5 +531,91 @@ mod tests {
                 .to_string()
                 .contains("unknown field attribute")
         );
+    }
+
+    #[test]
+    fn test_parse_timestamps_created_at_only() {
+        let input = quote! {
+            #[timestamps(created_at)]
+            User {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].attrs.has_created_at);
+        assert!(!schema.entities[0].attrs.has_updated_at);
+    }
+
+    #[test]
+    fn test_parse_timestamps_updated_at_only() {
+        let input = quote! {
+            #[timestamps(updated_at)]
+            User {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(!schema.entities[0].attrs.has_created_at);
+        assert!(schema.entities[0].attrs.has_updated_at);
+    }
+
+    #[test]
+    fn test_parse_timestamps_none() {
+        let input = quote! {
+            #[timestamps(none)]
+            User {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(!schema.entities[0].attrs.has_created_at);
+        assert!(!schema.entities[0].attrs.has_updated_at);
+    }
+
+    #[test]
+    fn test_parse_index_attr() {
+        let input = quote! {
+            User {
+                #[index]
+                email: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].fields[0].attrs.indexed);
+    }
+
+    #[test]
+    fn test_parse_combined_field_attrs() {
+        let input = quote! {
+            User {
+                #[unique]
+                #[index]
+                #[column = "user_email"]
+                email: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let field = &schema.entities[0].fields[0];
+        assert!(field.attrs.unique);
+        assert!(field.attrs.indexed);
+        assert_eq!(field.attrs.column_name, Some("user_email".to_string()));
+    }
+
+    #[test]
+    fn test_default_timestamps_enabled() {
+        let input = quote! {
+            User {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].attrs.has_created_at);
+        assert!(schema.entities[0].attrs.has_updated_at);
     }
 }

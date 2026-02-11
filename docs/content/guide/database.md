@@ -187,11 +187,20 @@ Relationships are inferred from types:
 | Attribute | Description |
 |-----------|-------------|
 | `#[table_name = "name"]` | Override the auto-generated table name |
+| `#[timestamps(created_at)]` | Only include `created_at` timestamp |
+| `#[timestamps(updated_at)]` | Only include `updated_at` timestamp |
+| `#[timestamps(none)]` | No automatic timestamps |
 
 ```rust
 #[table_name = "people"]
 Person {
     name: String,
+}
+
+#[timestamps(none)]
+AuditLog {
+    action: String,
+    timestamp: DateTime,  // manage your own timestamp
 }
 ```
 
@@ -200,12 +209,16 @@ Person {
 | Attribute | Description |
 |-----------|-------------|
 | `#[unique]` | Mark field as unique |
+| `#[index]` | Create an index on this column |
 | `#[column = "name"]` | Custom column name in database |
 
 ```rust
 User {
     #[unique]
     email: String,
+
+    #[index]
+    username: String,
 
     #[column = "full_name"]
     name: String,
