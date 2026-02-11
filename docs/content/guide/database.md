@@ -87,11 +87,13 @@ use rapina::prelude::*;
 
 schema! {
     User {
+        #[unique]
         email: String,
         name: String,
         posts: Vec<Post>,        // has_many relationship
     }
 
+    #[table_name = "blog_posts"]
     Post {
         title: String,
         content: Text,           // TEXT column type
@@ -177,6 +179,38 @@ Relationships are inferred from types:
 | `posts: Vec<Post>` | has_many | Relation enum variant |
 | `author: User` | belongs_to | `author_id: i32` column |
 | `author: Option<User>` | optional belongs_to | `author_id: Option<i32>` |
+
+### Attributes
+
+#### Entity Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `#[table_name = "name"]` | Override the auto-generated table name |
+
+```rust
+#[table_name = "people"]
+Person {
+    name: String,
+}
+```
+
+#### Field Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `#[unique]` | Mark field as unique |
+| `#[column = "name"]` | Custom column name in database |
+
+```rust
+User {
+    #[unique]
+    email: String,
+
+    #[column = "full_name"]
+    name: String,
+}
+```
 
 ## Database Schema
 

@@ -36,7 +36,13 @@ pub fn generate_schema(schema: AnalyzedSchema) -> TokenStream {
 
 fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> TokenStream {
     let mod_name = format_ident!("{}", entity.name.to_string().to_snake_case());
-    let table_name = format!("{}s", entity.name.to_string().to_snake_case());
+
+    // Use custom table name if provided, otherwise auto-pluralize
+    let table_name = entity
+        .attrs
+        .table_name
+        .clone()
+        .unwrap_or_else(|| format!("{}s", entity.name.to_string().to_snake_case()));
 
     let model_fields = generate_model_fields(entity);
     let relation_variants = generate_relation_variants(entity, schema);
@@ -88,7 +94,7 @@ fn generate_model_field(field: &AnalyzedField) -> Option<TokenStream> {
     match &field.ty {
         FieldType::Scalar { scalar, optional } => {
             let rust_type = scalar.rust_type();
-            let column_attr = scalar.column_type_attr();
+            let column_type_attr = scalar.column_type_attr();
 
             let final_type = if *optional {
                 quote! { Option<#rust_type> }
@@ -96,8 +102,41 @@ fn generate_model_field(field: &AnalyzedField) -> Option<TokenStream> {
                 rust_type
             };
 
+            // Build sea_orm attribute parts
+            let mut sea_orm_parts: Vec<TokenStream> = Vec::new();
+
+            // Add unique if specified
+            if field.attrs.unique {
+                sea_orm_parts.push(quote! { unique });
+            }
+
+            // Add custom column name if specified
+            if let Some(ref col_name) = field.attrs.column_name {
+                sea_orm_parts.push(quote! { column_name = #col_name });
+            }
+
+            // Combine column_type_attr with other attributes
+            let field_attr = if sea_orm_parts.is_empty() {
+                column_type_attr.unwrap_or_default()
+            } else if let Some(col_type) = column_type_attr {
+                // Extract the column_type value and combine
+                let col_type_str = col_type.to_string();
+                if col_type_str.contains("column_type") {
+                    // Parse out the column_type value
+                    let combined = quote! {
+                        #[sea_orm(#(#sea_orm_parts),*)]
+                        #col_type
+                    };
+                    combined
+                } else {
+                    quote! { #[sea_orm(#(#sea_orm_parts),*)] }
+                }
+            } else {
+                quote! { #[sea_orm(#(#sea_orm_parts),*)] }
+            };
+
             Some(quote! {
-                #column_attr
+                #field_attr
                 pub #field_name: #final_type,
             })
         }
@@ -347,6 +386,58 @@ mod tests {
         let output = generated.to_string();
 
         assert!(output.contains("pub author_id : Option < i32 >"));
+    }
+
+    #[test]
+    fn test_generate_custom_table_name() {
+        let input = quote! {
+            #[table_name = "people"]
+            Person {
+                name: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("table_name = \"people\""));
+        assert!(!output.contains("table_name = \"persons\""));
+    }
+
+    #[test]
+    fn test_generate_unique_field() {
+        let input = quote! {
+            User {
+                #[unique]
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("unique"));
+    }
+
+    #[test]
+    fn test_generate_custom_column_name() {
+        let input = quote! {
+            User {
+                #[column = "user_email"]
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("column_name = \"user_email\""));
     }
 
     #[test]

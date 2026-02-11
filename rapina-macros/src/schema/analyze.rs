@@ -8,7 +8,7 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::{Ident, Result};
 
-use super::parse::{EntityDef, FieldDef, RawFieldType, Schema};
+use super::parse::{EntityAttrs, EntityDef, FieldAttrs, FieldDef, RawFieldType, Schema};
 use super::types::FieldType;
 
 /// Analyzed schema with resolved relationships.
@@ -20,6 +20,7 @@ pub struct AnalyzedSchema {
 /// An entity with resolved field types.
 #[derive(Debug)]
 pub struct AnalyzedEntity {
+    pub attrs: EntityAttrs,
     pub name: Ident,
     pub fields: Vec<AnalyzedField>,
     #[allow(dead_code)]
@@ -29,6 +30,7 @@ pub struct AnalyzedEntity {
 /// A field with resolved type information.
 #[derive(Debug)]
 pub struct AnalyzedField {
+    pub attrs: FieldAttrs,
     pub name: Ident,
     pub ty: FieldType,
     #[allow(dead_code)]
@@ -87,6 +89,7 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
     }
 
     Ok(AnalyzedEntity {
+        attrs: entity.attrs,
         name: entity.name,
         fields: analyzed_fields,
         span: entity.span,
@@ -136,6 +139,7 @@ fn analyze_field(field: FieldDef, registry: &EntityRegistry) -> Result<AnalyzedF
     };
 
     Ok(AnalyzedField {
+        attrs: field.attrs,
         name: field.name,
         ty,
         span: field.span,
@@ -277,5 +281,41 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("duplicate entity"));
+    }
+
+    #[test]
+    fn test_analyze_preserves_entity_attrs() {
+        let input = quote! {
+            #[table_name = "people"]
+            Person {
+                name: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        assert_eq!(
+            analyzed.entities[0].attrs.table_name,
+            Some("people".to_string())
+        );
+    }
+
+    #[test]
+    fn test_analyze_preserves_field_attrs() {
+        let input = quote! {
+            User {
+                #[unique]
+                #[column = "user_email"]
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let field = &analyzed.entities[0].fields[0];
+        assert!(field.attrs.unique);
+        assert_eq!(field.attrs.column_name, Some("user_email".to_string()));
     }
 }

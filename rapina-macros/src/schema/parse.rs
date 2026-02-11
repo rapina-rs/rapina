@@ -15,9 +15,26 @@ pub struct Schema {
     pub entities: Vec<EntityDef>,
 }
 
+/// Attributes that can be applied to an entity.
+#[derive(Debug, Default, Clone)]
+pub struct EntityAttrs {
+    /// Custom table name, e.g., #[table_name = "people"]
+    pub table_name: Option<String>,
+}
+
+/// Attributes that can be applied to a field.
+#[derive(Debug, Default, Clone)]
+pub struct FieldAttrs {
+    /// Mark field as unique, e.g., #[unique]
+    pub unique: bool,
+    /// Custom column name, e.g., #[column = "email_address"]
+    pub column_name: Option<String>,
+}
+
 /// A single entity definition.
 #[derive(Debug)]
 pub struct EntityDef {
+    pub attrs: EntityAttrs,
     pub name: Ident,
     pub fields: Vec<FieldDef>,
     pub span: Span,
@@ -26,6 +43,7 @@ pub struct EntityDef {
 /// A field within an entity.
 #[derive(Debug)]
 pub struct FieldDef {
+    pub attrs: FieldAttrs,
     pub name: Ident,
     pub ty: RawFieldType,
     pub span: Span,
@@ -64,6 +82,9 @@ impl Parse for Schema {
 
 impl Parse for EntityDef {
     fn parse(input: ParseStream) -> Result<Self> {
+        // Parse entity attributes
+        let attrs = parse_entity_attrs(input)?;
+
         let name: Ident = input.parse()?;
         let span = name.span();
 
@@ -101,19 +122,101 @@ impl Parse for EntityDef {
             }
         }
 
-        Ok(EntityDef { name, fields, span })
+        Ok(EntityDef {
+            attrs,
+            name,
+            fields,
+            span,
+        })
     }
+}
+
+/// Parse entity-level attributes like #[table_name = "people"]
+fn parse_entity_attrs(input: ParseStream) -> Result<EntityAttrs> {
+    let mut attrs = EntityAttrs::default();
+
+    while input.peek(Token![#]) {
+        input.parse::<Token![#]>()?;
+        let content;
+        syn::bracketed!(content in input);
+
+        let attr_name: Ident = content.parse()?;
+        let attr_name_str = attr_name.to_string();
+
+        match attr_name_str.as_str() {
+            "table_name" => {
+                content.parse::<Token![=]>()?;
+                let value: syn::LitStr = content.parse()?;
+                attrs.table_name = Some(value.value());
+            }
+            _ => {
+                return Err(syn::Error::new(
+                    attr_name.span(),
+                    format!(
+                        "unknown entity attribute '{}'. Supported: table_name",
+                        attr_name_str
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(attrs)
 }
 
 impl Parse for FieldDef {
     fn parse(input: ParseStream) -> Result<Self> {
+        // Parse field attributes
+        let attrs = parse_field_attrs(input)?;
+
         let name: Ident = input.parse()?;
         let span = name.span();
         input.parse::<Token![:]>()?;
         let ty = parse_field_type(input)?;
 
-        Ok(FieldDef { name, ty, span })
+        Ok(FieldDef {
+            attrs,
+            name,
+            ty,
+            span,
+        })
     }
+}
+
+/// Parse field-level attributes like #[unique] or #[column = "email_address"]
+fn parse_field_attrs(input: ParseStream) -> Result<FieldAttrs> {
+    let mut attrs = FieldAttrs::default();
+
+    while input.peek(Token![#]) {
+        input.parse::<Token![#]>()?;
+        let content;
+        syn::bracketed!(content in input);
+
+        let attr_name: Ident = content.parse()?;
+        let attr_name_str = attr_name.to_string();
+
+        match attr_name_str.as_str() {
+            "unique" => {
+                attrs.unique = true;
+            }
+            "column" => {
+                content.parse::<Token![=]>()?;
+                let value: syn::LitStr = content.parse()?;
+                attrs.column_name = Some(value.value());
+            }
+            _ => {
+                return Err(syn::Error::new(
+                    attr_name.span(),
+                    format!(
+                        "unknown field attribute '{}'. Supported: unique, column",
+                        attr_name_str
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(attrs)
 }
 
 /// Parse a field type from the input stream.
@@ -279,5 +382,104 @@ mod tests {
         let result = parse_schema(input);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn test_parse_table_name_attr() {
+        let input = quote! {
+            #[table_name = "people"]
+            Person {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].attrs.table_name,
+            Some("people".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_unique_attr() {
+        let input = quote! {
+            User {
+                #[unique]
+                email: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].fields[0].attrs.unique);
+    }
+
+    #[test]
+    fn test_parse_column_attr() {
+        let input = quote! {
+            User {
+                #[column = "email_address"]
+                email: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].fields[0].attrs.column_name,
+            Some("email_address".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_multiple_field_attrs() {
+        let input = quote! {
+            User {
+                #[unique]
+                #[column = "user_email"]
+                email: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let field = &schema.entities[0].fields[0];
+        assert!(field.attrs.unique);
+        assert_eq!(field.attrs.column_name, Some("user_email".to_string()));
+    }
+
+    #[test]
+    fn test_unknown_entity_attr_error() {
+        let input = quote! {
+            #[unknown_attr = "value"]
+            User {
+                email: String,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown entity attribute")
+        );
+    }
+
+    #[test]
+    fn test_unknown_field_attr_error() {
+        let input = quote! {
+            User {
+                #[unknown]
+                email: String,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown field attribute")
+        );
     }
 }
