@@ -17,6 +17,7 @@ Extractors automatically parse request data and inject it into your handlers. If
 | `Headers` | Request headers |
 | `State<T>` | Application state |
 | `Context` | Request context (trace_id) |
+| `Cookie<T>` | Typed cookie access |
 | `CurrentUser` | Authenticated user (JWT) |
 | `Validated<T>` | Validated extractor |
 
@@ -123,6 +124,24 @@ async fn info(config: State<AppConfig>) -> String {
     format!("App: {}", config.into_inner().app_name)
 }
 ```
+
+## Cookies
+
+Deserialize cookies into typed structs:
+
+```rust
+#[derive(Deserialize)]
+struct Session {
+    session_id: String,
+}
+
+#[get("/dashboard")]
+async fn dashboard(session: Cookie<Session>) -> String {
+    format!("Session: {}", session.into_inner().session_id)
+}
+```
+
+Returns 400 Bad Request if required cookies are missing or malformed.
 
 ## Request Context
 
