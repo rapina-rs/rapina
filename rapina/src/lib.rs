@@ -131,5 +131,6 @@ pub mod prelude {
     pub use rapina_macros::{Config, delete, get, post, public, put};
 }
 
-// Re-export schemars so users don't need to add it to their Cargo.toml
+// Re-export schemars and http crates so users don't need to add them to their Cargo.toml
+pub use http;
 pub use schemars;
