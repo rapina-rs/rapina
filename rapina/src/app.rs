@@ -5,7 +5,8 @@ use std::net::SocketAddr;
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
 use crate::middleware::{
-    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    CompressionConfig, CompressionMiddleware, CorsConfig, CorsMiddleware, Middleware,
+    MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
 };
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
@@ -128,6 +129,12 @@ impl Rapina {
     /// ```
     pub fn with_rate_limit(mut self, config: RateLimitConfig) -> Self {
         self.middlewares.add(RateLimitMiddleware::new(config));
+        self
+    }
+
+    /// Enables response compression (gzip, deflate).
+    pub fn with_compression(mut self, config: CompressionConfig) -> Self {
+        self.middlewares.add(CompressionMiddleware::new(config));
         self
     }
 

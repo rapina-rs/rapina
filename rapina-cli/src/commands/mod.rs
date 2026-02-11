@@ -5,3 +5,4 @@ pub mod doctor;
 pub mod new;
 pub mod openapi;
 pub mod routes;
+pub mod test;
