@@ -2,8 +2,8 @@
 
 use http::StatusCode;
 use rapina::middleware::{
-    BodyLimitMiddleware, CorsConfig, RateLimitConfig, RateLimitMiddleware, TRACE_ID_HEADER,
-    TimeoutMiddleware, TraceIdMiddleware,
+    BodyLimitMiddleware, CompressionConfig, CorsConfig, RateLimitConfig, RateLimitMiddleware,
+    TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
 };
 use rapina::prelude::*;
 use rapina::testing::TestClient;
@@ -457,4 +457,67 @@ async fn test_rate_limit_per_minute_convenience() {
     // 61st should be rate limited
     let response = client.get("/").send().await;
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn test_compression_gzip() {
+    let large_body = "hello from rapina ".repeat(100);
+    let body_clone = large_body.clone();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_compression(CompressionConfig::default())
+        .router(Router::new().route(http::Method::GET, "/", move |_, _, _| {
+            let body = body_clone.clone();
+            async move { body }
+        }));
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .get("/")
+        .header("Accept-Encoding", "gzip")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("content-encoding").unwrap(), "gzip");
+    assert_eq!(response.headers().get("vary").unwrap(), "Accept-Encoding");
+}
+
+#[tokio::test]
+async fn test_compression_skips_small_response() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_compression(CompressionConfig::default())
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "small" }));
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .get("/")
+        .header("Accept-Encoding", "gzip")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("content-encoding").is_none());
+}
+
+#[tokio::test]
+async fn test_compression_skips_without_accept_encoding() {
+    let large_body = "hello from rapina ".repeat(100);
+    let body_clone = large_body.clone();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_compression(CompressionConfig::default())
+        .router(Router::new().route(http::Method::GET, "/", move |_, _, _| {
+            let body = body_clone.clone();
+            async move { body }
+        }));
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/").send().await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("content-encoding").is_none());
 }
