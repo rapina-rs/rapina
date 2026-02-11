@@ -39,6 +39,50 @@ Example:
 rapina dev -p 8080 --host 0.0.0.0
 ```
 
+## rapina test
+
+Run tests with pretty output:
+
+```bash
+rapina test
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--coverage` | Generate coverage report (requires cargo-llvm-cov) |
+| `-w, --watch` | Watch for changes and re-run tests |
+| `[FILTER]` | Filter tests by name |
+
+Examples:
+
+```bash
+# Run all tests
+rapina test
+
+# Run tests matching a pattern
+rapina test user
+
+# Watch mode - re-run on file changes
+rapina test -w
+
+# Generate coverage report
+rapina test --coverage
+```
+
+Output:
+
+```
+  ✓ tests::it_works
+  ✓ tests::user_creation
+  ✗ tests::it_fails
+
+──────────────────────────────────────────────────
+FAIL 2 passed, 1 failed, 0 ignored
+████████████████████████████░░░░░░░░░░░░
+```
+
 ## rapina routes
 
 List all registered routes from a running server:

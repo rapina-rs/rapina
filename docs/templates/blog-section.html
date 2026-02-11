@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }} - Rapina{% endblock %}
+
+{% block content %}
+<div class="blog-layout">
+    <article class="blog-content">
+        <h1>{{ section.title }}</h1>
+        <p class="section-description">{{ section.content | safe }}</p>
+
+        {% if section.pages %}
+        <div class="blog-posts">
+            {% for page in section.pages %}
+            <article class="blog-post-preview">
+                <h2><a href="{{ page.permalink }}">{{ page.title }}</a></h2>
+                <div class="blog-post-meta">
+                    <time datetime="{{ page.date }}">{{ page.date | date(format="%B %d, %Y") }}</time>
+                    {% if page.extra.author %}
+                    <span class="author">by {{ page.extra.author }}</span>
+                    {% endif %}
+                    {% if page.taxonomies.categories %}
+                    {% for cat in page.taxonomies.categories %}
+                    <span class="category">{{ cat | replace(from="-", to=" ") | title }}</span>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                {% if page.description %}
+                <p class="blog-post-description">{{ page.description }}</p>
+                {% endif %}
+                <a href="{{ page.permalink }}" class="read-more">Read more →</a>
+            </article>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if paginator %}
+        <nav class="pagination">
+            {% if paginator.previous %}
+            <a href="{{ paginator.previous }}" class="pagination-previous">← Newer</a>
+            {% else %}
+            <span class="pagination-spacer"></span>
+            {% endif %}
+            {% if paginator.next %}
+            <a href="{{ paginator.next }}" class="pagination-next">Older →</a>
+            {% endif %}
+        </nav>
+        {% endif %}
+    </article>
+
+    <aside class="blog-sidebar">
+        <div class="sidebar-widget">
+            <h3>Categories</h3>
+            <ul>
+                <li><a href="/blog/" class="category-link">All Posts</a></li>
+                <li><a href="/categories/announcements/" class="category-link">Announcements</a></li>
+                <li><a href="/categories/release-notes/" class="category-link">Release Notes</a></li>
+                <li><a href="/categories/tutorials/" class="category-link">Tutorials</a></li>
+            </ul>
+        </div>
+    </aside>
+</div>
+{% endblock %}
