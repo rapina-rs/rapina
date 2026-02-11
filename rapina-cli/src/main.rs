@@ -43,6 +43,17 @@ enum Commands {
     Routes,
     /// Run health checks on your API
     Doctor,
+    /// Run tests with pretty output
+    Test {
+        /// Generate coverage report (requires cargo-llvm-cov)
+        #[arg(long)]
+        coverage: bool,
+        /// Watch for changes and re-run tests
+        #[arg(short, long)]
+        watch: bool,
+        /// Filter tests by name
+        filter: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -117,6 +128,21 @@ fn main() {
         }
         Some(Commands::Doctor) => {
             if let Err(e) = commands::doctor::execute() {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Test {
+            coverage,
+            watch,
+            filter,
+        }) => {
+            let config = commands::test::TestConfig {
+                coverage,
+                watch,
+                filter,
+            };
+            if let Err(e) = commands::test::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
