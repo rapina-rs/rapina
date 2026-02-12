@@ -52,6 +52,7 @@
 //! - [`Query`](extract::Query) - Parse query string parameters
 //! - [`Form`](extract::Form) - Parse URL-encoded form data
 //! - [`Headers`](extract::Headers) - Access request headers
+//! - [`Cookie`](extract::Cookie) - Extract and deserialize cookies
 //! - [`State`](extract::State) - Access application state
 //! - [`Context`](extract::Context) - Access request context with trace_id
 //! - [`Validated`](extract::Validated) - Validate extracted data
@@ -113,7 +114,7 @@ pub mod prelude {
     };
     pub use crate::context::RequestContext;
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
-    pub use crate::extract::{Context, Form, Headers, Json, Path, Query, State, Validated};
+    pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
     pub use crate::middleware::{
         CompressionConfig, KeyExtractor, Middleware, Next, RateLimitConfig,
