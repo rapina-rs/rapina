@@ -209,6 +209,48 @@ impl Rapina {
         self
     }
 
+    /// Configures database connection with the given configuration.
+    ///
+    /// This method connects to the database and registers the connection
+    /// in the application state. Use the [`Db`](crate::database::Db) extractor
+    /// in your handlers to access the connection.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::prelude::*;
+    /// use rapina::database::{DatabaseConfig, Db};
+    ///
+    /// #[get("/users")]
+    /// async fn list_users(db: Db) -> Result<Json<Vec<User>>> {
+    ///     let users = UserEntity::find().all(db.conn()).await?;
+    ///     Ok(Json(users))
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     let db_config = DatabaseConfig::from_env()?;
+    ///
+    ///     Rapina::new()
+    ///         .with_database(db_config).await?
+    ///         .router(router)
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    #[cfg(feature = "database")]
+    pub async fn with_database(
+        mut self,
+        config: crate::database::DatabaseConfig,
+    ) -> Result<Self, std::io::Error> {
+        let conn = config
+            .connect()
+            .await
+            .map_err(|e| std::io::Error::other(format!("Database connection failed: {}", e)))?;
+        self.state = self.state.with(conn);
+        Ok(self)
+    }
+
     /// Starts the HTTP server on the given address.
     ///
     /// # Panics

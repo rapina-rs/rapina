@@ -66,7 +66,6 @@
 //! - [`TraceIdMiddleware`](middleware::TraceIdMiddleware) - Add trace IDs to requests
 //! - [`RequestLogMiddleware`](middleware::RequestLogMiddleware) - Structured request logging
 //! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting
-//! - [`CompressionMiddleware`](middleware::CompressionMiddleware) - Response compression (gzip, deflate)
 //!
 //! ## Introspection
 //!
@@ -84,6 +83,8 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod context;
+#[cfg(feature = "database")]
+pub mod database;
 pub mod error;
 pub mod extract;
 pub mod handler;
@@ -116,9 +117,7 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
-    pub use crate::middleware::{
-        CompressionConfig, KeyExtractor, Middleware, Next, RateLimitConfig,
-    };
+    pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
     pub use crate::observability::TracingConfig;
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
@@ -129,9 +128,14 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, post, public, put};
+    pub use rapina_macros::{Config, delete, get, post, public, put, schema};
 }
 
-// Re-export schemars and http crates so users don't need to add them to their Cargo.toml
+// Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
+pub use hyper;
 pub use schemars;
+
+// Re-export sea-orm when database feature is enabled
+#[cfg(feature = "database")]
+pub use sea_orm;

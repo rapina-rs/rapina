@@ -56,3 +56,13 @@ flate2 = "1.1"
 
 # Our macros
 rapina-macros = { version = "0.2.0", path = "../rapina-macros/" }
+
+# Database (optional)
+sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
+
+[features]
+default = []
+database = ["sea-orm"]
+postgres = ["database", "sea-orm/sqlx-postgres"]
+mysql = ["database", "sea-orm/sqlx-mysql"]
+sqlite = ["database", "sea-orm/sqlx-sqlite"]

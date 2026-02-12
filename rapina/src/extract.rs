@@ -595,6 +595,25 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
     Some(params)
 }
 
+// Database extractor (requires "database" feature)
+#[cfg(feature = "database")]
+impl FromRequestParts for crate::database::Db {
+    async fn from_request_parts(
+        _parts: &http::request::Parts,
+        _params: &PathParams,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Error> {
+        use sea_orm::DatabaseConnection;
+
+        let conn = state.get::<DatabaseConnection>().ok_or_else(|| {
+            Error::internal(
+                "Database connection not configured. Did you forget to call .with_database()?",
+            )
+        })?;
+        Ok(crate::database::Db::new(conn.clone()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

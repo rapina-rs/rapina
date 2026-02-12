@@ -2,6 +2,8 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
+mod schema;
+
 #[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro(attr, item)
@@ -127,7 +129,7 @@ fn route_macro_core(
         } else if body_extractors.len() == 1 {
             let (arg_name, arg_type) = &body_extractors[0];
             quote! {
-                let __rapina_req = http::Request::from_parts(__rapina_parts, __rapina_body);
+                let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
                 let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                     Ok(v) => v,
                     Err(e) => return rapina::response::IntoResponse::into_response(e),
@@ -165,10 +167,10 @@ fn route_macro_core(
 
             fn call(
                 &self,
-                __rapina_req: hyper::Request<hyper::body::Incoming>,
+                __rapina_req: rapina::hyper::Request<rapina::hyper::body::Incoming>,
                 __rapina_params: rapina::extract::PathParams,
                 __rapina_state: std::sync::Arc<rapina::state::AppState>,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = hyper::Response<rapina::response::BoxBody>> + Send>> {
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = rapina::hyper::Response<rapina::response::BoxBody>> + Send>> {
                 Box::pin(async move {
                     #handler_body
                 })
@@ -184,6 +186,8 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
         || type_str.contains("State")
         || type_str.contains("Context")
         || type_str.contains("CurrentUser")
+        || type_str.contains("Db")
+        || type_str.contains("Cookie")
 }
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
@@ -209,6 +213,69 @@ fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Config, attributes(env, default))]
 pub fn derive_config(input: TokenStream) -> TokenStream {
     derive_config_impl(input.into()).into()
+}
+
+/// Define database entities with Prisma-like syntax.
+///
+/// This macro generates SeaORM entity definitions from a declarative syntax
+/// where types indicate relationships. Each entity automatically gets `id`,
+/// `created_at`, and `updated_at` fields.
+///
+/// # Syntax
+///
+/// ```ignore
+/// rapina::schema! {
+///     User {
+///         email: String,
+///         name: String,
+///         posts: Vec<Post>,        // has_many relationship
+///     }
+///
+///     Post {
+///         title: String,
+///         content: Text,           // TEXT column type
+///         author: User,            // belongs_to -> generates author_id
+///         comments: Vec<Comment>,
+///     }
+///
+///     Comment {
+///         content: Text,
+///         post: Post,
+///         author: Option<User>,    // optional belongs_to
+///     }
+/// }
+/// ```
+///
+/// # Generated Code
+///
+/// For each entity, the macro generates a SeaORM module with:
+/// - `Model` struct with auto `id`, `created_at`, `updated_at`
+/// - `Relation` enum with proper SeaORM attributes
+/// - `Related<T>` trait implementations
+/// - `ActiveModelBehavior` implementation
+///
+/// # Supported Types
+///
+/// | Schema Type | Rust Type | Notes |
+/// |-------------|-----------|-------|
+/// | `String` | `String` | Default varchar |
+/// | `Text` | `String` | TEXT column |
+/// | `i32` | `i32` | |
+/// | `i64` | `i64` | |
+/// | `f32` | `f32` | |
+/// | `f64` | `f64` | |
+/// | `bool` | `bool` | |
+/// | `Uuid` | `Uuid` | |
+/// | `DateTime` | `DateTimeUtc` | |
+/// | `Date` | `Date` | |
+/// | `Decimal` | `Decimal` | |
+/// | `Json` | `Json` | |
+/// | `Option<T>` | `Option<T>` | Nullable |
+/// | `Vec<Entity>` | - | has_many relationship |
+/// | `Entity` | - | belongs_to (generates FK) |
+#[proc_macro]
+pub fn schema(input: TokenStream) -> TokenStream {
+    schema::schema_impl(input.into()).into()
 }
 
 fn derive_config_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
