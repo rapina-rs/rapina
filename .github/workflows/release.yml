@@ -28,6 +28,7 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        continue-on-error: true  # Skip if release already exists (manual release)
         with:
           generate_release_notes: true
           draft: false
@@ -52,4 +53,11 @@ jobs:
 
       - name: Publish rapina
         run: cargo publish -p rapina --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true  # Skip if version already published
+
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish rapina-cli
+        run: cargo publish -p rapina-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true  # Skip if version already published
