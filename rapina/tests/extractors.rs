@@ -558,3 +558,109 @@ async fn test_validated_extraction_empty_name() {
 
     assert_eq!(response.status(), 422); // Validation error
 }
+
+// Cookie Extractor Tests
+
+#[tokio::test]
+async fn test_cookie_extraction() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/dashboard", |req, _, _| async move {
+                let cookie_header = req
+                    .headers()
+                    .get("cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+
+                // Parse session_id from cookie
+                let session_id = cookie_header
+                    .split(';')
+                    .find_map(|pair| {
+                        let (key, value) = pair.trim().split_once('=')?;
+                        if key == "session_id" {
+                            Some(value.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_default();
+
+                format!("Session: {}", session_id)
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .get("/dashboard")
+        .header("cookie", "session_id=abc123")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "Session: abc123");
+}
+
+#[tokio::test]
+async fn test_cookie_extraction_multiple_cookies() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/user", |req, _, _| async move {
+                let cookie_header = req
+                    .headers()
+                    .get("cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+
+                let cookies: std::collections::HashMap<String, String> = cookie_header
+                    .split(';')
+                    .filter_map(|pair| {
+                        let (key, value) = pair.trim().split_once('=')?;
+                        Some((key.to_string(), value.to_string()))
+                    })
+                    .collect();
+
+                let session = cookies.get("session_id").cloned().unwrap_or_default();
+                let user = cookies.get("user_id").cloned().unwrap_or_default();
+
+                format!("Session: {}, User: {}", session, user)
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .get("/user")
+        .header("cookie", "session_id=abc123; user_id=user456")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "Session: abc123, User: user456");
+}
+
+#[tokio::test]
+async fn test_cookie_extraction_missing() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(
+            Router::new().route(http::Method::GET, "/dashboard", |req, _, _| async move {
+                let cookie_header = req
+                    .headers()
+                    .get("cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+
+                if cookie_header.is_empty() {
+                    return Error::bad_request("missing cookies").into_response();
+                }
+
+                "ok".into_response()
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/dashboard").send().await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
