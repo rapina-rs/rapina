@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "rapina"
-version = "0.2.1"
+version = "0.4.0"
 dependencies = [
  "bytes",
  "dashmap",
@@ -2016,7 +2016,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-cli"
-version = "0.2.1"
+version = "0.4.0"
 dependencies = [
  "clap",
  "colored",
@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-macros"
-version = "0.2.1"
+version = "0.4.0"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
