@@ -7,12 +7,6 @@
     <title>{% block title %}{{ config.title }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
     <link rel="icon" type="image/png" href="{{ get_url(path='images/rapina-icon.png') }}">
-    <!-- Syntax highlighting for code blocks in templates -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/shell.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
     <script>
         // Dark mode initialization (before page render to prevent flash)
         (function() {
@@ -113,10 +107,9 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="footer">
-        <div class="footer-container">
-            <p>Built with Rust. Documented with <a href="https://www.getzola.org/" target="_blank">Zola</a>.</p>
-            <p>MIT License</p>
+    <footer class="docs-footer">
+        <div class="docs-footer-container">
+            <p class="docs-footer-meta">MIT License</p>
         </div>
     </footer>
 
@@ -245,9 +238,6 @@
 
         // Load search index on page load
         loadSearchIndex();
-
-        // Initialize syntax highlighting
-        hljs.highlightAll();
 
         // Mobile menu
         function toggleMobileMenu() {

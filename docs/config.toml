@@ -16,8 +16,10 @@ taxonomies = [
 ]
 
 [markdown]
-highlight_code = true
-highlight_theme = "base16-ocean-dark"
+external_links_class = "external"
+
+[markdown.highlighting]
+theme = "catppuccin-mocha"
 
 [extra]
 # Branding
@@ -32,27 +34,32 @@ color_optional = "#CE422B"     # Rust Orange
 
 # Links
 github = "https://github.com/arferreira/rapina"
+discord = "https://discord.gg/jMhhfjEE"
 crates_io = "https://crates.io/crates/rapina"
 docs_rs = "https://docs.rs/rapina"
 
 # Navigation
 [[extra.nav]]
-name = "Guide"
-url = "/guide/"
+name = "API Reference"
+url = "https://docs.rs/rapina"
+external = true
 
 [[extra.nav]]
-name = "CLI"
-url = "/cli/"
-
-[[extra.nav]]
-name = "Philosophy"
-url = "/philosophy/"
+name = "Docs"
+url = "/docs/introduction/what-is-rapina/"
 
 [[extra.nav]]
 name = "Blog"
 url = "/blog/"
 
 [[extra.nav]]
-name = "API"
-url = "https://docs.rs/rapina"
-external = true
+name = "Support"
+url = "/support/"
+
+[[extra.nav]]
+name = "Changelog"
+url = "/changelog/"
+
+[[extra.nav]]
+name = "Roadmap"
+url = "/roadmap/"

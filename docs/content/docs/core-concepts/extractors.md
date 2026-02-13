@@ -1,7 +1,8 @@
 +++
 title = "Extractors"
 description = "Parse request data with type safety"
-weight = 3
+weight = 2
+date = 2025-02-13
 +++
 
 Extractors automatically parse request data and inject it into your handlers. If parsing fails, they return appropriate error responses.

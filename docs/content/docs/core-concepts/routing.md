@@ -1,7 +1,8 @@
 +++
 title = "Routing"
 description = "Define routes and handle parameters"
-weight = 2
+weight = 1
+date = 2025-02-13
 +++
 
 Routes in Rapina map HTTP methods and URL patterns to handler functions. The router matches incoming requests and extracts path parameters automatically.
@@ -229,9 +230,3 @@ async fn main() -> std::io::Result<()> {
         .await
 }
 ```
-
-## What's Next?
-
-- [Extractors](/guide/extractors/) - Parse request data with type safety
-- [Authentication](/guide/authentication/) - Add JWT authentication
-- [Errors](/guide/errors/) - Handle errors consistently

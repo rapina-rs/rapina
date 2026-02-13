@@ -1,0 +1,46 @@
+{% extends "docs-base.html" %}
+
+{% block title %}Documentation - Rapina{% endblock %}
+
+{% block content %}
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <nav class="docs-nav">
+            <h4>Documentation</h4>
+            <ul>
+                {% for subsection in section.subsections %}
+                    {% set sub = get_section(path=subsection) %}
+                    <li class="docs-nav-section">
+                        <a href="{{ sub.permalink }}">{{ sub.title }}</a>
+                        {% if sub.pages %}
+                        <ul>
+                            {% for page in sub.pages %}
+                            <li>
+                                <a href="{{ page.permalink }}">{{ page.title }}</a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </aside>
+    <article class="docs-content">
+        <h1>Documentation</h1>
+        <p class="docs-intro">Everything you need to build APIs with Rapina.</p>
+
+        <div class="docs-sections-grid">
+            {% for subsection in section.subsections %}
+                {% set sub = get_section(path=subsection) %}
+                <a href="{{ sub.permalink }}" class="docs-section-card">
+                    <h3>{{ sub.title }}</h3>
+                    {% if sub.description %}
+                    <p>{{ sub.description }}</p>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </div>
+    </article>
+</div>
+{% endblock %}
