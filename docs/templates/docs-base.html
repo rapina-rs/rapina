@@ -7,6 +7,9 @@
     <title>{% block title %}{{ config.title }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
     <link rel="icon" type="image/png" href="{{ get_url(path='images/rapina-icon.png') }}">
+    <!-- Elasticlunr for search -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elasticlunr/0.9.6/elasticlunr.min.js"></script>
+    <script src="{{ get_url(path='search_index.en.js') }}"></script>
     <script>
         // Dark mode initialization (before page render to prevent flash)
         (function() {
@@ -166,15 +169,12 @@
             }
         });
 
-        // Simple search (uses Zola's search index)
+        // Search (uses Zola's elasticlunr index)
         let searchIndex = null;
 
-        async function loadSearchIndex() {
-            try {
-                const response = await fetch('{{ get_url(path="search_index.en.json") }}');
-                searchIndex = await response.json();
-            } catch (e) {
-                console.log('Search index not available');
+        function loadSearchIndex() {
+            if (window.searchIndex) {
+                searchIndex = elasticlunr.Index.load(window.searchIndex);
             }
         }
 
@@ -187,40 +187,43 @@
             }
 
             if (!searchIndex) {
-                resultsContainer.innerHTML = '<div class="search-no-results">Loading search index...</div>';
-                loadSearchIndex().then(() => performSearch(query));
-                return;
-            }
-
-            const results = [];
-            const queryLower = query.toLowerCase();
-
-            for (const [url, doc] of Object.entries(searchIndex)) {
-                const title = doc.title || '';
-                const body = doc.body || '';
-
-                if (title.toLowerCase().includes(queryLower) || body.toLowerCase().includes(queryLower)) {
-                    const excerpt = getExcerpt(body, queryLower);
-                    results.push({ url, title, excerpt });
+                loadSearchIndex();
+                if (!searchIndex) {
+                    resultsContainer.innerHTML = '<div class="search-no-results">Search index not available</div>';
+                    return;
                 }
             }
+
+            const results = searchIndex.search(query, { expand: true });
 
             if (results.length === 0) {
                 resultsContainer.innerHTML = '<div class="search-no-results">No results found</div>';
                 return;
             }
 
-            resultsContainer.innerHTML = results.slice(0, 10).map(r => `
-                <a href="${r.url}" class="search-result">
-                    <div class="search-result-title">${r.title}</div>
-                    <div class="search-result-excerpt">${r.excerpt}</div>
-                </a>
-            `).join('');
+            resultsContainer.innerHTML = results.slice(0, 10).map(r => {
+                const doc = searchIndex.documentStore.getDoc(r.ref);
+                const title = doc.title || 'Untitled';
+                const body = doc.body || '';
+                const excerpt = getExcerpt(body, query);
+                return `
+                    <a href="${r.ref}" class="search-result">
+                        <div class="search-result-title">${escapeHtml(title)}</div>
+                        <div class="search-result-excerpt">${excerpt}</div>
+                    </a>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         function getExcerpt(body, query) {
-            const index = body.toLowerCase().indexOf(query);
-            if (index === -1) return body.slice(0, 100) + '...';
+            const index = body.toLowerCase().indexOf(query.toLowerCase());
+            if (index === -1) return escapeHtml(body.slice(0, 100)) + '...';
 
             const start = Math.max(0, index - 40);
             const end = Math.min(body.length, index + query.length + 60);
@@ -229,15 +232,13 @@
             if (start > 0) excerpt = '...' + excerpt;
             if (end < body.length) excerpt = excerpt + '...';
 
-            // Highlight the match
-            const regex = new RegExp(`(${query})`, 'gi');
+            // Escape HTML first, then highlight the match
+            excerpt = escapeHtml(excerpt);
+            const regex = new RegExp(`(${escapeHtml(query)})`, 'gi');
             excerpt = excerpt.replace(regex, '<mark>$1</mark>');
 
             return excerpt;
         }
-
-        // Load search index on page load
-        loadSearchIndex();
 
         // Mobile menu
         function toggleMobileMenu() {
