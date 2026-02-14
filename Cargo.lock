@@ -328,8 +328,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -862,6 +864,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
+name = "futures"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65bc07b1a8bc7c85c5f2e110c476c7389b4554ba72af57d8445ea63a576b0876"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -966,6 +982,12 @@ dependencies = [
  "r-efi",
  "wasip2",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "group"
@@ -1992,6 +2014,7 @@ dependencies = [
 name = "rapina"
 version = "0.4.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "dashmap",
  "dotenvy",
@@ -2004,6 +2027,7 @@ dependencies = [
  "rapina-macros",
  "schemars",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -2018,6 +2042,7 @@ dependencies = [
 name = "rapina-cli"
 version = "0.4.0"
 dependencies = [
+ "chrono",
  "clap",
  "colored",
  "ctrlc",
@@ -2273,6 +2298,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54e910108742c57a770f492731f99be216a52fadd361b06c8fb59d74ccc267d2"
 dependencies = [
+ "chrono",
  "dyn-clone",
  "ref-cast",
  "schemars_derive",
@@ -2342,6 +2368,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sea-orm-cli"
+version = "1.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c94492e2ab6c045b4cc38013809ce255d14c3d352c9f0d11e6b920e2adc948ad"
+dependencies = [
+ "chrono",
+ "clap",
+ "dotenvy",
+ "glob",
+ "regex",
+ "sea-schema",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "sea-orm-macros"
 version = "1.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2356,6 +2401,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sea-orm-migration"
+version = "1.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7315c0cadb7e60fb17ee2bb282aa27d01911fc2a7e5836ec1d4ac37d19250bb4"
+dependencies = [
+ "async-trait",
+ "clap",
+ "dotenvy",
+ "sea-orm",
+ "sea-orm-cli",
+ "sea-schema",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "sea-query"
 version = "0.32.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2366,6 +2427,7 @@ dependencies = [
  "inherent",
  "ordered-float",
  "rust_decimal",
+ "sea-query-derive",
  "serde_json",
  "time",
  "uuid",
@@ -2385,6 +2447,45 @@ dependencies = [
  "sqlx",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "sea-query-derive"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bae0cbad6ab996955664982739354128c58d16e126114fe88c2a493642502aab"
+dependencies = [
+ "darling",
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+ "thiserror",
+]
+
+[[package]]
+name = "sea-schema"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2239ff574c04858ca77485f112afea1a15e53135d3097d0c86509cef1def1338"
+dependencies = [
+ "futures",
+ "sea-query",
+ "sea-query-binder",
+ "sea-schema-derive",
+ "sqlx",
+]
+
+[[package]]
+name = "sea-schema-derive"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "debdc8729c37fdbf88472f97fd470393089f997a909e535ff67c544d18cfccf0"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]

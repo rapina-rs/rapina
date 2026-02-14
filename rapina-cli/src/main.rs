@@ -41,6 +41,11 @@ enum Commands {
     },
     /// List all registered routes
     Routes,
+    /// Database migration tools
+    Migrate {
+        #[command(subcommand)]
+        command: MigrateCommands,
+    },
     /// Run health checks on your API
     Doctor,
     /// Run tests with pretty output
@@ -53,6 +58,15 @@ enum Commands {
         watch: bool,
         /// Filter tests by name
         filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MigrateCommands {
+    /// Generate a new migration file
+    New {
+        /// Name of the migration (e.g., create_users)
+        name: String,
     },
 }
 
@@ -105,6 +119,15 @@ fn main() {
                 reload: !no_reload,
             };
             if let Err(e) = commands::dev::execute(config) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Migrate { command }) => {
+            let result = match command {
+                MigrateCommands::New { name } => commands::migrate::new_migration(&name),
+            };
+            if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }

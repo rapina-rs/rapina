@@ -90,6 +90,8 @@ pub mod extract;
 pub mod handler;
 pub mod introspection;
 pub mod middleware;
+#[cfg(feature = "database")]
+pub mod migration;
 pub mod observability;
 pub mod openapi;
 pub mod response;
@@ -138,4 +140,8 @@ pub use schemars;
 
 // Re-export sea-orm when database feature is enabled
 #[cfg(feature = "database")]
+pub use async_trait;
+#[cfg(feature = "database")]
 pub use sea_orm;
+#[cfg(feature = "database")]
+pub use sea_orm_migration;

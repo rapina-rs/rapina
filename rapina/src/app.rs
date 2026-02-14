@@ -251,6 +251,43 @@ impl Rapina {
         Ok(self)
     }
 
+    /// Runs all pending database migrations at startup.
+    ///
+    /// Call this after `with_database()` to apply migrations before serving requests.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// mod migrations;
+    ///
+    /// Rapina::new()
+    ///     .with_database(DatabaseConfig::from_env()?).await?
+    ///     .run_migrations::<migrations::Migrator>().await?
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "database")]
+    pub async fn run_migrations<M: crate::migration::MigratorTrait>(
+        self,
+    ) -> Result<Self, std::io::Error> {
+        let conn = self
+            .state
+            .get::<sea_orm::DatabaseConnection>()
+            .ok_or_else(|| {
+                std::io::Error::other(
+                    "Database not configured. Call .with_database() before
+  .run_migrations()",
+                )
+            })?;
+
+        crate::migration::run_pending::<M>(conn)
+            .await
+            .map_err(|e| std::io::Error::other(format!("Migration failed: {}", e)))?;
+
+        Ok(self)
+    }
+
     /// Starts the HTTP server on the given address.
     ///
     /// # Panics

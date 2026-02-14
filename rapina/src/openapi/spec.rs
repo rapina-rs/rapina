@@ -183,6 +183,28 @@ fn error_response_ref() -> Response {
     }
 }
 
+/// Convert a snake_case handler name to a human-readable summary.
+/// e.g., "list_todos" -> "List todos", "get_todo" -> "Get todo"
+fn humanize_handler_name(name: &str) -> String {
+    let words: Vec<&str> = name.split('_').collect();
+    let mut result = String::new();
+    for (i, word) in words.iter().enumerate() {
+        if i > 0 {
+            result.push(' ');
+        }
+        if i == 0 {
+            let mut chars = word.chars();
+            if let Some(c) = chars.next() {
+                result.extend(c.to_uppercase());
+                result.push_str(chars.as_str());
+            }
+        } else {
+            result.push_str(word);
+        }
+    }
+    result
+}
+
 pub fn build_openapi_spec(
     title: &str,
     version: &str,
@@ -247,7 +269,10 @@ pub fn build_openapi_spec(
             }
         };
 
+        let summary = humanize_handler_name(&route.handler_name);
+
         let mut operation = Operation {
+            summary: Some(summary),
             operation_id: Some(route.handler_name.clone()),
             parameters: params,
             ..Default::default()

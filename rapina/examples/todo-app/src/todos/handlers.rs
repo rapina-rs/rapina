@@ -1,0 +1,76 @@
+use rapina::prelude::*;
+use rapina::database::{Db, DbError};
+use rapina::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
+
+use crate::entity::Todo;
+use crate::entity::todo::{ActiveModel, Model};
+
+use super::dto::{CreateTodo, UpdateTodo};
+use super::error::TodoError;
+
+#[get("/todos")]
+#[errors(TodoError)]
+pub async fn list_todos(db: Db) -> Result<Json<Vec<Model>>> {
+    let todos = Todo::find().all(db.conn()).await.map_err(DbError)?;
+    Ok(Json(todos))
+}
+
+#[get("/todos/:id")]
+#[errors(TodoError)]
+pub async fn get_todo(db: Db, id: Path<i32>) -> Result<Json<Model>> {
+    let id = id.into_inner();
+    let todo = Todo::find_by_id(id)
+        .one(db.conn())
+        .await
+        .map_err(DbError)?
+        .ok_or_else(|| Error::not_found(format!("Todo {} not found", id)))?;
+    Ok(Json(todo))
+}
+
+#[post("/todos")]
+#[errors(TodoError)]
+pub async fn create_todo(db: Db, body: Json<CreateTodo>) -> Result<Json<Model>> {
+    let todo = ActiveModel {
+        title: Set(body.into_inner().title),
+        ..Default::default()
+    };
+    let result = todo.insert(db.conn()).await.map_err(DbError)?;
+    Ok(Json(result))
+}
+
+#[put("/todos/:id")]
+#[errors(TodoError)]
+pub async fn update_todo(db: Db, id: Path<i32>, body: Json<UpdateTodo>) -> Result<Json<Model>> {
+    let id = id.into_inner();
+    let todo = Todo::find_by_id(id)
+        .one(db.conn())
+        .await
+        .map_err(DbError)?
+        .ok_or_else(|| Error::not_found(format!("Todo {} not found", id)))?;
+
+    let update = body.into_inner();
+    let mut active: ActiveModel = todo.into_active_model();
+    if let Some(title) = update.title {
+        active.title = Set(title);
+    }
+    if let Some(done) = update.done {
+        active.done = Set(done);
+    }
+
+    let result = active.update(db.conn()).await.map_err(DbError)?;
+    Ok(Json(result))
+}
+
+#[delete("/todos/:id")]
+#[errors(TodoError)]
+pub async fn delete_todo(db: Db, id: Path<i32>) -> Result<Json<serde_json::Value>> {
+    let id = id.into_inner();
+    let result = Todo::delete_by_id(id)
+        .exec(db.conn())
+        .await
+        .map_err(DbError)?;
+    if result.rows_affected == 0 {
+        return Err(Error::not_found(format!("Todo {} not found", id)));
+    }
+    Ok(Json(serde_json::json!({ "deleted": id })))
+}

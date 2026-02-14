@@ -62,11 +62,24 @@ fn route_macro_core(
     item: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let _path: LitStr = syn::parse2(attr).expect("expected path as string literal");
-    let func: ItemFn = syn::parse2(item).expect("expected function");
+    let mut func: ItemFn = syn::parse2(item).expect("expected function");
 
     let func_name = &func.sig.ident;
     let func_name_str = func_name.to_string();
     let func_vis = &func.vis;
+
+    // Extract #[errors(ErrorType)] attribute if present
+    let error_type = extract_errors_attr(&mut func.attrs);
+
+    let error_responses_impl = if let Some(err_type) = &error_type {
+        quote! {
+            fn error_responses() -> Vec<rapina::error::ErrorVariant> {
+                <#err_type as rapina::error::DocumentedError>::error_variants()
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     // Extract return type for schema generation
     let response_schema_impl = if let syn::ReturnType::Type(_, return_type) = &func.sig.output {
@@ -164,6 +177,7 @@ fn route_macro_core(
             const NAME: &'static str = #func_name_str;
 
             #response_schema_impl
+            #error_responses_impl
 
             fn call(
                 &self,
@@ -194,13 +208,34 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
 fn extract_json_inner_type(return_type: &syn::Type) -> Option<proc_macro2::TokenStream> {
     if let syn::Type::Path(type_path) = return_type
         && let Some(last_segment) = type_path.path.segments.last()
-        && last_segment.ident == "Json"
-        && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
-        && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
     {
-        return Some(quote!(#inner_type));
+        // Direct Json<T>
+        if last_segment.ident == "Json"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(quote!(#inner_type));
+        }
+
+        // Result<Json<T>> or Result<Json<T>, E>
+        if last_segment.ident == "Result"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
+        {
+            return extract_json_inner_type(ok_type);
+        }
     }
     None
+}
+
+/// Extract #[errors(ErrorType)] attribute from function attributes, removing it if found.
+fn extract_errors_attr(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Type> {
+    let idx = attrs
+        .iter()
+        .position(|attr| attr.path().is_ident("errors"))?;
+    let attr = attrs.remove(idx);
+    let err_type: syn::Type = attr.parse_args().expect("expected #[errors(ErrorType)]");
+    Some(err_type)
 }
 
 fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -471,6 +506,41 @@ mod tests {
         assert!(output_str.contains("fn response_schema"));
         assert!(output_str.contains("rapina :: schemars :: schema_for !"));
         assert!(output_str.contains("UserResponse"));
+    }
+
+    #[test]
+    fn test_result_json_return_type_generates_response_schema() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn get_user() -> Result<Json<UserResponse>> {
+                Ok(Json(UserResponse { id: 1 }))
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("fn response_schema"));
+        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("UserResponse"));
+    }
+
+    #[test]
+    fn test_errors_attr_generates_error_responses() {
+        let path = quote!("/users");
+        let input = quote! {
+            #[errors(UserError)]
+            async fn get_user() -> Result<Json<UserResponse>> {
+                Ok(Json(UserResponse { id: 1 }))
+            }
+        };
+
+        let output = route_macro_core(path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("fn error_responses"));
+        assert!(output_str.contains("DocumentedError"));
+        assert!(output_str.contains("UserError"));
     }
 
     #[test]
