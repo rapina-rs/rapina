@@ -1,7 +1,8 @@
 +++
 title = "Error Handling"
 description = "Standardized error responses with trace IDs"
-weight = 5
+weight = 4
+date = 2025-02-13
 +++
 
 Rapina provides standardized error handling with consistent response formats and trace IDs for debugging.

@@ -1,7 +1,8 @@
 +++
 title = "Authentication"
 description = "JWT authentication with protected-by-default routes"
-weight = 4
+weight = 3
+date = 2025-02-13
 +++
 
 Rapina provides JWT authentication with a "protected by default" approach. All routes require authentication unless explicitly marked as public.

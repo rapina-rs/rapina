@@ -10,12 +10,6 @@
     <!-- Elasticlunr for search -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/elasticlunr/0.9.6/elasticlunr.min.js"></script>
     <script src="{{ get_url(path='search_index.en.js') }}"></script>
-    <!-- Syntax highlighting for code blocks in templates -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/shell.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
     <script>
         // Dark mode initialization (before page render to prevent flash)
         (function() {
@@ -116,10 +110,9 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="footer">
-        <div class="footer-container">
-            <p>Built with Rust. Documented with <a href="https://www.getzola.org/" target="_blank">Zola</a>.</p>
-            <p>MIT License</p>
+    <footer class="docs-footer">
+        <div class="docs-footer-container">
+            <p class="docs-footer-meta">MIT License</p>
         </div>
     </footer>
 
@@ -246,9 +239,6 @@
 
             return excerpt;
         }
-
-        // Initialize syntax highlighting
-        hljs.highlightAll();
 
         // Mobile menu
         function toggleMobileMenu() {

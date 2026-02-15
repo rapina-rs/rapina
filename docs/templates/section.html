@@ -1,19 +1,30 @@
-{% extends "base.html" %}
+{% extends "docs-base.html" %}
 
 {% block title %}{{ section.title }} - Rapina{% endblock %}
 
 {% block content %}
+{% set docs = get_section(path="docs/_index.md") %}
 <div class="docs-layout">
     <aside class="docs-sidebar">
         <nav class="docs-nav">
-            <h4>{{ section.title }}</h4>
+            <h4>Documentation</h4>
             <ul>
-                {% for page in section.pages %}
-                <li>
-                    <a href="{{ page.permalink }}" {% if current_path == page.path %}class="active"{% endif %}>
-                        {{ page.title }}
-                    </a>
-                </li>
+                {% for subsection in docs.subsections %}
+                    {% set sub = get_section(path=subsection) %}
+                    <li class="docs-nav-section">
+                        <a href="{{ sub.permalink }}" {% if sub.path == section.path %}class="active"{% endif %}>{{ sub.title }}</a>
+                        {% if sub.pages %}
+                        <ul>
+                            {% for sub_page in sub.pages %}
+                            <li>
+                                <a href="{{ sub_page.permalink }}">
+                                    {{ sub_page.title }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
                 {% endfor %}
             </ul>
         </nav>

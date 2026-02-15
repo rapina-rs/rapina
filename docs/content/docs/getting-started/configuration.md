@@ -2,6 +2,7 @@
 title = "Configuration"
 description = "Type-safe configuration from environment variables"
 weight = 2
+date = 2025-02-13
 +++
 
 ## Environment Variables

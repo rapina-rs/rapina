@@ -2,6 +2,7 @@
 title = "Commands"
 description = "Complete CLI command reference"
 weight = 1
+date = 2025-02-13
 +++
 
 ## rapina new

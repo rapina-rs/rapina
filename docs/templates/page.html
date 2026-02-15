@@ -1,26 +1,34 @@
-{% extends "base.html" %}
+{% extends "docs-base.html" %}
 
 {% block title %}{{ page.title }} - Rapina{% endblock %}
 
 {% block content %}
+{% set docs = get_section(path="docs/_index.md") %}
 <div class="docs-layout">
-    {% if page.ancestors %}
     <aside class="docs-sidebar">
         <nav class="docs-nav">
-            {% set section = get_section(path=page.ancestors | last) %}
-            <h4><a href="{{ section.permalink }}">{{ section.title }}</a></h4>
+            <h4>Documentation</h4>
             <ul>
-                {% for sibling in section.pages %}
-                <li>
-                    <a href="{{ sibling.permalink }}" {% if sibling.path == page.path %}class="active"{% endif %}>
-                        {{ sibling.title }}
-                    </a>
-                </li>
+                {% for subsection in docs.subsections %}
+                    {% set sub = get_section(path=subsection) %}
+                    <li class="docs-nav-section">
+                        <a href="{{ sub.permalink }}">{{ sub.title }}</a>
+                        {% if sub.pages %}
+                        <ul>
+                            {% for sub_page in sub.pages %}
+                            <li>
+                                <a href="{{ sub_page.permalink }}" {% if sub_page.path == page.path %}class="active"{% endif %}>
+                                    {{ sub_page.title }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </li>
                 {% endfor %}
             </ul>
         </nav>
     </aside>
-    {% endif %}
     <article class="docs-content">
         <h1>{{ page.title }}</h1>
         {% if page.description %}
@@ -28,10 +36,42 @@
         {% endif %}
         {{ page.content | safe }}
 
-        <div class="page-meta">
-            {% if page.extra.edit_url %}
-            <a href="{{ page.extra.edit_url }}" target="_blank">Edit this page on GitHub</a>
+        <nav class="page-nav">
+            {% if page.lower %}
+            <a href="{{ page.lower.permalink }}" class="page-nav-link page-nav-prev">
+                <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" height="20">
+                    <path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+                <span>{{ page.lower.title }}</span>
+            </a>
+            {% else %}
+            <span></span>
             {% endif %}
+            {% if page.higher %}
+            <a href="{{ page.higher.permalink }}" class="page-nav-link page-nav-next">
+                <span>{{ page.higher.title }}</span>
+                <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" height="20">
+                    <path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </a>
+            {% endif %}
+        </nav>
+
+        <div class="page-footer">
+            <a href="{{ config.extra.github }}/edit/main/docs/content/{{ page.relative_path }}" target="_blank" rel="noopener" class="edit-on-github">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Edit this page on GitHub
+            </a>
+            <div class="page-last-updated">
+                {% if page.updated %}
+                Last updated on {{ page.updated | date(format="%B %d, %Y") }}
+                {% elif page.date %}
+                Last updated on {{ page.date | date(format="%B %d, %Y") }}
+                {% endif %}
+            </div>
         </div>
     </article>
 </div>

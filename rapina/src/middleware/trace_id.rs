@@ -59,3 +59,18 @@ impl Middleware for TraceIdMiddleware {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trace_id_middleware_new() {
+        let _mw = TraceIdMiddleware::new();
+    }
+
+    #[test]
+    fn test_trace_id_middleware_default() {
+        let _mw: TraceIdMiddleware = Default::default();
+    }
+}
