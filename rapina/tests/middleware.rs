@@ -521,3 +521,25 @@ async fn test_compression_skips_without_accept_encoding() {
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response.headers().get("content-encoding").is_none());
 }
+
+#[tokio::test]
+async fn test_trace_id_middleware_preserves_incoming_trace_id() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TraceIdMiddleware::new())
+        .router(Router::new().route(http::Method::GET, "/health", |_, _, _| async { "ok" }));
+
+    let client = TestClient::new(app).await;
+    let custom_trace_id = "my-custom-trace-id-123";
+
+    let response = client
+        .get("/health")
+        .header("x-trace-id", custom_trace_id)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let header_value = response.headers().get(TRACE_ID_HEADER).unwrap();
+    assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
+}
