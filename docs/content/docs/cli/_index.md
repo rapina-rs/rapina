@@ -1,7 +1,7 @@
 +++
-title = "CLI Reference"
+title = "CLI"
+weight = 4
 sort_by = "weight"
-template = "section.html"
 +++
 
 The Rapina CLI provides tools for development, project scaffolding, and API management.

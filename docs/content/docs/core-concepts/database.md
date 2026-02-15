@@ -1,7 +1,8 @@
 +++
 title = "Database"
 description = "Database integration with SeaORM"
-weight = 6
+weight = 5
+date = 2025-02-13
 +++
 
 Rapina integrates with [SeaORM](https://www.sea-ql.org/SeaORM/) for database operations. Enable it with a feature flag for your database.
@@ -12,7 +13,7 @@ Add the database feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = { version = "0.2", features = ["postgres"] }
+rapina = { version = "0.4.0", features = ["postgres"] }
 # or "mysql", "sqlite"
 ```
 

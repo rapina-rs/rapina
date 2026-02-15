@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Changelog - Rapina{% endblock %}
+
+{% block content %}
+<div class="changelog-page">
+    <div class="changelog-header">
+        <h1>Changelog</h1>
+        <p>All notable changes to Rapina.</p>
+    </div>
+
+    <div class="changelog-timeline">
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 13, 2025</div>
+                <h2>v0.1.0-alpha.5</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Added <code>schema!</code> macro for database entity definition</li>
+                    <li>Re-exported http, hyper, schemars to eliminate user dependencies</li>
+                    <li>Improved documentation site with Bruno-inspired design</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 10, 2025</div>
+                <h2>v0.1.0-alpha.4</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Added database integration with SeaORM</li>
+                    <li>New <code>Validated&lt;T&gt;</code> extractor for request validation</li>
+                    <li>Rate limiting middleware</li>
+                    <li>Fixed clippy lints and formatting issues</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 5, 2025</div>
+                <h2>v0.1.0-alpha.3</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>JWT authentication support</li>
+                    <li>OpenAPI generation from routes</li>
+                    <li>Cookie extractors</li>
+                    <li>Compression middleware</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 28, 2025</div>
+                <h2>v0.1.0-alpha.2</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-docs">Docs</span>
+                <ul>
+                    <li>Rapina CLI with <code>new</code>, <code>dev</code>, <code>routes</code>, <code>doctor</code> commands</li>
+                    <li>State extractors for dependency injection</li>
+                    <li>Documentation site launch</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 20, 2025</div>
+                <h2>v0.1.0-alpha.1</h2>
+                <span class="timeline-tag tag-release">Initial Release</span>
+                <ul>
+                    <li>Core routing with typed extractors</li>
+                    <li>JSON request/response handling</li>
+                    <li>Path and query parameter extraction</li>
+                    <li>Basic error handling with typed responses</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

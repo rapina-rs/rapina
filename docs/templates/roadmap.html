@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Roadmap - Rapina{% endblock %}
+
+{% block content %}
+<div class="roadmap-page">
+    <div class="roadmap-header">
+        <h1>Rolling Roadmap</h1>
+        <p>We try to highlight important or popular new features on this roadmap. For a complete list of released features and updates, check out our <a href="/changelog/">changelog</a>.</p>
+    </div>
+
+    <div class="roadmap-board">
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator planned"></span>
+                <h3>Planned</h3>
+            </div>
+            <div class="column-cards">
+                <div class="roadmap-card">
+                    <h4>WebSocket Support</h4>
+                    <p>Real-time communication with typed message handlers.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Background Jobs</h4>
+                    <p>Async task queue with Redis backend.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>GraphQL Support</h4>
+                    <p>Optional GraphQL layer with async-graphql integration.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Caching Layer</h4>
+                    <p>Built-in caching with Redis and in-memory backends.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator in-progress"></span>
+                <h3>In Progress</h3>
+            </div>
+            <div class="column-cards">
+                <div class="roadmap-card">
+                    <h4>Schema Macro</h4>
+                    <p>Prisma-like schema definition with <code>rapina::schema!</code> macro.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                        <span class="card-tag">Database</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Migrations CLI</h4>
+                    <p>Database migrations with <code>rapina migrate</code> commands.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">CLI</span>
+                        <span class="card-tag">Database</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Seed Command</h4>
+                    <p>Database seeding with <code>rapina seed</code> for development.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">CLI</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator done"></span>
+                <h3>Done</h3>
+            </div>
+            <div class="column-cards">
+                <div class="roadmap-card">
+                    <h4>Database Integration</h4>
+                    <p>SeaORM integration with connection pooling.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.4</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Request Validation</h4>
+                    <p><code>Validated&lt;T&gt;</code> extractor with validator crate.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.4</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>JWT Authentication</h4>
+                    <p>Built-in JWT support with protected routes.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.3</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>OpenAPI Generation</h4>
+                    <p>Automatic OpenAPI spec from route definitions.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.3</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Rapina CLI</h4>
+                    <p>Project scaffolding and development tools.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.2</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="roadmap-footer">
+        <p>Have a feature request? <a href="https://github.com/arferreira/rapina/discussions" target="_blank">Start a discussion</a> or <a href="https://github.com/arferreira/rapina/issues/new" target="_blank">open an issue</a>.</p>
+    </div>
+</div>
+{% endblock %}
