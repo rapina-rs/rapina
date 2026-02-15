@@ -66,8 +66,9 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
             use rapina::sea_orm;
             use sea_orm::entity::prelude::*;
             use serde::{Deserialize, Serialize};
+            use rapina::schemars::{self, JsonSchema};
 
-            #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+            #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, JsonSchema)]
             #[sea_orm(table_name = #table_name)]
             pub struct Model {
                 #[sea_orm(primary_key)]

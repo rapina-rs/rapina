@@ -43,7 +43,7 @@ uuid = { version = "1", features = ["v4"] }
 dotenvy = "0.15.7"
 
 # OpenAPI
-schemars = "1.2.0"
+schemars = { version = "1.2.0", features = ["chrono04"] }
 
 # JWT Authentication
 jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
@@ -60,9 +60,13 @@ rapina-macros = { version = "0.4.0", path = "../rapina-macros/" }
 # Database (optional)
 sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
 
+# Database migration (Optional)
+sea-orm-migration = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
+async-trait = { version = "0.1", optional = true }
+
 [features]
 default = []
-database = ["sea-orm"]
-postgres = ["database", "sea-orm/sqlx-postgres"]
-mysql = ["database", "sea-orm/sqlx-mysql"]
-sqlite = ["database", "sea-orm/sqlx-sqlite"]
+database = ["sea-orm", "sea-orm-migration", "async-trait"]
+postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
+mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
+sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
