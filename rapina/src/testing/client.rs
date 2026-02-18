@@ -17,7 +17,6 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 use crate::context::RequestContext;
-use crate::introspection::RouteRegistry;
 use crate::middleware::MiddlewareStack;
 use crate::router::Router;
 use crate::state::AppState;
@@ -56,27 +55,12 @@ impl TestClient {
     ///
     /// This spawns a background server on a random available port.
     pub async fn new(app: crate::app::Rapina) -> Self {
-        Self::from_parts(app.router, app.state, app.middlewares, app.introspection).await
+        let app = app.prepare();
+        Self::from_parts(app.router, app.state, app.middlewares).await
     }
 
     /// Creates a test client from router, state, and middlewares.
-    pub async fn from_parts(
-        mut router: Router,
-        mut state: AppState,
-        middlewares: MiddlewareStack,
-        introspection: bool,
-    ) -> Self {
-        // Apply introspection if enabled
-        if introspection {
-            let routes = router.routes();
-            state = state.with(RouteRegistry::with_routes(routes));
-            router = router.get_named(
-                "/.__rapina/routes",
-                "list_routes",
-                crate::introspection::list_routes,
-            );
-        }
-
+    pub async fn from_parts(router: Router, state: AppState, middlewares: MiddlewareStack) -> Self {
         let router = Arc::new(router);
         let state = Arc::new(state);
         let middlewares = Arc::new(middlewares);

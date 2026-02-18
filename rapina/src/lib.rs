@@ -89,6 +89,8 @@ pub mod error;
 pub mod extract;
 pub mod handler;
 pub mod introspection;
+#[cfg(feature = "metrics")]
+pub mod metrics;
 pub mod middleware;
 #[cfg(feature = "database")]
 pub mod migration;

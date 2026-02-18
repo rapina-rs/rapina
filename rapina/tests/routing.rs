@@ -207,7 +207,7 @@ async fn test_introspection_endpoint() {
     );
 
     let client = TestClient::new(app).await;
-    let response = client.get("/.__rapina/routes").send().await;
+    let response = client.get("/__rapina/routes").send().await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
