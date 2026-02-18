@@ -91,7 +91,7 @@ impl MigrationTrait for Migration {{
     )
 }
 
-fn update_mod_rs(migrations_dir: &Path, module_name: &str) -> Result<(), String> {
+pub(crate) fn update_mod_rs(migrations_dir: &Path, module_name: &str) -> Result<(), String> {
     let mod_path = migrations_dir.join("mod.rs");
 
     if mod_path.exists() {
@@ -128,7 +128,7 @@ rapina::migrations! {{
     Ok(())
 }
 
-fn add_to_migrations_macro(content: &str, module_name: &str) -> String {
+pub(crate) fn add_to_migrations_macro(content: &str, module_name: &str) -> String {
     if let Some(macro_start) = content.find("rapina::migrations! {") {
         let after_macro = &content[macro_start..];
         if let Some(close_brace) = after_macro.rfind('}') {

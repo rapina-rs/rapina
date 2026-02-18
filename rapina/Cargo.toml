@@ -1,6 +1,6 @@
 [package]
 name = "rapina"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
 license = "MIT"
@@ -55,7 +55,7 @@ dashmap = "6.1.0"
 flate2 = "1.1"
 
 # Our macros
-rapina-macros = { version = "0.4.0", path = "../rapina-macros/" }
+rapina-macros = { version = "0.5.0", path = "../rapina-macros/" }
 
 # Database (optional)
 sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }

@@ -48,6 +48,11 @@ enum Commands {
     },
     /// Run health checks on your API
     Doctor,
+    /// Add components to your Rapina project
+    Add {
+        #[command(subcommand)]
+        command: AddCommands,
+    },
     /// Run tests with pretty output
     Test {
         /// Generate coverage report (requires cargo-llvm-cov)
@@ -67,6 +72,17 @@ enum MigrateCommands {
     New {
         /// Name of the migration (e.g., create_users)
         name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AddCommands {
+    /// Generate a new CRUD resource (handlers, DTOs, error type, entity, migration)
+    Resource {
+        /// Name of the resource (lowercase, e.g., user, blog_post)
+        name: String,
+        /// Fields in name:type format (e.g., title:string active:bool)
+        fields: Vec<String>,
     },
 }
 
@@ -126,6 +142,15 @@ fn main() {
         Some(Commands::Migrate { command }) => {
             let result = match command {
                 MigrateCommands::New { name } => commands::migrate::new_migration(&name),
+            };
+            if let Err(e) = result {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Add { command }) => {
+            let result = match command {
+                AddCommands::Resource { name, fields } => commands::add::resource(&name, &fields),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
