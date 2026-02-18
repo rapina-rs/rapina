@@ -1,26 +1,70 @@
+//! Application state for dependency injection into handlers.
+
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 type StateMap = HashMap<TypeId, Arc<dyn Any + Send + Sync>>;
 
+/// A type-safe container for sharing state across request handlers.
+///
+/// `AppState` stores values indexed by their [`TypeId`], allowing
+/// handlers to extract dependencies via [`State<T>`](crate::extract::State).
+///
+/// # Examples
+///
+/// ```
+/// use rapina::state::AppState;
+///
+/// #[derive(Debug, Clone)]
+/// struct DatabaseConfig {
+///     url: String,
+/// }
+///
+/// #[derive(Debug, Clone)]
+/// struct CacheConfig {
+///     ttl_secs: u64,
+/// }
+///
+/// let state = AppState::new()
+///     .with(DatabaseConfig {
+///         url: "postgres://localhost/mydb".to_string(),
+///     })
+///     .with(CacheConfig { ttl_secs: 300 });
+///
+/// let db = state.get::<DatabaseConfig>().unwrap();
+/// assert_eq!(db.url, "postgres://localhost/mydb");
+///
+/// let cache = state.get::<CacheConfig>().unwrap();
+/// assert_eq!(cache.ttl_secs, 300);
+///
+/// // Returns None if the type was not registered
+/// assert!(state.get::<String>().is_none());
+/// ```
 #[derive(Default, Clone)]
 pub struct AppState {
     inner: StateMap,
 }
 
 impl AppState {
+    /// Creates a new empty `AppState`.
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
         }
     }
 
+    /// Registers a value of type `T` in the state.
+    ///
+    /// If a value of the same type already exists, it will be overwritten.
     pub fn with<T: Send + Sync + 'static>(mut self, value: T) -> Self {
         self.inner.insert(TypeId::of::<T>(), Arc::new(value));
         self
     }
 
+    /// Retrieves a reference to a value of type `T`, if registered.
+    ///
+    /// Returns `None` if no value of type `T` has been added.
     pub fn get<T: Send + Sync + 'static>(&self) -> Option<&T> {
         self.inner
             .get(&TypeId::of::<T>())
