@@ -1,5 +1,6 @@
 //! CLI command implementations.
 
+pub mod add;
 pub mod dev;
 pub mod doctor;
 pub mod migrate;
