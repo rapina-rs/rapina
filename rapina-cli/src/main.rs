@@ -150,9 +150,7 @@ fn main() {
         }
         Some(Commands::Add { command }) => {
             let result = match command {
-                AddCommands::Resource { name, fields } => {
-                    commands::add::resource(&name, &fields)
-                }
+                AddCommands::Resource { name, fields } => commands::add::resource(&name, &fields),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);

@@ -52,7 +52,7 @@ fn parse_field(input: &str) -> Result<FieldInfo, String> {
                 "Unknown field type '{}'. Supported types: string, text, i32/integer, i64/bigint, \
                  f32/float, f64/double, bool/boolean, uuid, datetime, date, decimal, json",
                 type_str
-            ))
+            ));
         }
     };
 
@@ -82,7 +82,9 @@ fn validate_resource_name(name: &str) -> Result<(), String> {
         return Err("Resource name cannot start or end with underscore".to_string());
     }
 
-    let reserved = ["self", "super", "crate", "mod", "type", "fn", "struct", "enum", "impl"];
+    let reserved = [
+        "self", "super", "crate", "mod", "type", "fn", "struct", "enum", "impl",
+    ];
     if reserved.contains(&name) {
         return Err(format!("'{}' is a reserved Rust keyword", name));
     }
@@ -132,12 +134,7 @@ fn generate_mod_rs() -> String {
     "pub mod dto;\npub mod error;\npub mod handlers;\n".to_string()
 }
 
-fn generate_handlers(
-    singular: &str,
-    plural: &str,
-    pascal: &str,
-    fields: &[FieldInfo],
-) -> String {
+fn generate_handlers(singular: &str, plural: &str, pascal: &str, fields: &[FieldInfo]) -> String {
     let create_fields: Vec<String> = fields
         .iter()
         .map(|f| format!("        {}: Set(input.{}),", f.name, f.name))
@@ -410,8 +407,7 @@ fn update_entity_file(pascal: &str, fields: &[FieldInfo]) -> Result<(), String> 
         let content = fs::read_to_string(entity_path)
             .map_err(|e| format!("Failed to read entity.rs: {}", e))?;
         let updated = format!("{}{}", content.trim_end(), schema_block);
-        fs::write(entity_path, updated)
-            .map_err(|e| format!("Failed to write entity.rs: {}", e))?;
+        fs::write(entity_path, updated).map_err(|e| format!("Failed to write entity.rs: {}", e))?;
     } else {
         let content = format!("use rapina::prelude::*;\n{}", schema_block);
         fs::write(entity_path, content)
@@ -442,8 +438,7 @@ fn create_migration_file(
     let filepath = migrations_dir.join(&filename);
 
     let template = generate_migration(plural, pascal_plural, fields);
-    fs::write(&filepath, template)
-        .map_err(|e| format!("Failed to write migration file: {}", e))?;
+    fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
     println!(
         "  {} Created {}",
         "✓".green(),
@@ -538,7 +533,10 @@ fn print_next_steps(singular: &str, plural: &str, pascal: &str) {
     );
     println!();
     println!("     let router = Router::new()");
-    println!("         .get(\"/{plural}\", list_{plural})", plural = plural);
+    println!(
+        "         .get(\"/{plural}\", list_{plural})",
+        plural = plural
+    );
     println!(
         "         .get(\"/{plural}/:id\", get_{singular})",
         plural = plural,
@@ -565,9 +563,7 @@ fn print_next_steps(singular: &str, plural: &str, pascal: &str) {
         "Cargo.toml".cyan()
     );
     println!();
-    println!(
-        "     rapina = {{ version = \"...\", features = [\"postgres\"] }}"
-    );
+    println!("     rapina = {{ version = \"...\", features = [\"postgres\"] }}");
     println!();
     println!(
         "  Resource {} created successfully!",
@@ -581,7 +577,10 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     verify_rapina_project()?;
 
     if field_args.is_empty() {
-        return Err("At least one field is required. Usage: rapina add resource <name> <field:type> ...".to_string());
+        return Err(
+            "At least one field is required. Usage: rapina add resource <name> <field:type> ..."
+                .to_string(),
+        );
     }
 
     let fields: Vec<FieldInfo> = field_args
@@ -595,11 +594,7 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     let pascal_plural = &to_pascal_case(plural);
 
     println!();
-    println!(
-        "  {} {}",
-        "Adding resource:".bright_cyan(),
-        pascal.bold()
-    );
+    println!("  {} {}", "Adding resource:".bright_cyan(), pascal.bold());
     println!();
 
     create_feature_module(singular, plural, pascal, &fields)?;
