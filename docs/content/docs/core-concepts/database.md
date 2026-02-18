@@ -13,7 +13,7 @@ Add the database feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = { version = "0.4.0", features = ["postgres"] }
+rapina = { version = "0.5.0", features = ["postgres"] }
 # or "mysql", "sqlite"
 ```
 
