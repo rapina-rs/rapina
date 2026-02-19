@@ -207,7 +207,7 @@ impl Rapina {
     /// When enabled, a `GET /metrics` endpoint is registered
     /// that returns all metrics to Prometheus.
     ///
-    /// Metrics is disabled by default in debug builds.
+    /// Metrics is disabled by default unless you call `with_metrics(true)`.
     pub fn with_metrics(mut self, enabled: bool) -> Self {
         self.metrics = enabled;
         self

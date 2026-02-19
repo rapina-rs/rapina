@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_metrics_registry_new() {
-        let _registry = MetricsRegistry::new;
+        let _registry = MetricsRegistry::new();
     }
 
     #[test]
