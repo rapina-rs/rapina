@@ -146,15 +146,20 @@ pre {
     }
 }
 
+
+
+
 .nav-container {
-    max-width: $max-width;
-    margin: 0 auto;
-    padding: 0 1rem;
-    height: $navbar-height;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.5rem;
+  height: $navbar-height;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
+
 
 .nav-logo {
     display: flex;
@@ -280,6 +285,7 @@ pre {
 }
 
 .nav-github {
+    margin-left: auto;
     color: var(--text-muted);
 
     &:hover {
@@ -294,12 +300,6 @@ pre {
         color: #4752c4;
     }
 }
-
-// Mobile menu button
-.nav-mobile-toggle {
-    display: none;
-}
-
 // =============================================================================
 // HERO SECTION
 // =============================================================================
@@ -1485,19 +1485,20 @@ pre {
   .nav-links {
     display: none;
 
-    &.open {
-      display: flex;
-      flex-direction: column;
-      position: absolute;
-      top: 3.55rem;
-      right: 0.15rem;
-      width: min(260px, calc(100vw - 2rem));
-      padding: 0.5rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      z-index: 200;
-    }
+    
+&.open {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 3.55rem;
+  right: 0;
+  width: min(260px, 100vw);
+  padding: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  z-index: 200;
+}
 
     &.open a {
       padding: 0.6rem 0.75rem;
