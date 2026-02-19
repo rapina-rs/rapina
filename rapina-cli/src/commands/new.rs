@@ -46,6 +46,13 @@ pub fn execute(name: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to write .gitignore: {}", e))?;
     println!("  {} Created {}", "✓".green(), ".gitignore".cyan());
 
+    // Create README.md
+    let readme = generate_readme(name);
+    let readme_path = project_path.join("README.md");
+    fs::write(&readme_path, readme)
+        .map_err(|e| format!("Failed to write README.md: {}", e))?;
+    println!("  {} Created {}", "✓".green(), "README.md".cyan());
+
     println!();
     println!("  {} Project created successfully!", "🎉".bold());
     println!();
@@ -161,6 +168,46 @@ fn generate_gitignore() -> String {
 Cargo.lock
 "#
     .to_string()
+}
+
+/// Generate the content for README.md.
+fn generate_readme(name: &str) -> String {
+    format!(
+        r#"# {}
+
+A Rapina API project.
+
+## Quick Start
+
+1. Install Rapina CLI:
+   ```bash
+   cargo install rapina-cli
+   ```
+
+2. Start the development server:
+   ```bash
+   rapina dev
+   ```
+
+3. Open http://127.0.0.1:3000 in your browser.
+
+## Project Structure
+
+```
+{name}/
+├── Cargo.toml
+├── README.md
+└── src/
+    └── main.rs
+```
+
+## Learn More
+
+- [Rapina Documentation](https://docs.rs/rapina)
+- [Rapina User Guide](https://userapina.com/)
+"#,
+        name
+    )
 }
 
 #[cfg(test)]
