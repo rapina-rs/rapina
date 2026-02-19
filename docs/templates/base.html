@@ -33,8 +33,8 @@
                 <span>Rapina</span>
             </a>
 
-            <div class="nav-links">
-                {% for item in config.extra.nav %}
+            <div class="nav-links" id="mobileNavLinks">         
+              {% for item in config.extra.nav %}
                 <a href="{% if item.external %}{{ item.url }}{% else %}{{ get_url(path=item.url) }}{% endif %}"
                    {% if item.external %}target="_blank" rel="noopener"{% endif %}>
                     {{ item.name }}
@@ -81,7 +81,8 @@
                     </svg>
                 </button>
 
-                <button class="nav-icon-btn nav-mobile-toggle" onclick="toggleMobileMenu()" aria-label="Menu">
+
+<button class="nav-icon-btn nav-mobile-toggle" onclick="toggleNavLinks()" aria-label="Menu">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="4" x2="20" y1="12" y2="12"></line>
                         <line x1="4" x2="20" y1="6" y2="6"></line>
@@ -268,6 +269,40 @@
                 overlay.classList.remove('open');
             }
         }
+
+        // Mobile top navigation dropdown
+        function toggleNavLinks() {
+            const links = document.getElementById('mobileNavLinks');
+            if (!links) return;
+            links.classList.toggle('open');
+        }
+
+        function closeNavLinks() {
+            const links = document.getElementById('mobileNavLinks');
+            links?.classList.remove('open');
+        }
+
+        // Close dropdown on outside click
+        document.addEventListener('click', function (e) {
+            const links = document.getElementById('mobileNavLinks');
+            const toggle = document.querySelector('.nav-mobile-toggle');
+            if (!links || !toggle) return;
+
+            const clickedInsideLinks = links.contains(e.target);
+            const clickedToggle = toggle.contains(e.target);
+
+            if (!clickedInsideLinks && !clickedToggle) {
+                links.classList.remove('open');
+            }
+        });
+
+        // Close dropdown on ESC
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeNavLinks();
+            }
+        });
+        
     </script>
 </body>
 </html>
