@@ -4,6 +4,8 @@ use std::net::SocketAddr;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
+#[cfg(feature = "metrics")]
+use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
 use crate::middleware::{
     CompressionConfig, CompressionMiddleware, CorsConfig, CorsMiddleware, Middleware,
     MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
@@ -49,6 +51,8 @@ pub struct Rapina {
     pub(crate) middlewares: MiddlewareStack,
     /// Whether introspection is enabled.
     pub(crate) introspection: bool,
+    /// Whether metrics is enabled.
+    pub(crate) metrics: bool,
     /// Whether OpenAPI is enabled
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
@@ -69,6 +73,7 @@ impl Rapina {
             state: AppState::new(),
             middlewares: MiddlewareStack::new(),
             introspection: cfg!(debug_assertions),
+            metrics: false,
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
@@ -197,6 +202,17 @@ impl Rapina {
         self
     }
 
+    /// Enables or disables the metrics endpoint.
+    ///
+    /// When enabled, a `GET /metrics` endpoint is registered
+    /// that returns all metrics to Prometheus.
+    ///
+    /// Metrics is disabled by default unless you call `with_metrics(true)`.
+    pub fn with_metrics(mut self, enabled: bool) -> Self {
+        self.metrics = enabled;
+        self
+    }
+
     /// Enables or disables openapi endpoint
     ///
     /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
@@ -288,14 +304,11 @@ impl Rapina {
         Ok(self)
     }
 
-    /// Starts the HTTP server on the given address.
+    /// Applies all deferred setup (auth middleware, introspection, metrics, openapi).
     ///
-    /// # Panics
-    ///
-    /// Panics if the address cannot be parsed.
-    pub async fn listen(mut self, addr: &str) -> std::io::Result<()> {
-        let addr: SocketAddr = addr.parse().expect("invalid address");
-
+    /// Both [`listen`](Self::listen) and [`TestClient::new`](crate::testing::TestClient::new)
+    /// call this so the app behaves identically in tests and production.
+    pub(crate) fn prepare(mut self) -> Self {
         // Add auth middleware if configured
         if let Some(auth_config) = self.auth_config.take() {
             let auth_middleware =
@@ -304,27 +317,44 @@ impl Rapina {
         }
 
         if self.introspection {
-            // Store route metadata in state for the introspection endpoint
             let routes = self.router.routes();
             self.state = self.state.with(RouteRegistry::with_routes(routes));
-
-            // Register the introspection endpoint
             self.router = self
                 .router
                 .get_named("/__rapina/routes", "list_routes", list_routes);
+        }
+
+        #[cfg(feature = "metrics")]
+        if self.metrics {
+            let registry = MetricsRegistry::new();
+            self.state = self.state.with(registry.clone());
+            self.middlewares.add(MetricsMiddleware::new(registry));
+            self.router = self
+                .router
+                .get_named("/metrics", "metrics", metrics_handler);
         }
 
         if self.openapi {
             let routes = self.router.routes();
             let spec = build_openapi_spec(&self.openapi_title, &self.openapi_version, &routes);
             self.state = self.state.with(OpenApiRegistry::new(spec));
-
             self.router =
                 self.router
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
         }
 
-        serve(self.router, self.state, self.middlewares, addr).await
+        self
+    }
+
+    /// Starts the HTTP server on the given address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address cannot be parsed.
+    pub async fn listen(self, addr: &str) -> std::io::Result<()> {
+        let addr: SocketAddr = addr.parse().expect("invalid address");
+        let app = self.prepare();
+        serve(app.router, app.state, app.middlewares, addr).await
     }
 }
 
@@ -473,5 +503,17 @@ mod tests {
     fn test_rapina_with_introspection_disabled() {
         let app = Rapina::new().with_introspection(false);
         assert!(!app.introspection);
+    }
+
+    #[test]
+    fn test_rapina_with_metrics_enabled() {
+        let app = Rapina::new().with_metrics(true);
+        assert!(app.metrics);
+    }
+
+    #[test]
+    fn test_rapina_with_metrics_disabled() {
+        let app = Rapina::new().with_metrics(false);
+        assert!(!app.metrics);
     }
 }
