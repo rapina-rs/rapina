@@ -53,12 +53,8 @@ async fn get_user(id: Path<u64>) -> String {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", hello)
-        .get("/users/:id", get_user);
-
     Rapina::new()
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
@@ -150,11 +146,12 @@ async fn me(user: CurrentUser) -> Json<UserResponse> {
 ```rust
 Rapina::new()
     .with_auth(AuthConfig::from_env()?)
-    .public_route("POST", "/login")
-    .router(router)
+    .discover()
     .listen("127.0.0.1:3000")
     .await
 ```
+
+With `.discover()`, routes annotated with `#[public]` are automatically registered as public — no manual `.public_route()` calls needed.
 
 ### Standardized Errors
 
