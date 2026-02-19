@@ -6,22 +6,22 @@ mod schema;
 
 #[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
-    route_macro(attr, item)
+    route_macro("GET", attr, item)
 }
 
 #[proc_macro_attribute]
 pub fn post(attr: TokenStream, item: TokenStream) -> TokenStream {
-    route_macro(attr, item)
+    route_macro("POST", attr, item)
 }
 
 #[proc_macro_attribute]
 pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
-    route_macro(attr, item)
+    route_macro("PUT", attr, item)
 }
 
 #[proc_macro_attribute]
 pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
-    route_macro(attr, item)
+    route_macro("DELETE", attr, item)
 }
 
 /// Marks a route as public (no authentication required).
@@ -51,22 +51,35 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Note: Routes starting with `/__rapina` are automatically public.
 #[proc_macro_attribute]
 pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // The #[public] attribute is a marker that doesn't modify the item.
-    // It's used by the application to register public routes.
-    // We just pass through the item unchanged.
-    item
+    let func: ItemFn = syn::parse(item.clone()).expect("#[public] must be applied to a function");
+    let func_name_str = func.sig.ident.to_string();
+    let item2: proc_macro2::TokenStream = item.into();
+    quote! {
+        #item2
+        rapina::inventory::submit! {
+            rapina::discovery::PublicMarker {
+                handler_name: #func_name_str,
+            }
+        }
+    }
+    .into()
 }
 
 fn route_macro_core(
+    method: &str,
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    let _path: LitStr = syn::parse2(attr).expect("expected path as string literal");
+    let path: LitStr = syn::parse2(attr).expect("expected path as string literal");
+    let path_str = path.value();
     let mut func: ItemFn = syn::parse2(item).expect("expected function");
 
     let func_name = &func.sig.ident;
     let func_name_str = func_name.to_string();
     let func_vis = &func.vis;
+
+    // Extract #[public] attribute if present (when #[public] is below the route macro)
+    let is_public = extract_public_attr(&mut func.attrs);
 
     // Extract #[errors(ErrorType)] attribute if present
     let error_type = extract_errors_attr(&mut func.attrs);
@@ -167,7 +180,14 @@ fn route_macro_core(
         }
     };
 
-    // Generate the struct and Handler impl
+    // Build the router method call for the register function
+    let router_method = syn::Ident::new(&method.to_lowercase(), proc_macro2::Span::call_site());
+    let register_fn_name = syn::Ident::new(
+        &format!("__rapina_register_{}", func_name_str),
+        proc_macro2::Span::call_site(),
+    );
+
+    // Generate the struct, Handler impl, and inventory submission
     quote! {
         #[derive(Clone, Copy)]
         #[allow(non_camel_case_types)]
@@ -188,6 +208,23 @@ fn route_macro_core(
                 Box::pin(async move {
                     #handler_body
                 })
+            }
+        }
+
+        #[doc(hidden)]
+        fn #register_fn_name(__rapina_router: rapina::router::Router) -> rapina::router::Router {
+            __rapina_router.#router_method(#path_str, #func_name)
+        }
+
+        rapina::inventory::submit! {
+            rapina::discovery::RouteDescriptor {
+                method: #method,
+                path: #path_str,
+                handler_name: #func_name_str,
+                is_public: #is_public,
+                response_schema: <#func_name as rapina::handler::Handler>::response_schema,
+                error_responses: <#func_name as rapina::handler::Handler>::error_responses,
+                register: #register_fn_name,
             }
         }
     }
@@ -238,8 +275,18 @@ fn extract_errors_attr(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Type> {
     Some(err_type)
 }
 
-fn route_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
-    route_macro_core(attr.into(), item.into()).into()
+/// Extract #[public] attribute from function attributes, removing it if found.
+fn extract_public_attr(attrs: &mut Vec<syn::Attribute>) -> bool {
+    if let Some(idx) = attrs.iter().position(|attr| attr.path().is_ident("public")) {
+        attrs.remove(idx);
+        true
+    } else {
+        false
+    }
+}
+
+fn route_macro(method: &str, attr: TokenStream, item: TokenStream) -> TokenStream {
+    route_macro_core(method, attr.into(), item.into()).into()
 }
 
 /// Derive macro for type-safe configuration
@@ -413,7 +460,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Check struct is generated
@@ -434,7 +481,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Check struct is generated
@@ -455,7 +502,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("POST", path, input);
         let output_str = output.to_string();
 
         // Check struct is generated
@@ -478,7 +525,7 @@ mod tests {
             }
         };
 
-        route_macro_core(path, input);
+        route_macro_core("POST", path, input);
     }
 
     #[test]
@@ -487,7 +534,7 @@ mod tests {
         let path = quote!("/");
         let invalid_input = quote! { not_a_function };
 
-        route_macro_core(path, invalid_input);
+        route_macro_core("GET", path, invalid_input);
     }
 
     #[test]
@@ -499,7 +546,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Check response_schema method is generated with schema_for!
@@ -517,7 +564,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         assert!(output_str.contains("fn response_schema"));
@@ -535,7 +582,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         assert!(output_str.contains("fn error_responses"));
@@ -552,7 +599,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Check response_schema method is NOT generated for non-Json types
@@ -571,7 +618,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Internal variables should use __rapina_ prefix
@@ -591,7 +638,7 @@ mod tests {
             }
         };
 
-        let output = route_macro_core(path, input);
+        let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
         // Should NOT use closure wrapper (|| async ...)
@@ -599,5 +646,58 @@ mod tests {
         // Should use typed result with async block (: ReturnType = (async ...).await)
         assert!(output_str.contains("__rapina_result"));
         assert!(output_str.contains("Result < String , Error >"));
+    }
+
+    #[test]
+    fn test_emits_route_descriptor() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn list_users() -> &'static str {
+                "users"
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("inventory :: submit !"));
+        assert!(output_str.contains("RouteDescriptor"));
+        assert!(output_str.contains("method : \"GET\""));
+        assert!(output_str.contains("path : \"/users\""));
+        assert!(output_str.contains("handler_name : \"list_users\""));
+        assert!(output_str.contains("is_public : false"));
+        assert!(output_str.contains("__rapina_register_list_users"));
+    }
+
+    #[test]
+    fn test_emits_route_descriptor_with_method() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn create_user() -> &'static str {
+                "created"
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("method : \"POST\""));
+        assert!(output_str.contains("__rapina_router . post"));
+    }
+
+    #[test]
+    fn test_public_attr_below_route_sets_is_public() {
+        let path = quote!("/health");
+        let input = quote! {
+            #[public]
+            async fn health() -> &'static str {
+                "ok"
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("is_public : true"));
     }
 }

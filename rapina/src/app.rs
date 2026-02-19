@@ -61,6 +61,8 @@ pub struct Rapina {
     pub(crate) auth_config: Option<AuthConfig>,
     /// Public routes registry
     pub(crate) public_routes: PublicRoutes,
+    /// Whether auto-discovery is enabled
+    pub(crate) auto_discover: bool,
 }
 
 impl Rapina {
@@ -79,12 +81,43 @@ impl Rapina {
             openapi_version: "1.0.0".to_string(),
             auth_config: None,
             public_routes: PublicRoutes::new(),
+            auto_discover: false,
         }
     }
 
     /// Sets the router for the application.
     pub fn router(mut self, router: Router) -> Self {
         self.router = router;
+        self
+    }
+
+    /// Enables route auto-discovery.
+    ///
+    /// When enabled, handlers annotated with `#[get]`, `#[post]`, `#[put]`,
+    /// `#[delete]` are automatically registered at startup via `inventory`.
+    /// Routes marked with `#[public]` are automatically added to the public
+    /// routes registry (no manual `.public_route()` calls needed).
+    ///
+    /// Discovery is additive with manual `.router()` — both work together.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    ///
+    /// #[get("/")]
+    /// async fn hello() -> &'static str { "Hello!" }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     Rapina::new()
+    ///         .discover()
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    pub fn discover(mut self) -> Self {
+        self.auto_discover = true;
         self
     }
 
@@ -309,6 +342,33 @@ impl Rapina {
     /// Both [`listen`](Self::listen) and [`TestClient::new`](crate::testing::TestClient::new)
     /// call this so the app behaves identically in tests and production.
     pub(crate) fn prepare(mut self) -> Self {
+        // Auto-discover routes from inventory (must run before auth middleware)
+        if self.auto_discover {
+            let manual_count = self.router.routes.len();
+
+            let public_names: std::collections::HashSet<&str> =
+                inventory::iter::<crate::discovery::PublicMarker>
+                    .into_iter()
+                    .map(|m| m.handler_name)
+                    .collect();
+
+            let mut discovered_public = 0usize;
+            for descriptor in inventory::iter::<crate::discovery::RouteDescriptor> {
+                self.router = (descriptor.register)(self.router);
+                if descriptor.is_public || public_names.contains(descriptor.handler_name) {
+                    self.public_routes.add(descriptor.method, descriptor.path);
+                    discovered_public += 1;
+                }
+            }
+
+            let discovered_count = self.router.routes.len() - manual_count;
+            tracing::info!(
+                "Discovered {} routes ({} public)",
+                discovered_count,
+                discovered_public
+            );
+        }
+
         // Add auth middleware if configured
         if let Some(auth_config) = self.auth_config.take() {
             let auth_middleware =

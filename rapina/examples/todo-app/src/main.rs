@@ -6,17 +6,8 @@ mod entity;
 mod migrations;
 mod todos;
 
-use todos::handlers::*;
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/todos", list_todos)
-        .get("/todos/:id", get_todo)
-        .post("/todos", create_todo)
-        .put("/todos/:id", update_todo)
-        .delete("/todos/:id", delete_todo);
-
     Rapina::new()
         .with_tracing(TracingConfig::new())
         .openapi("Todo API", "1.0.0")
@@ -25,7 +16,7 @@ async fn main() -> std::io::Result<()> {
         .await?
         .run_migrations::<migrations::Migrator>()
         .await?
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
