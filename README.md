@@ -5,7 +5,7 @@
 <h1 align="center">Rapina</h1>
 
 <p align="center">
-  <strong>Predictable, auditable, and secure APIs — Easy to learn, hard to break.</strong>
+  <strong>A Rust web framework for APIs. So simple it feels like cheating.</strong>
 </p>
 
 <p align="center">
@@ -18,9 +18,33 @@
 
 ---
 
-Rapina is a web framework for Rust inspired by FastAPI, focused on **productivity**, **type safety**, and **clear conventions**.
+```rust
+use rapina::prelude::*;
 
-## Quick Start
+#[get("/users")]
+async fn list_users(db: Db) -> Result<Json<Vec<User>>> {
+    let users = User::find_all(db.conn()).await?;
+    Ok(Json(users))
+}
+
+#[post("/users")]
+async fn create_user(input: Validated<Json<CreateUser>>, db: Db) -> Result<Json<User>> {
+    let user = User::create(db.conn(), input.into_inner()).await?;
+    Ok(Json(user))
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    Rapina::new()
+        .discover()
+        .listen("0.0.0.0:3000")
+        .await
+}
+```
+
+No router configuration. No manual wiring. Annotate your handlers, call `.discover()`, ship.
+
+## Get started
 
 ```bash
 cargo install rapina-cli
@@ -29,109 +53,31 @@ cd my-app
 rapina dev
 ```
 
-Or add to an existing project:
+Your API is running. That's it.
 
-```toml
-[dependencies]
-rapina = "0.2.0"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-```
+## What you get
 
-```rust
-use rapina::prelude::*;
+**Auto-discovery** — annotate handlers with `#[get]`, `#[post]`, `#[put]`, `#[delete]`. Rapina finds them at startup. Your `main.rs` stays three lines.
 
-#[get("/")]
-async fn hello() -> &'static str {
-    "Hello, Rapina!"
-}
-
-#[get("/users/:id")]
-async fn get_user(id: Path<u64>) -> String {
-    format!("User ID: {}", id.into_inner())
-}
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", hello)
-        .get("/users/:id", get_user);
-
-    Rapina::new()
-        .router(router)
-        .listen("127.0.0.1:3000")
-        .await
-}
-```
-
-## Why Rapina?
-
-| Principle              | Description |
-|------------------------|-------------|
-| **Opinionated**        | Convention over configuration. Clear defaults, escape hatches when needed. |
-| **Type-safe**          | Typed extractors, typed errors, everything checked at compile time. |
-| **AI-friendly**        | Predictable patterns that humans and LLMs understand equally well. |
-| **Batteries-included** | Standardized errors with `trace_id`, JWT auth, observability built-in. |
-
-## Project Status
-
-This project is currently in **Alpha** 🚧.
-
-We are committed to **minimizing breaking changes** to ensure a smooth developer experience. However, until the `1.0.0`
-release, major architectural changes may still happen if strictly necessary for long-term stability.
-
-## Features
-
-### Typed Extractors
-
-Clean, type-safe parameter extraction:
+**Database from day one** — define your schema declaratively. `author: User` becomes a foreign key. `posts: Vec<Post>` becomes a relationship. SeaORM entities are auto-generated.
 
 ```rust
-#[get("/users/:id")]
-async fn get_user(id: Path<u64>) -> Result<Json<User>> {
-    let user = find_user(id.into_inner()).await?;
-    Ok(Json(user))
-}
+schema! {
+    User {
+        name: String,
+        email: String,
+        posts: Vec<Post>
+    }
 
-#[post("/users")]
-async fn create_user(body: Json<CreateUser>) -> Result<Json<User>> {
-    let user = save_user(body.into_inner()).await?;
-    Ok(Json(user))
-}
-
-#[get("/search")]
-async fn search(query: Query<SearchParams>) -> Json<Vec<Item>> {
-    let results = search_items(&query).await;
-    Json(results)
+    Post {
+        title: String,
+        body: String,
+        author: User
+    }
 }
 ```
 
-Available extractors: `Path`, `Json`, `Query`, `Form`, `Headers`, `State`, `CurrentUser`
-
-### Configuration
-
-Type-safe configuration with fail-fast validation:
-
-```rust
-#[derive(Config)]
-struct Settings {
-    #[env = "DATABASE_URL"]
-    database_url: String,
-
-    #[env = "PORT"]
-    #[default = "3000"]
-    port: u16,
-}
-
-fn main() {
-    load_dotenv();
-    let config = Settings::from_env().expect("Missing config");
-}
-```
-
-### Authentication
-
-Protected by default — all routes require JWT unless marked `#[public]`:
+**Auth that works** — JWT authentication, protected by default. Mark public routes with `#[public]`. Access the current user with the `CurrentUser` extractor.
 
 ```rust
 #[public]
@@ -147,18 +93,53 @@ async fn me(user: CurrentUser) -> Json<UserResponse> {
 }
 ```
 
+**CRUD in one command** — scaffold an entire resource with handlers, DTOs, errors, schema, and migration.
+
+```bash
+rapina add resource Post
+```
+
+**OpenAPI built-in** — spec generation, breaking change detection, and validation from the CLI.
+
+```bash
+rapina openapi export -o openapi.json
+rapina openapi diff --base main
+```
+
+**Production middleware** — rate limiting, compression, CORS, and Prometheus metrics out of the box.
+
 ```rust
 Rapina::new()
-    .with_auth(AuthConfig::from_env()?)
-    .public_route("POST", "/login")
-    .router(router)
-    .listen("127.0.0.1:3000")
+    .with_rate_limit(RateLimitConfig::per_minute(100))
+    .with_compression(CompressionConfig::default())
+    .with_cors(CorsConfig::permissive())
+    .discover()
+    .listen("0.0.0.0:3000")
     .await
 ```
 
-### Standardized Errors
+**CLI for everything** — create, develop, test, inspect, generate.
 
-Every error includes a `trace_id` for debugging:
+```bash
+rapina new my-app              # Scaffold a new project
+rapina dev                     # Dev server with hot reload
+rapina test --coverage         # Tests with coverage report
+rapina test --watch            # Watch mode
+rapina routes                  # List all routes
+rapina doctor                  # Health checks and diagnostics
+rapina migrate new             # Create a migration
+rapina add resource Post       # Full CRUD scaffolding
+```
+
+## 10 extractors
+
+Everything you need to pick apart a request, type-safe and compile-time checked.
+
+`Json<T>` · `Form<T>` · `Path<T>` · `Query<T>` · `Headers` · `Cookie<T>` · `State<T>` · `Validated<T>` · `CurrentUser` · `Db`
+
+## Standardized errors
+
+Every error includes a `trace_id`. No more guessing in production.
 
 ```json
 {
@@ -167,81 +148,26 @@ Every error includes a `trace_id` for debugging:
 }
 ```
 
-```rust
-Error::bad_request("invalid input")   // 400
-Error::unauthorized("login required") // 401
-Error::not_found("user not found")    // 404
-Error::validation("invalid email")    // 422
-Error::internal("something went wrong") // 500
-```
+## Project status
 
-### OpenAPI
+Rapina is in active development. We ship fast and we ship often — 9 releases since January 2026. The API is stabilizing but breaking changes may still occur before `1.0.0`.
 
-Automatic OpenAPI 3.0 generation with CLI tools:
-
-```bash
-rapina openapi export -o openapi.json  # Export spec
-rapina openapi check                    # Verify spec matches code
-rapina openapi diff --base main         # Detect breaking changes
-```
-
-### Rate Limiting
-
-Protect your API from abuse with token bucket rate limiting:
-
-```rust
-Rapina::new()
-    .with_rate_limit(RateLimitConfig::per_minute(100))
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-Returns `429 Too Many Requests` with `Retry-After` header when exceeded.
-
-### Response Compression
-
-Automatic gzip/deflate compression for large responses:
-
-```rust
-Rapina::new()
-    .with_compression(CompressionConfig::default())
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-### CLI
-
-```bash
-rapina new my-app          # Create new project
-rapina dev                 # Dev server with hot reload
-rapina test                # Run tests with pretty output
-rapina test -w             # Watch mode
-rapina test --coverage     # Coverage report
-rapina routes              # List all routes
-rapina doctor              # Health checks
-```
+See the [roadmap](https://userapina.com/roadmap/) for what's coming next.
 
 ## Documentation
 
-Full documentation available at [userapina.com](https://userapina.com/)
+Full documentation at [userapina.com](https://userapina.com/)
 
 - [Getting Started](https://userapina.com/guide/getting-started/)
-- [Configuration](https://userapina.com/guide/configuration/)
+- [Database](https://userapina.com/guide/database/)
 - [Authentication](https://userapina.com/guide/authentication/)
 - [CLI Reference](https://userapina.com/cli/)
 
-## Philosophy
+## Contributing
 
-Rapina is opinionated by design: a clear happy path, with escape hatches when needed.
+Contributions are welcome. Check out the [open issues](https://github.com/arferreira/rapina/issues) or join us on [Discord](https://discord.gg/ttRYzbHh).
 
-| Principle | Description |
-|-----------|-------------|
-| **Predictability** | Clear conventions, obvious structure |
-| **Auditability** | Typed contracts, traceable errors |
-| **Security** | Protected by default, guard rails built-in |
-| **AI-friendly** | Patterns that LLMs can understand and generate |
+Thanks to all contributors: @juv, @ShiraiEd, @uemuradevexe, @lucasmacedo, @chiucchi, @jamersonsilvabr, @williamlaverty, @yanfernandesb, @littlekitchen.
 
 ## License
 
