@@ -47,7 +47,7 @@ dotenvy = "0.15.7"
 schemars = { version = "1.2.0", features = ["chrono04"] }
 
 # JWT Authentication
-jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
 # Rate Limiting
 dashmap = "6.1.0"
