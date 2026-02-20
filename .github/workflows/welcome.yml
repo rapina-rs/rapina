@@ -18,12 +18,12 @@ jobs:
     steps:
       - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d  # v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: |
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: |
             Thanks for opening your first issue! We appreciate you taking the time to report this.
 
             If you're interested in contributing a fix, check out our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) and feel free to open a PR.
-          pr-message: |
+          pr_message: |
             Thanks for your first PR! A maintainer will review it shortly.
 
             Make sure CI passes and take a look at our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) if you haven't already.
