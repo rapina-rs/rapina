@@ -9,7 +9,7 @@ Rapina is built by the community, for the community.
 ## Get involved
 
 - **GitHub**: [github.com/arferreira/rapina](https://github.com/arferreira/rapina) — Star, fork, contribute
-- **Discord**: [Join our server](https://discord.gg/jMhhfjEE) — Chat with other developers
+- **Discord**: [Join our server](https://discord.gg/Z4ww64YBQj) — Chat with other developers
 - **Discussions**: [GitHub Discussions](https://github.com/arferreira/rapina/discussions) — Ask questions, share ideas
 
 ## Contributing
