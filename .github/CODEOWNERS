@@ -1,0 +1,9 @@
+# Default owner for everything
+*                          @arferreira
+
+# Security-sensitive paths require explicit review
+SECURITY.md                @arferreira
+deny.toml                  @arferreira
+.github/workflows/         @arferreira
+.github/dependabot.yml     @arferreira
+rapina/src/auth/           @arferreira

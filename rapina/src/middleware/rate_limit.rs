@@ -148,7 +148,7 @@ impl RateLimitMiddleware {
     fn check_rate_limit(&self, key: &str) -> Option<u64> {
         // Periodic cleanup: every CLEANUP_INTERVAL requests, prune stale buckets
         let count = self.request_count.fetch_add(1, Ordering::Relaxed);
-        if count > 0 && count.is_multiple_of(CLEANUP_INTERVAL) {
+        if count > 0 && count % CLEANUP_INTERVAL == 0 {
             self.cleanup_stale_buckets();
         }
 
