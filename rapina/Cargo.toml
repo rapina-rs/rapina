@@ -17,7 +17,7 @@ tokio = { version = "1.49.0", features = ["full"] }
 
 # HTTP server
 hyper = { version = "1.8.1", features = ["server", "http1", "http2"] }
-hyper-util = { version = "0.1.19", features = [
+hyper-util = { version = "0.1.20", features = [
   "tokio",
   "client-legacy",
   "http1",
