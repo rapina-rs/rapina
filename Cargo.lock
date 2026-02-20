@@ -1359,6 +1359,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "inotify"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
+dependencies = [
+ "bitflags 2.10.0",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
 name = "inotify-sys"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1550,6 +1561,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a69bcab0ad47271a0234d9422b131806bf3968021e5dc9328caf2d4cd58557fc"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -1576,13 +1588,30 @@ dependencies = [
  "crossbeam-channel",
  "filetime",
  "fsevent-sys",
- "inotify",
+ "inotify 0.9.6",
  "kqueue",
  "libc",
  "log",
  "mio 0.8.11",
  "walkdir",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "notify"
+version = "8.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
+dependencies = [
+ "bitflags 2.10.0",
+ "inotify 0.11.0",
+ "kqueue",
+ "libc",
+ "log",
+ "mio 1.1.1",
+ "notify-types",
+ "walkdir",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1593,7 +1622,16 @@ checksum = "5d40b221972a1fc5ef4d858a2f671fb34c75983eb385463dff3780eeff6a9d43"
 dependencies = [
  "crossbeam-channel",
  "log",
- "notify",
+ "notify 6.1.1",
+]
+
+[[package]]
+name = "notify-types"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
+dependencies = [
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -2068,7 +2106,7 @@ dependencies = [
  "clap",
  "colored",
  "ctrlc",
- "notify",
+ "notify 8.2.0",
  "notify-debouncer-mini",
  "serde",
  "serde_json",

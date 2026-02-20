@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 colored = "3"
-notify = { version = "6", default-features = false, features = [
+notify = { version = "8", default-features = false, features = [
   "macos_kqueue",
 ] }
 notify-debouncer-mini = "0.4"
