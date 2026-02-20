@@ -167,7 +167,6 @@ Full documentation at [userapina.com](https://userapina.com/)
 
 Contributions are welcome. Check out the [open issues](https://github.com/arferreira/rapina/issues) or join us on [Discord](https://discord.gg/ttRYzbHh).
 
-Thanks to all contributors: @juv, @ShiraiEd, @uemuradevexe, @lucasmacedo, @chiucchi, @jamersonsilvabr, @williamlaverty, @yanfernandesb, @littlekitchen.
 
 ## License
 
