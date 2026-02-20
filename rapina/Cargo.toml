@@ -66,7 +66,7 @@ sea-orm-migration = { version = "1.1", optional = true, features = ["runtime-tok
 async-trait = { version = "0.1", optional = true }
 
 # Prometheus (optional)
-prometheus = { version = '0.13', optional = true }
+prometheus = { version = '0.14', optional = true }
 
 [features]
 default = []
