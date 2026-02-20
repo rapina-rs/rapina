@@ -1,0 +1,41 @@
+"area: core":
+  - changed-files:
+      - any-glob-to-any-file: "rapina/src/**"
+
+"area: macros":
+  - changed-files:
+      - any-glob-to-any-file: "rapina-macros/src/**"
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file: "rapina-cli/src/**"
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+"area: middleware":
+  - changed-files:
+      - any-glob-to-any-file: "rapina/src/middleware/**"
+
+"area: extractors":
+  - changed-files:
+      - any-glob-to-any-file: "rapina/src/extractors/**"
+
+"area: testing":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rapina/tests/**"
+          - "rapina-macros/tests/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Cargo.toml"
+          - "Cargo.lock"
+          - "rapina/Cargo.toml"
+          - "rapina-macros/Cargo.toml"
+          - "rapina-cli/Cargo.toml"
+          - "deny.toml"
