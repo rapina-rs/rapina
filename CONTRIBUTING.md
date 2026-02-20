@@ -19,7 +19,7 @@ Thanks for your interest in contributing to Rapina. This document outlines the p
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust 1.85 or later
 - Cargo
 
 ### Building
@@ -44,6 +44,10 @@ rapina/
 ├── rapina-cli/      # CLI tool
 └── docs/            # Documentation site (Zola)
 ```
+
+## Claiming Issues
+
+Want to work on something? Comment `/take` on any open issue and it will be assigned to you automatically. If you can't finish it, comment `/release` and we'll unassign you so someone else can pick it up.
 
 ## Making Changes
 
@@ -83,10 +87,10 @@ Use conventional commit prefixes:
 
 ## Pull Requests
 
-1. Create a feature branch from `develop`:
+1. Create a feature branch from `main`:
    ```bash
-   git checkout develop
-   git pull upstream develop
+   git checkout main
+   git pull upstream main
    git checkout -b feat/my-feature
    ```
 
@@ -97,7 +101,7 @@ Use conventional commit prefixes:
    git push origin feat/my-feature
    ```
 
-4. Open a Pull Request against `develop`
+4. Open a Pull Request against `main`
 
 ### PR Checklist
 

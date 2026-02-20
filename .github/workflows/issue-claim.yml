@@ -11,7 +11,7 @@ jobs:
     name: Assign issue
     if: >-
       !github.event.issue.pull_request &&
-      (contains(github.event.comment.body, '/take') || contains(github.event.comment.body, '/claim'))
+      (contains(github.event.comment.body, '/take') || contains(github.event.comment.body, '/claim') || contains(github.event.comment.body, '/release'))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -20,8 +20,19 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
         with:
           script: |
+            const body = context.payload.comment.body.trim();
             const commenter = context.payload.comment.user.login;
             const issue = context.issue;
+
+            if (body.includes('/release')) {
+              await github.rest.issues.removeAssignees({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                assignees: [commenter],
+              });
+              return;
+            }
 
             try {
               await github.rest.issues.addAssignees({
@@ -31,7 +42,6 @@ jobs:
                 assignees: [commenter],
               });
             } catch (error) {
-              // User might not have permission to be assigned directly
               await github.rest.issues.createComment({
                 owner: issue.owner,
                 repo: issue.repo,
