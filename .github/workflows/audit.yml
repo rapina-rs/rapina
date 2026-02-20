@@ -1,0 +1,36 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # daily at 6 AM UTC
+  push:
+    paths:
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'deny.toml'
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: rustsec/audit-check@dd51754d4e59da7395a4cd9b593f0ff2d61a9b95  # v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: RUSTSEC-2023-0071,RUSTSEC-2024-0437
+
+  deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979  # v2
+        with:
+          command: check
