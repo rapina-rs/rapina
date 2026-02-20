@@ -21,7 +21,7 @@ colored = "3"
 notify = { version = "6", default-features = false, features = [
   "macos_kqueue",
 ] }
-notify-debouncer-mini = "0.4"
+notify-debouncer-mini = "0.7"
 ctrlc = "3"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
