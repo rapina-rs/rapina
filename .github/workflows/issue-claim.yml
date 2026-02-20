@@ -1,0 +1,41 @@
+name: Issue Claim
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  claim:
+    name: Assign issue
+    if: >-
+      !github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '/take') || contains(github.event.comment.body, '/claim'))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Assign commenter
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+            const issue = context.issue;
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                assignees: [commenter],
+              });
+            } catch (error) {
+              // User might not have permission to be assigned directly
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `@${commenter} I couldn't assign you directly (GitHub permissions), but consider this claimed! A maintainer will assign you shortly.`,
+              });
+            }
