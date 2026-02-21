@@ -12,7 +12,7 @@
   <a href="https://crates.io/crates/rapina"><img src="https://img.shields.io/crates/v/rapina.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/rapina"><img src="https://docs.rs/rapina/badge.svg" alt="Documentation"></a>
   <a href="https://github.com/arferreira/rapina/actions/workflows/ci.yml"><img src="https://github.com/arferreira/rapina/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://discord.gg/ttRYzbHh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/Z4ww64YBQj"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
@@ -165,7 +165,7 @@ Full documentation at [userapina.com](https://userapina.com/)
 
 ## Contributing
 
-Contributions are welcome. Check out the [open issues](https://github.com/arferreira/rapina/issues) or join us on [Discord](https://discord.gg/ttRYzbHh).
+Contributions are welcome. Check out the [open issues](https://github.com/arferreira/rapina/issues) or join us on [Discord](https://discord.gg/Z4ww64YBQj).
 
 
 ## License
