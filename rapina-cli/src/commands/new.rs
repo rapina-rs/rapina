@@ -46,6 +46,12 @@ pub fn execute(name: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to write .gitignore: {}", e))?;
     println!("  {} Created {}", "✓".green(), ".gitignore".cyan());
 
+    // Create README.md
+    let readme = generate_readme(name);
+    let readme_path = project_path.join("README.md");
+    fs::write(&readme_path, readme).map_err(|e| format!("Failed to write README.md: {}", e))?;
+    println!("  {} Created {}", "✓".green(), "README.md".cyan());
+
     println!();
     println!("  {} Project created successfully!", "🎉".bold());
     println!();
@@ -55,6 +61,11 @@ pub fn execute(name: &str) -> Result<(), String> {
     println!();
 
     Ok(())
+}
+fn generate_readme(name: &str) -> String {
+    format!(
+        "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /health` — Health check\n"
+    )
 }
 
 /// Validate that the project name is a valid Rust crate name.
