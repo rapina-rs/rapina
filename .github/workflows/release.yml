@@ -50,25 +50,11 @@ jobs:
         with:
           toolchain: nightly
 
-      - name: Verify packages
-        run: |
-          cargo package -p rapina-macros --allow-dirty
-          cargo package -p rapina --allow-dirty
-
       - name: Publish rapina-macros
         run: cargo publish -p rapina-macros --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
-
-      - name: Wait for crates.io index
-        run: sleep 30
 
       - name: Publish rapina
         run: cargo publish -p rapina --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
-
-      - name: Wait for crates.io index
-        run: sleep 30
 
       - name: Publish rapina-cli
         run: cargo publish -p rapina-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
