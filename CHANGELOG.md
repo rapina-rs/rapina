@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-22
+
+### Added
+- **Route Auto Discovery**: Routes are automatically registered via `inventory` — no more manual wiring in `main.rs`
+- `toml` upgraded to 1.0 (TOML spec 1.1 support)
+
+### Changed
+- Updated `jsonwebtoken` to 10.3.0
+- Updated `ctrlc` to 3.5.2
+- GitHub Actions: auto-labeler for PRs, welcome message for first-time contributors
+- Consolidated Discord links across documentation
+
 ## [0.2.0] - 2025-01-24
 
 ### Added
@@ -57,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized error handling with `trace_id`
 - CLI (`rapina new`, `rapina dev`)
 
-[Unreleased]: https://github.com/arferreira/rapina/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/arferreira/rapina/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/arferreira/rapina/compare/v0.5.0...v0.6.0
 [0.2.0]: https://github.com/arferreira/rapina/compare/v0.1.0-alpha.3...v0.2.0
 [0.1.0-alpha.3]: https://github.com/arferreira/rapina/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/arferreira/rapina/compare/v0.1.0-alpha.1...v0.1.0-alpha.2

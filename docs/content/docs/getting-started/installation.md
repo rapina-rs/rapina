@@ -88,7 +88,7 @@ Add Rapina to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = "0.5.0"
+rapina = "0.6.0"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
