@@ -1,5 +1,6 @@
 //! Implementation of the `rapina dev` command.
 
+use crate::commands::verify_rapina_project;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
@@ -149,35 +150,6 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
     );
     let _ = server_process.kill();
     let _ = server_process.wait();
-
-    Ok(())
-}
-
-/// Verify that we're in a valid Rapina project directory.
-fn verify_rapina_project() -> Result<(), String> {
-    let cargo_toml = Path::new("Cargo.toml");
-    if !cargo_toml.exists() {
-        return Err("No Cargo.toml found. Are you in a Rust project directory?".to_string());
-    }
-
-    let content = std::fs::read_to_string(cargo_toml)
-        .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
-
-    let parsed: toml::Value = content
-        .parse()
-        .map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
-
-    // Check for rapina in dependencies
-    let has_rapina = parsed
-        .get("dependencies")
-        .and_then(|deps| deps.get("rapina"))
-        .is_some();
-
-    if !has_rapina {
-        return Err(
-            "This doesn't appear to be a Rapina project (no rapina dependency found)".to_string(),
-        );
-    }
 
     Ok(())
 }
