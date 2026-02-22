@@ -2,9 +2,11 @@
 
 use http::StatusCode;
 use rapina::middleware::{
-    BodyLimitMiddleware, CompressionConfig, CorsConfig, RateLimitConfig, RateLimitMiddleware,
-    TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
+    BodyLimitMiddleware, CompressionConfig, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware,
+    TraceIdMiddleware,
 };
+#[cfg(feature = "rate-limit")]
+use rapina::middleware::{RateLimitConfig, RateLimitMiddleware};
 use rapina::prelude::*;
 use rapina::testing::TestClient;
 use std::time::Duration;
@@ -354,6 +356,7 @@ async fn test_cors_permissive_returns_wildcard() {
     assert_eq!(origin_header.unwrap().to_str().unwrap(), "*");
 }
 
+#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_rate_limit_allows_under_limit() {
     let app = Rapina::new()
@@ -370,6 +373,7 @@ async fn test_rate_limit_allows_under_limit() {
     }
 }
 
+#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_rate_limit_returns_429_when_exceeded() {
     let app = Rapina::new()
@@ -388,6 +392,7 @@ async fn test_rate_limit_returns_429_when_exceeded() {
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 }
 
+#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_rate_limit_includes_retry_after_header() {
     let app = Rapina::new()
@@ -411,6 +416,7 @@ async fn test_rate_limit_includes_retry_after_header() {
     assert!(retry_secs >= 1);
 }
 
+#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_rate_limit_returns_json_error() {
     let app = Rapina::new()
@@ -433,6 +439,7 @@ async fn test_rate_limit_returns_json_error() {
     assert!(json["trace_id"].is_string());
 }
 
+#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_rate_limit_per_minute_convenience() {
     // Test the per_minute convenience constructor
