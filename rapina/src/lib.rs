@@ -122,7 +122,9 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
-    pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
+    pub use crate::middleware::{Middleware, Next};
+    #[cfg(feature = "rate-limit")]
+    pub use crate::middleware::{KeyExtractor, RateLimitConfig};
     pub use crate::observability::TracingConfig;
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
