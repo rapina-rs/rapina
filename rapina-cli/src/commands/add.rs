@@ -109,6 +109,33 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 fn pluralize(s: &str) -> String {
+    if s.is_empty() {
+        return s.to_string();
+    }
+
+    // Words ending in "s", "x", "z", "ch", "sh" -> "es"
+    if s.ends_with('s')
+        || s.ends_with('x')
+        || s.ends_with('z')
+        || s.ends_with("ch")
+        || s.ends_with("sh")
+    {
+        return format!("{}es", s);
+    }
+
+    // Words ending in "y" (preceded by a consonant) -> "ies"
+    if s.ends_with('y') {
+        let chars: Vec<char> = s.chars().collect();
+        if chars.len() >= 2 {
+            let second_last = chars[chars.len() - 2];
+            let vowels = ['a', 'e', 'i', 'o', 'u'];
+            if !vowels.contains(&second_last.to_ascii_lowercase()) {
+                return format!("{}ies", &s[..s.len() - 1]);
+            }
+        }
+    }
+
+    // Default -> "s"
     format!("{}s", s)
 }
 
@@ -700,9 +727,38 @@ mod tests {
 
     #[test]
     fn test_pluralize() {
+        // Default case: add "s"
         assert_eq!(pluralize("user"), "users");
         assert_eq!(pluralize("post"), "posts");
         assert_eq!(pluralize("blog_post"), "blog_posts");
+
+        // Words ending in "y" preceded by consonant -> "ies"
+        assert_eq!(pluralize("category"), "categories");
+        assert_eq!(pluralize("entity"), "entities");
+        assert_eq!(pluralize("company"), "companies");
+        assert_eq!(pluralize("city"), "cities");
+
+        // Words ending in "y" preceded by vowel -> "s" (not "ies")
+        assert_eq!(pluralize("key"), "keys");
+        assert_eq!(pluralize("day"), "days");
+        assert_eq!(pluralize("toy"), "toys");
+
+        // Words ending in "s", "x", "z" -> "es"
+        assert_eq!(pluralize("status"), "statuses");
+        assert_eq!(pluralize("bus"), "buses");
+        assert_eq!(pluralize("box"), "boxes");
+        assert_eq!(pluralize("tax"), "taxes");
+        assert_eq!(pluralize("quiz"), "quizzes");
+
+        // Words ending in "ch", "sh" -> "es"
+        assert_eq!(pluralize("match"), "matches");
+        assert_eq!(pluralize("batch"), "batches");
+        assert_eq!(pluralize("brush"), "brushes");
+        assert_eq!(pluralize("wish"), "wishes");
+
+        // Edge cases
+        assert_eq!(pluralize(""), "");
+        assert_eq!(pluralize("y"), "ys"); // Single char "y" has no preceding consonant
     }
 
     #[test]
