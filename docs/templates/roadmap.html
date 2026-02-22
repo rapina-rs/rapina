@@ -1,12 +1,13 @@
-{% extends "base.html" %}
-
-{% block title %}Roadmap - Rapina{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Roadmap - Rapina{% endblock %} {%
+block content %}
 <div class="roadmap-page">
     <div class="roadmap-header">
         <h1>Rolling Roadmap</h1>
-        <p>We try to highlight important or popular new features on this roadmap. For a complete list of released features and updates, check out our <a href="/changelog/">changelog</a>.</p>
+        <p>
+            We try to highlight important or popular new features on this
+            roadmap. For a complete list of released features and updates, check
+            out our <a href="/changelog/">changelog</a>.
+        </p>
     </div>
 
     <div class="roadmap-board">
@@ -32,7 +33,9 @@
                 </div>
                 <div class="roadmap-card">
                     <h4>GraphQL Support</h4>
-                    <p>Optional GraphQL layer with async-graphql integration.</p>
+                    <p>
+                        Optional GraphQL layer with async-graphql integration.
+                    </p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
@@ -54,26 +57,23 @@
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
-                    <h4>Schema Macro</h4>
-                    <p>Prisma-like schema definition with <code>rapina::schema!</code> macro.</p>
+                    <h4>Seed Command</h4>
+                    <p>
+                        Database seeding with <code>rapina seed</code> for
+                        development.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">CLI</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Route Auto-Discovery</h4>
+                    <p>
+                        Automatic route registration via
+                        <code>.discover()</code> method.
+                    </p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
-                        <span class="card-tag">Database</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Migrations CLI</h4>
-                    <p>Database migrations with <code>rapina migrate</code> commands.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">CLI</span>
-                        <span class="card-tag">Database</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Seed Command</h4>
-                    <p>Database seeding with <code>rapina seed</code> for development.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">CLI</span>
                     </div>
                 </div>
             </div>
@@ -86,6 +86,46 @@
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
+                    <h4>CRUD Scaffolding</h4>
+                    <p>
+                        Generate complete CRUD resources with
+                        <code>rapina add resource</code>.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.5.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Metrics Endpoint</h4>
+                    <p>
+                        Prometheus metrics at <code>/metrics</code> with request
+                        tracking.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Migrations CLI</h4>
+                    <p>
+                        Database migrations with
+                        <code>rapina migrate</code> commands.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.5.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Schema Macro</h4>
+                    <p>
+                        Prisma-like schema definition with
+                        <code>rapina::schema!</code> macro.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.1.0-alpha.5</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
                     <h4>Database Integration</h4>
                     <p>SeaORM integration with connection pooling.</p>
                     <div class="card-tags">
@@ -94,7 +134,10 @@
                 </div>
                 <div class="roadmap-card">
                     <h4>Request Validation</h4>
-                    <p><code>Validated&lt;T&gt;</code> extractor with validator crate.</p>
+                    <p>
+                        <code>Validated&lt;T&gt;</code> extractor with validator
+                        crate.
+                    </p>
                     <div class="card-tags">
                         <span class="card-tag">v0.1.0-alpha.4</span>
                     </div>
@@ -125,7 +168,20 @@
     </div>
 
     <div class="roadmap-footer">
-        <p>Have a feature request? <a href="https://github.com/arferreira/rapina/discussions" target="_blank">Start a discussion</a> or <a href="https://github.com/arferreira/rapina/issues/new" target="_blank">open an issue</a>.</p>
+        <p>
+            Have a feature request?
+            <a
+                href="https://github.com/arferreira/rapina/discussions"
+                target="_blank"
+                >Start a discussion</a
+            >
+            or
+            <a
+                href="https://github.com/arferreira/rapina/issues/new"
+                target="_blank"
+                >open an issue</a
+            >.
+        </p>
     </div>
 </div>
 {% endblock %}
