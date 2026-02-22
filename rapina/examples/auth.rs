@@ -104,18 +104,10 @@ async fn main() -> std::io::Result<()> {
     println!("    GET  /users/:id  - Get user by ID");
     println!();
 
-    let router = Router::new()
-        .get("/health", health)
-        .post("/login", login)
-        .get("/me", me)
-        .get("/users/:id", get_user);
-
     Rapina::new()
         .with_auth(auth_config.clone())
-        .public_route("GET", "/health")
-        .public_route("POST", "/login")
         .state(auth_config)
-        .router(router)
+        .discover()
         .listen(&addr)
         .await
 }

@@ -65,6 +65,69 @@ async fn delete_user(id: Path<u64>) -> StatusCode {
 }
 ```
 
+## Auto-Discovery
+
+Instead of wiring every handler to a `Router` manually, call `.discover()` on the app builder. Rapina collects all functions annotated with `#[get]`, `#[post]`, `#[put]`, or `#[delete]` at link time and registers them automatically:
+
+```rust
+use rapina::prelude::*;
+
+#[get("/")]
+async fn home() -> &'static str {
+    "Welcome to Rapina!"
+}
+
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>) -> String {
+    format!("User ID: {}", id.into_inner())
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    Rapina::new()
+        .discover()
+        .listen("127.0.0.1:3000")
+        .await
+}
+```
+
+No `Router`, no `.get("/users/:id", get_user)` — the macros carry enough information to handle it.
+
+### Mixing Discovery and Manual Routes
+
+`.discover()` and `.router()` are additive. You can use both when you need a manual route alongside discovered ones:
+
+```rust
+let extra = Router::new()
+    .route(Method::GET, "/custom", my_custom_handler);
+
+Rapina::new()
+    .router(extra)
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+### Public Routes with Discovery
+
+When using `.discover()` with authentication enabled, routes annotated with `#[public]` are automatically registered as public — no `.public_route()` calls needed:
+
+```rust
+#[public]
+#[post("/login")]
+async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+    // ...
+}
+
+Rapina::new()
+    .with_auth(auth_config)
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+See [Authentication](/docs/core-concepts/authentication/) for details.
+
 ## Path Parameters
 
 Extract dynamic values from URL segments using the `:param` syntax:
@@ -217,15 +280,9 @@ async fn create_user(body: Json<CreateUser>) -> (StatusCode, Json<User>) {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", home)
-        .get("/users", list_users)
-        .get("/users/:id", get_user)
-        .post("/users", create_user);
-
     Rapina::new()
         .with_introspection(true)
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }

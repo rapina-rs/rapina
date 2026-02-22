@@ -17,10 +17,5 @@ async fn get_user(id: Path<u64>) -> String {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", hello)
-        .get("/health", health)
-        .get("/users/:id", get_user);
-
-    Rapina::new().router(router).listen("127.0.0.1:3000").await
+    Rapina::new().discover().listen("127.0.0.1:3000").await
 }
