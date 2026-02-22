@@ -31,7 +31,7 @@ async fn main() -> std::io::Result<()> {
     Rapina::new()
         .with_auth(auth_config.clone())
         .state(auth_config)
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
@@ -55,7 +55,7 @@ async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json
 }
 ```
 
-You can also register public routes programmatically:
+With `.discover()`, `#[public]` routes are automatically registered as public — no extra wiring needed. You can also register public routes programmatically if you prefer:
 
 ```rust
 Rapina::new()

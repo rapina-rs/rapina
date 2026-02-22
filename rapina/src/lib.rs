@@ -85,6 +85,7 @@ pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
 pub mod database;
+pub mod discovery;
 pub mod error;
 pub mod extract;
 pub mod handler;
@@ -139,6 +140,9 @@ pub mod prelude {
 pub use http;
 pub use hyper;
 pub use schemars;
+
+#[doc(hidden)]
+pub use inventory;
 
 // Re-export sea-orm when database feature is enabled
 #[cfg(feature = "database")]

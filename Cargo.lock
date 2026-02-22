@@ -1379,6 +1379,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009ae045c87e7082cb72dab0ccd01ae075dd00141ddc108f43a0ea150a9e7227"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2082,6 +2091,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "inventory",
  "jsonwebtoken",
  "prometheus",
  "rapina-macros",

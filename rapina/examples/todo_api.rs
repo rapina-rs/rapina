@@ -247,19 +247,11 @@ async fn main() -> std::io::Result<()> {
     println!("      (no body)");
     println!();
 
-    let router = Router::new()
-        .post("/login", login)
-        .get("/todos", list_todos)
-        .post("/todos", create_todo)
-        .put("/todos/:id", update_todo)
-        .delete("/todos/:id", delete_todo);
-
     Rapina::new()
         .with_auth(auth_config.clone())
-        .public_route("POST", "/login")
         .state(auth_config)
         .state(todo_store)
-        .router(router)
+        .discover()
         .listen(&addr)
         .await
 }

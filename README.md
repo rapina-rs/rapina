@@ -37,7 +37,7 @@ async fn create_user(input: Validated<Json<CreateUser>>, db: Db) -> Result<Json<
 async fn main() -> std::io::Result<()> {
     Rapina::new()
         .discover()
-        .listen("0.0.0.0:3000")
+        .listen("127.0.0.1:3000")
         .await
 }
 ```
