@@ -21,6 +21,9 @@ enum Commands {
     New {
         /// Name of the project to create
         name: String,
+        /// Skip AI assistant config files (AGENT.md, .claude/, .cursor/)
+        #[arg(long)]
+        no_ai: bool,
     },
     /// Start development server with hot reload
     Dev {
@@ -118,8 +121,8 @@ fn main() {
         Some(Commands::Version) => {
             print_version();
         }
-        Some(Commands::New { name }) => {
-            if let Err(e) = commands::new::execute(&name) {
+        Some(Commands::New { name, no_ai }) => {
+            if let Err(e) = commands::new::execute(&name, no_ai) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
