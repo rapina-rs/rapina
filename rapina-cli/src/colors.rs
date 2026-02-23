@@ -1,7 +1,6 @@
 use colored::CustomColor;
 
 /// Catppuccin Mocha color palette.
-
 pub fn mauve() -> CustomColor {
     CustomColor::new(203, 166, 247)
 }
