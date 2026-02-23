@@ -2,7 +2,7 @@
 title = "Middleware"
 description = "Rate limiting, compression, CORS, timeout, and custom middleware"
 weight = 7
-date = 2025-02-23
+date = 2026-02-23
 +++
 
 Middleware intercepts requests before they reach your handler and responses before they are sent to the client. Each piece in the chain can inspect, modify, or short-circuit the request lifecycle.
@@ -364,7 +364,6 @@ Rapina::new()
     .with_rate_limit(RateLimitConfig::per_minute(60))
     .with_compression(CompressionConfig::default())
     .middleware(SecurityHeadersMiddleware)
-    .with_auth(auth_config)
     .discover()
     .listen("127.0.0.1:3000")
     .await
