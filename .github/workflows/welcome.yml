@@ -9,21 +9,56 @@ on:
 permissions: {}
 
 jobs:
-  welcome:
-    name: Greet first-time contributors
+  welcome-pr:
+    if: github.event_name == 'pull_request_target'
+    name: Greet first-time PR author
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check if first PR
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh pr list --repo "${{ github.repository }}" \
+            --author "${{ github.event.pull_request.user.login }}" \
+            --state all --json number --jq 'length')
+          echo "pr_count=$count" >> "$GITHUB_OUTPUT"
+      - name: Welcome first-time contributor
+        if: steps.check.outputs.pr_count == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Thanks for your first PR! A maintainer will review it shortly.
+
+          Make sure CI passes and take a look at our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) if you haven't already."
+
+  welcome-issue:
+    if: github.event_name == 'issues'
+    name: Greet first-time issue author
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: write
     steps:
-      - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d  # v3
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          issue_message: |
-            Thanks for opening your first issue! We appreciate you taking the time to report this.
+      - name: Check if first issue
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh issue list --repo "${{ github.repository }}" \
+            --author "${{ github.event.issue.user.login }}" \
+            --state all --json number --jq 'length')
+          echo "issue_count=$count" >> "$GITHUB_OUTPUT"
+      - name: Welcome first-time contributor
+        if: steps.check.outputs.issue_count == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Thanks for opening your first issue! We appreciate you taking the time to report this.
 
-            If you're interested in contributing a fix, check out our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) and feel free to open a PR.
-          pr_message: |
-            Thanks for your first PR! A maintainer will review it shortly.
-
-            Make sure CI passes and take a look at our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) if you haven't already.
+          If you're interested in contributing a fix, check out our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) and feel free to open a PR."
