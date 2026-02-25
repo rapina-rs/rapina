@@ -16,8 +16,19 @@ rapina new my-app
 This creates:
 - `Cargo.toml` with Rapina dependencies
 - `src/main.rs` with a basic API
-- `.env.example` with common variables
 - `.gitignore`
+- `README.md`
+- `AGENT.md` — AI assistant context (generic)
+- `.claude/CLAUDE.md` — Claude-specific instructions
+- `.cursor/rules` — Cursor rules
+
+The AI config files teach assistants Rapina conventions (protected-by-default routing, extractors, error handling, project structure) so they generate correct code out of the box.
+
+To skip AI config files:
+
+```bash
+rapina new my-app --no-ai
+```
 
 ## rapina add resource
 
