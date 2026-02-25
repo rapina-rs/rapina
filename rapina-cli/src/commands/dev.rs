@@ -1,5 +1,6 @@
 //! Implementation of the `rapina dev` command.
 
+use crate::colors;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
@@ -247,8 +248,6 @@ fn get_binary_name() -> Result<String, String> {
         .map(|s| s.to_string())
         .ok_or_else(|| "Could not determine binary name from Cargo.toml".to_string())
 }
-
-use crate::colors;
 
 /// Print the development server banner.
 fn print_banner(config: &DevConfig) {

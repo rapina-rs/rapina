@@ -1,5 +1,6 @@
 //! Implementation of the `rapina test` command.
 
+use crate::colors;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::io::{BufRead, BufReader};
@@ -322,5 +323,3 @@ fn print_summary(summary: &TestSummary, success: bool) {
 
     println!();
 }
-
-use crate::colors;
