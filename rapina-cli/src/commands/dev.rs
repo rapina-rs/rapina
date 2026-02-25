@@ -1,5 +1,6 @@
 //! Implementation of the `rapina dev` command.
 
+use crate::commands::verify_rapina_project;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
@@ -28,7 +29,8 @@ impl Default for DevConfig {
 /// Execute the `dev` command to start the development server.
 pub fn execute(config: DevConfig) -> Result<(), String> {
     // Check if we're in a Rapina project
-    verify_rapina_project()?;
+    let parsed = verify_rapina_project()?;
+    let binary_name = get_binary_name(parsed)?;
 
     // Print banner
     print_banner(&config);
@@ -47,7 +49,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
         "INFO".custom_color(colors::blue()).bold()
     );
 
-    let mut server_process = build_and_run(&config)?;
+    let mut server_process = build_and_run(&config, &binary_name)?;
 
     if config.reload {
         // Set up file watcher
@@ -95,7 +97,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
                 let _ = server_process.wait();
 
                 // Rebuild and restart
-                match build_and_run(&config) {
+                match build_and_run(&config, &binary_name) {
                     Ok(new_process) => {
                         server_process = new_process;
                         server_crashed = false;
@@ -153,37 +155,8 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Verify that we're in a valid Rapina project directory.
-fn verify_rapina_project() -> Result<(), String> {
-    let cargo_toml = Path::new("Cargo.toml");
-    if !cargo_toml.exists() {
-        return Err("No Cargo.toml found. Are you in a Rust project directory?".to_string());
-    }
-
-    let content = std::fs::read_to_string(cargo_toml)
-        .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
-
-    let parsed: toml::Value = content
-        .parse()
-        .map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
-
-    // Check for rapina in dependencies
-    let has_rapina = parsed
-        .get("dependencies")
-        .and_then(|deps| deps.get("rapina"))
-        .is_some();
-
-    if !has_rapina {
-        return Err(
-            "This doesn't appear to be a Rapina project (no rapina dependency found)".to_string(),
-        );
-    }
-
-    Ok(())
-}
-
 /// Build the project and run the server.
-fn build_and_run(config: &DevConfig) -> Result<Child, String> {
+fn build_and_run(config: &DevConfig, binary_name: &String) -> Result<Child, String> {
     // Run cargo build
     let build_output = Command::new("cargo")
         .args(["build"])
@@ -200,9 +173,6 @@ fn build_and_run(config: &DevConfig) -> Result<Child, String> {
         "{} Build successful",
         "INFO".custom_color(colors::green()).bold()
     );
-
-    // Get the binary name from Cargo.toml
-    let binary_name = get_binary_name()?;
 
     // Run the server
     let child = Command::new(format!("./target/debug/{}", binary_name))
@@ -223,14 +193,7 @@ fn build_and_run(config: &DevConfig) -> Result<Child, String> {
 }
 
 /// Get the binary name from Cargo.toml.
-fn get_binary_name() -> Result<String, String> {
-    let content = std::fs::read_to_string("Cargo.toml")
-        .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
-
-    let parsed: toml::Value = content
-        .parse()
-        .map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
-
+fn get_binary_name(parsed: toml::Value) -> Result<String, String> {
     // Check for [[bin]] section first
     if let Some(bins) = parsed.get("bin").and_then(|b| b.as_array())
         && let Some(first_bin) = bins.first()
