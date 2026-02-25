@@ -343,6 +343,15 @@ jar: Cookie<T>             // Cookie values
 - `update_<resource>` — PUT
 - `delete_<resource>` — DELETE
 
+### Builder pattern
+```rust
+Rapina::new()
+    .with_tracing(TracingConfig::new())
+    .middleware(RequestLogMiddleware::new())
+    .with_cors(CorsConfig::permissive())
+    .router(router)
+    .listen("127.0.0.1:3000")
+    .await
 ### Error handling pattern
 
 Each feature module has its own error type:
