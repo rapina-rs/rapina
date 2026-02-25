@@ -1,10 +1,6 @@
 //! Implementation of the `rapina dev` command.
-
-<<<<<<< fix/error-parser-cargo-toml
-use crate::commands::verify_rapina_project;
-=======
 use crate::colors;
->>>>>>> main
+use crate::commands::verify_rapina_project;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
