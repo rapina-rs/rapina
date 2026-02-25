@@ -1,5 +1,6 @@
 //! Rapina CLI - Command line tool for the Rapina web framework.
 
+mod colors;
 mod commands;
 
 use clap::{Parser, Subcommand};

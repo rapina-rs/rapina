@@ -1,5 +1,6 @@
 //! Implementation of the `rapina test` command.
 
+use crate::colors;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::io::{BufRead, BufReader};
@@ -321,29 +322,4 @@ fn print_summary(summary: &TestSummary, success: bool) {
     }
 
     println!();
-}
-
-/// Catppuccin Mocha color palette.
-mod colors {
-    use colored::CustomColor;
-
-    pub fn subtext() -> CustomColor {
-        CustomColor::new(166, 173, 200)
-    }
-
-    pub fn green() -> CustomColor {
-        CustomColor::new(166, 227, 161)
-    }
-
-    pub fn yellow() -> CustomColor {
-        CustomColor::new(249, 226, 175)
-    }
-
-    pub fn red() -> CustomColor {
-        CustomColor::new(243, 139, 168)
-    }
-
-    pub fn blue() -> CustomColor {
-        CustomColor::new(137, 180, 250)
-    }
 }

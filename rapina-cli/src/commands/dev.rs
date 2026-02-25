@@ -1,5 +1,6 @@
 //! Implementation of the `rapina dev` command.
 
+use crate::colors;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::path::Path;
@@ -246,43 +247,6 @@ fn get_binary_name() -> Result<String, String> {
         .and_then(|name| name.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| "Could not determine binary name from Cargo.toml".to_string())
-}
-
-/// Catppuccin Mocha color palette
-mod colors {
-    use colored::CustomColor;
-
-    pub fn mauve() -> CustomColor {
-        CustomColor::new(203, 166, 247)
-    }
-
-    pub fn lavender() -> CustomColor {
-        CustomColor::new(180, 190, 254)
-    }
-
-    pub fn sky() -> CustomColor {
-        CustomColor::new(137, 220, 235)
-    }
-
-    pub fn subtext() -> CustomColor {
-        CustomColor::new(166, 173, 200)
-    }
-
-    pub fn green() -> CustomColor {
-        CustomColor::new(166, 227, 161)
-    }
-
-    pub fn yellow() -> CustomColor {
-        CustomColor::new(249, 226, 175)
-    }
-
-    pub fn red() -> CustomColor {
-        CustomColor::new(243, 139, 168)
-    }
-
-    pub fn blue() -> CustomColor {
-        CustomColor::new(137, 180, 250)
-    }
 }
 
 /// Print the development server banner.
