@@ -24,7 +24,7 @@ pub async fn serve(
     let middlewares = Arc::new(middlewares);
     let listener = TcpListener::bind(addr).await?;
 
-    println!("Rapina listening on http://{}", addr);
+    tracing::info!("Rapina listening on http://{}", addr);
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -50,7 +50,7 @@ pub async fn serve(
             });
 
             if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
-                eprintln!("connection error: {}", e);
+                tracing::error!("connection error: {}", e);
             }
         });
     }
