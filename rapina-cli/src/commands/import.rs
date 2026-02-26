@@ -278,8 +278,8 @@ async fn introspect_sqlite(url: &str) -> Result<Vec<IntrospectedTable>, String> 
         .await
         .map_err(|e| format!("Failed to connect to SQLite: {}", e))?;
 
-    let discovery = sea_schema::sqlite::SchemaDiscovery::new(pool);
-    let schema = discovery
+    let discovery = sea_schema::sqlite::discovery::SchemaDiscovery::new(pool);
+    let schema: sea_schema::sqlite::def::Schema = discovery
         .discover()
         .await
         .map_err(|e| format!("Failed to discover schema: {}", e))?;
