@@ -5,7 +5,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 use super::analyze::{AnalyzedEntity, AnalyzedField, AnalyzedSchema};
-use super::types::FieldType;
+use super::types::{FieldType, ScalarType};
 
 /// Generate the complete schema code from analyzed entities.
 pub fn generate_schema(schema: AnalyzedSchema) -> TokenStream {
@@ -61,6 +61,23 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
         quote! {}
     };
 
+    // f32/f64 don't implement Eq, so omit it when model has float fields
+    let has_floats = entity.fields.iter().any(|f| {
+        matches!(
+            &f.ty,
+            FieldType::Scalar {
+                scalar: ScalarType::F32 | ScalarType::F64,
+                ..
+            }
+        )
+    });
+
+    let derive_attr = if has_floats {
+        quote! { #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, JsonSchema)] }
+    } else {
+        quote! { #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, JsonSchema)] }
+    };
+
     quote! {
         pub mod #mod_name {
             use rapina::sea_orm;
@@ -68,7 +85,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
             use serde::{Deserialize, Serialize};
             use rapina::schemars::{self, JsonSchema};
 
-            #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, JsonSchema)]
+            #derive_attr
             #[sea_orm(table_name = #table_name)]
             pub struct Model {
                 #[sea_orm(primary_key)]
@@ -535,5 +552,40 @@ mod tests {
         let output = generated.to_string();
 
         assert!(output.contains("indexed"));
+    }
+
+    #[test]
+    fn test_generate_float_field_omits_eq() {
+        let input = quote! {
+            Measurement {
+                value: f32,
+                label: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("PartialEq"));
+        assert!(!output.contains("PartialEq , Eq"));
+    }
+
+    #[test]
+    fn test_generate_no_float_field_includes_eq() {
+        let input = quote! {
+            User {
+                name: String,
+                age: i32,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("PartialEq , Eq"));
     }
 }
