@@ -51,3 +51,59 @@ pub async fn openapi_spec(
             .unwrap(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use http::StatusCode;
+
+    use crate::app::Rapina;
+    use crate::router::Router;
+    use crate::testing::TestClient;
+
+    #[tokio::test]
+    async fn test_openapi_spec_returns_200_with_json_content_type() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .openapi("Test API", "1.0.0")
+            .router(Router::new().route(http::Method::GET, "/users", |_, _, _| async { "ok" }));
+
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/json"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_openapi_spec_body_is_valid_json_with_spec_structure() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .openapi("My API", "2.0.0")
+            .router(Router::new().route(http::Method::GET, "/items", |_, _, _| async { "ok" }));
+
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["openapi"], "3.0.3");
+        assert_eq!(body["info"]["title"], "My API");
+        assert_eq!(body["info"]["version"], "2.0.0");
+        assert!(body["paths"].is_object());
+        assert!(body["paths"].get("/items").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_openapi_spec_without_registry_returns_404() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .router(Router::new().route(http::Method::GET, "/items", |_, _, _| async { "ok" }));
+
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
