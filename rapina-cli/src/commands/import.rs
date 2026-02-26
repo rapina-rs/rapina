@@ -127,8 +127,16 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
 // NormalizedType -> FieldInfo conversion
 // ---------------------------------------------------------------------------
 
-fn normalized_to_field_info(col_name: &str, col_type: &NormalizedType, is_nullable: bool) -> Option<FieldInfo> {
-    let null_suffix = if is_nullable { ".null()" } else { ".not_null()" };
+fn normalized_to_field_info(
+    col_name: &str,
+    col_type: &NormalizedType,
+    is_nullable: bool,
+) -> Option<FieldInfo> {
+    let null_suffix = if is_nullable {
+        ".null()"
+    } else {
+        ".not_null()"
+    };
 
     let (rust_type, schema_type, column_base) = match col_type {
         NormalizedType::Str => ("String", "String", ".string()"),
@@ -213,10 +221,7 @@ async fn introspect_postgres(
 }
 
 #[cfg(feature = "import-mysql")]
-async fn introspect_mysql(
-    url: &str,
-    schema_name: &str,
-) -> Result<Vec<IntrospectedTable>, String> {
+async fn introspect_mysql(url: &str, schema_name: &str) -> Result<Vec<IntrospectedTable>, String> {
     let pool = sqlx::MySqlPool::connect(url)
         .await
         .map_err(|e| format!("Failed to connect to MySQL: {}", e))?;
@@ -268,9 +273,7 @@ async fn introspect_mysql(
 }
 
 #[cfg(feature = "import-sqlite")]
-async fn introspect_sqlite(
-    url: &str,
-) -> Result<Vec<IntrospectedTable>, String> {
+async fn introspect_sqlite(url: &str) -> Result<Vec<IntrospectedTable>, String> {
     let pool = sqlx::SqlitePool::connect(url)
         .await
         .map_err(|e| format!("Failed to connect to SQLite: {}", e))?;
@@ -318,7 +321,11 @@ async fn introspect_sqlite(
 // Filtering and validation
 // ---------------------------------------------------------------------------
 
-const INTERNAL_TABLES: &[&str] = &["seaql_migrations", "sqlx_migrations", "__diesel_schema_migrations"];
+const INTERNAL_TABLES: &[&str] = &[
+    "seaql_migrations",
+    "sqlx_migrations",
+    "__diesel_schema_migrations",
+];
 
 fn filter_and_validate_tables(
     tables: Vec<IntrospectedTable>,
@@ -410,9 +417,7 @@ enum RelationKind {
     HasMany,
 }
 
-fn resolve_relationships(
-    tables: &[IntrospectedTable],
-) -> HashMap<String, Vec<RelationshipInfo>> {
+fn resolve_relationships(tables: &[IntrospectedTable]) -> HashMap<String, Vec<RelationshipInfo>> {
     let table_names: std::collections::HashSet<&str> =
         tables.iter().map(|t| t.name.as_str()).collect();
     let mut relationships: HashMap<String, Vec<RelationshipInfo>> = HashMap::new();
@@ -470,7 +475,7 @@ fn detect_timestamps(table: &IntrospectedTable) -> Option<&'static str> {
     let has_updated = table.columns.iter().any(|c| c.name == "updated_at");
 
     match (has_created, has_updated) {
-        (true, true) => None,               // default behavior, no attribute needed
+        (true, true) => None, // default behavior, no attribute needed
         (true, false) => Some("created_at"),
         (false, true) => Some("updated_at"),
         (false, false) => Some("none"),
@@ -602,11 +607,7 @@ pub fn database(
     })?;
 
     let total_discovered = tables.len();
-    println!(
-        "  {} Discovered {} table(s)",
-        "✓".green(),
-        total_discovered
-    );
+    println!("  {} Discovered {} table(s)", "✓".green(), total_discovered);
 
     let tables = filter_and_validate_tables(tables, table_filter);
 
@@ -647,19 +648,10 @@ pub fn database(
     println!();
     println!("  {}:", "Next steps".bright_yellow());
     println!();
-    println!(
-        "  1. Review generated files in {}",
-        "src/".cyan()
-    );
-    println!(
-        "  2. Add module declarations to {}",
-        "src/main.rs".cyan()
-    );
+    println!("  1. Review generated files in {}", "src/".cyan());
+    println!("  2. Add module declarations to {}", "src/main.rs".cyan());
     println!("  3. Register routes in your Router");
-    println!(
-        "  4. Run {} to verify",
-        "cargo build".cyan()
-    );
+    println!("  4. Run {} to verify", "cargo build".cyan());
     println!();
 
     Ok(())
@@ -690,8 +682,11 @@ mod tests {
 
     #[test]
     fn test_normalized_to_field_info_unmappable() {
-        let result =
-            normalized_to_field_info("geom", &NormalizedType::Unmappable("geometry".into()), false);
+        let result = normalized_to_field_info(
+            "geom",
+            &NormalizedType::Unmappable("geometry".into()),
+            false,
+        );
         assert!(result.is_none());
     }
 
@@ -706,7 +701,12 @@ mod tests {
             (NormalizedType::F64, "f64", "f64", ".double()"),
             (NormalizedType::Bool, "bool", "bool", ".boolean()"),
             (NormalizedType::Uuid, "Uuid", "Uuid", ".uuid()"),
-            (NormalizedType::DateTime, "DateTimeUtc", "DateTime", ".date_time()"),
+            (
+                NormalizedType::DateTime,
+                "DateTimeUtc",
+                "DateTime",
+                ".date_time()",
+            ),
             (NormalizedType::Date, "Date", "Date", ".date()"),
             (NormalizedType::Decimal, "Decimal", "Decimal", ".decimal()"),
             (NormalizedType::Json, "Json", "Json", ".json()"),

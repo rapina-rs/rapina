@@ -187,11 +187,7 @@ fn main() {
                 } => {
                     #[cfg(feature = "import")]
                     {
-                        commands::import::database(
-                            &url,
-                            tables.as_deref(),
-                            schema.as_deref(),
-                        )
+                        commands::import::database(&url, tables.as_deref(), schema.as_deref())
                     }
                     #[cfg(not(feature = "import"))]
                     {
