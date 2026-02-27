@@ -446,6 +446,10 @@ impl Rapina {
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
         }
 
+        // Sort routes so static segments take priority over parameterized ones.
+        // This prevents `/users/:id` from shadowing `/users/current`.
+        self.router.sort_routes();
+
         self
     }
 
