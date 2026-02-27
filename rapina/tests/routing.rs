@@ -229,9 +229,7 @@ async fn test_static_route_not_shadowed_by_parameterized() {
     // the sort in prepare() should still let /users/current win.
     let app = Rapina::new().with_introspection(false).router(
         Router::new()
-            .route(http::Method::GET, "/users/:id", |_, _, _| async {
-                "param"
-            })
+            .route(http::Method::GET, "/users/:id", |_, _, _| async { "param" })
             .route(http::Method::GET, "/users/current", |_, _, _| async {
                 "static"
             }),
@@ -253,11 +251,9 @@ async fn test_static_route_not_shadowed_by_parameterized() {
 async fn test_multi_level_param_specificity() {
     let app = Rapina::new().with_introspection(false).router(
         Router::new()
-            .route(
-                http::Method::GET,
-                "/users/:id/:action",
-                |_, _, _| async { "two params" },
-            )
+            .route(http::Method::GET, "/users/:id/:action", |_, _, _| async {
+                "two params"
+            })
             .route(http::Method::GET, "/users/:id/posts", |_, _, _| async {
                 "one param"
             }),
@@ -319,16 +315,12 @@ async fn test_param_at_different_positions() {
     // The one with the earlier static segment should win for /api/v1/users
     let app = Rapina::new().with_introspection(false).router(
         Router::new()
-            .route(
-                http::Method::GET,
-                "/api/:version/users",
-                |_, _, _| async { "version param" },
-            )
-            .route(
-                http::Method::GET,
-                "/api/v1/:resource",
-                |_, _, _| async { "resource param" },
-            ),
+            .route(http::Method::GET, "/api/:version/users", |_, _, _| async {
+                "version param"
+            })
+            .route(http::Method::GET, "/api/v1/:resource", |_, _, _| async {
+                "resource param"
+            }),
     );
 
     let client = TestClient::new(app).await;
