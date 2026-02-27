@@ -30,6 +30,8 @@ chrono = "0.4"
 tokio = { version = "1", features = ["full"], optional = true }
 sea-schema = { version = "0.16", optional = true, default-features = false }
 sqlx = { version = "0.8", optional = true }
+openapiv3 = { version = "2", optional = true }
+serde_yaml_ng = { version = "0.10", optional = true }
 
 [features]
 default = []
@@ -61,3 +63,4 @@ import-sqlite = [
     "sqlx/runtime-tokio-rustls",
     "sqlx/sqlite",
 ]
+import-openapi = ["dep:openapiv3", "dep:serde_yaml_ng"]

@@ -29,6 +29,7 @@ pub(crate) fn pluralize(s: &str) -> String {
     format!("{}s", s)
 }
 
+#[cfg(feature = "import")]
 pub(crate) fn singularize(s: &str) -> String {
     if let Some(stem) = s.strip_suffix("ies") {
         format!("{}y", stem)
@@ -503,6 +504,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "import")]
     fn test_singularize() {
         assert_eq!(singularize("users"), "user");
         assert_eq!(singularize("posts"), "post");

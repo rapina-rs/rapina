@@ -12,6 +12,9 @@ pub mod openapi;
 pub mod routes;
 pub mod test;
 
+#[cfg(feature = "import-openapi")]
+pub mod import_openapi;
+
 /// Verify that we're in a valid Rapina project directory.
 pub fn verify_rapina_project() -> Result<toml::Value, String> {
     let cargo_toml = std::path::Path::new("Cargo.toml");
