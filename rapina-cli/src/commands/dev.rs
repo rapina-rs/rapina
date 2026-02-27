@@ -156,7 +156,7 @@ pub fn execute(config: DevConfig) -> Result<(), String> {
 }
 
 /// Build the project and run the server.
-fn build_and_run(config: &DevConfig, binary_name: &String) -> Result<Child, String> {
+fn build_and_run(config: &DevConfig, binary_name: &str) -> Result<Child, String> {
     // Run cargo build
     let build_output = Command::new("cargo")
         .args(["build"])

@@ -19,7 +19,8 @@ pub fn verify_rapina_project() -> Result<toml::Value, String> {
     let content = std::fs::read_to_string(cargo_toml)
         .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
 
-    let parsed: toml::Value = parse_cargo_toml(&content)?;
+    let parsed: toml::Value =
+        toml::from_str(&content).map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
 
     // Check for rapina in dependencies
     let has_rapina = parsed
@@ -34,8 +35,4 @@ pub fn verify_rapina_project() -> Result<toml::Value, String> {
     }
 
     Ok(parsed)
-}
-
-pub fn parse_cargo_toml(content: &str) -> Result<toml::Value, String> {
-    toml::from_str(content).map_err(|e| format!("Failed to parse Cargo.toml: {}", e))
 }
