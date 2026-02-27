@@ -41,7 +41,8 @@ enum NormalizedType {
     F64,
     Bool,
     Uuid,
-    DateTime,
+    DateTimeUtc,
+    NaiveDateTime,
     Date,
     Decimal,
     Json,
@@ -66,7 +67,8 @@ fn map_pg_type(col_type: &sea_schema::postgres::def::Type) -> NormalizedType {
         Type::Bytea => NormalizedType::Unmappable("bytea".to_string()),
         Type::Boolean => NormalizedType::Bool,
         Type::Uuid => NormalizedType::Uuid,
-        Type::Timestamp(_) | Type::TimestampWithTimeZone(_) => NormalizedType::DateTime,
+        Type::TimestampWithTimeZone(_) => NormalizedType::DateTimeUtc,
+        Type::Timestamp(_) => NormalizedType::NaiveDateTime,
         Type::Date => NormalizedType::Date,
         Type::Decimal(_) | Type::Numeric(_) => NormalizedType::Decimal,
         Type::Json | Type::JsonBinary => NormalizedType::Json,
@@ -91,7 +93,8 @@ fn map_mysql_type(col_type: &sea_schema::mysql::def::Type) -> NormalizedType {
             NormalizedType::Text
         }
         Type::Bool => NormalizedType::Bool,
-        Type::DateTime(_) | Type::Timestamp(_) => NormalizedType::DateTime,
+        Type::Timestamp(_) => NormalizedType::DateTimeUtc,
+        Type::DateTime(_) => NormalizedType::NaiveDateTime,
         Type::Date => NormalizedType::Date,
         Type::Decimal(_) => NormalizedType::Decimal,
         Type::Json => NormalizedType::Json,
@@ -113,9 +116,8 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
         ColumnType::Text => NormalizedType::Text,
         ColumnType::Boolean => NormalizedType::Bool,
         ColumnType::Uuid => NormalizedType::Uuid,
-        ColumnType::DateTime | ColumnType::Timestamp | ColumnType::TimestampWithTimeZone => {
-            NormalizedType::DateTime
-        }
+        ColumnType::TimestampWithTimeZone => NormalizedType::DateTimeUtc,
+        ColumnType::DateTime | ColumnType::Timestamp => NormalizedType::NaiveDateTime,
         ColumnType::Date => NormalizedType::Date,
         ColumnType::Decimal(_) | ColumnType::Money(_) => NormalizedType::Decimal,
         ColumnType::Json | ColumnType::JsonBinary => NormalizedType::Json,
@@ -147,7 +149,8 @@ fn normalized_to_field_info(
         NormalizedType::F64 => ("f64", "f64", ".double()"),
         NormalizedType::Bool => ("bool", "bool", ".boolean()"),
         NormalizedType::Uuid => ("Uuid", "Uuid", ".uuid()"),
-        NormalizedType::DateTime => ("DateTimeUtc", "DateTime", ".date_time()"),
+        NormalizedType::DateTimeUtc => ("DateTimeUtc", "DateTime", ".timestamp_with_time_zone()"),
+        NormalizedType::NaiveDateTime => ("DateTime", "NaiveDateTime", ".date_time()"),
         NormalizedType::Date => ("Date", "Date", ".date()"),
         NormalizedType::Decimal => ("Decimal", "Decimal", ".decimal()"),
         NormalizedType::Json => ("Json", "Json", ".json()"),
@@ -702,9 +705,15 @@ mod tests {
             (NormalizedType::Bool, "bool", "bool", ".boolean()"),
             (NormalizedType::Uuid, "Uuid", "Uuid", ".uuid()"),
             (
-                NormalizedType::DateTime,
+                NormalizedType::DateTimeUtc,
                 "DateTimeUtc",
                 "DateTime",
+                ".timestamp_with_time_zone()",
+            ),
+            (
+                NormalizedType::NaiveDateTime,
+                "DateTime",
+                "NaiveDateTime",
                 ".date_time()",
             ),
             (NormalizedType::Date, "Date", "Date", ".date()"),
@@ -741,12 +750,12 @@ mod tests {
                 },
                 IntrospectedColumn {
                     name: "created_at".into(),
-                    col_type: NormalizedType::DateTime,
+                    col_type: NormalizedType::DateTimeUtc,
                     is_nullable: false,
                 },
                 IntrospectedColumn {
                     name: "updated_at".into(),
-                    col_type: NormalizedType::DateTime,
+                    col_type: NormalizedType::DateTimeUtc,
                     is_nullable: false,
                 },
             ],
@@ -783,7 +792,7 @@ mod tests {
                 },
                 IntrospectedColumn {
                     name: "created_at".into(),
-                    col_type: NormalizedType::DateTime,
+                    col_type: NormalizedType::DateTimeUtc,
                     is_nullable: false,
                 },
             ],
