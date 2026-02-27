@@ -139,7 +139,9 @@ pub mod prelude {
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
+pub use rust_decimal;
 pub use schemars;
+pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;

@@ -49,10 +49,10 @@ impl ScalarType {
             ScalarType::F32 => quote! { f32 },
             ScalarType::F64 => quote! { f64 },
             ScalarType::Bool => quote! { bool },
-            ScalarType::Uuid => quote! { Uuid },
+            ScalarType::Uuid => quote! { rapina::uuid::Uuid },
             ScalarType::DateTime => quote! { DateTimeUtc },
             ScalarType::Date => quote! { Date },
-            ScalarType::Decimal => quote! { Decimal },
+            ScalarType::Decimal => quote! { rapina::rust_decimal::Decimal },
             ScalarType::Json => quote! { Json },
         }
     }
