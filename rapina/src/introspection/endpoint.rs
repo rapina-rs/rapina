@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_routes_returns_404_and_empty_body_when_with_introspection_disable() {
+    async fn test_list_routes_returns_404_and_empty_body_when_with_introspection_disabled() {
         let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
         let app = Rapina::new().router(router).with_introspection(false);
         let client = TestClient::new(app).await;

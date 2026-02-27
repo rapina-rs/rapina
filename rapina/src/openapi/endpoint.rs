@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_openapi_spec_returns_404_and_empty_body_when_openapi_is_disable() {
+    async fn test_openapi_spec_returns_404_and_empty_body_when_openapi_is_disabled() {
         let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
         let app = Rapina::new().router(router);
         let client = TestClient::new(app).await;
