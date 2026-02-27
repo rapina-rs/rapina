@@ -45,7 +45,7 @@ uuid = { version = "1", features = ["v4"] }
 dotenvy = "0.15.7"
 
 # OpenAPI
-schemars = { version = "1.2.0", features = ["chrono04"] }
+schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"] }
 
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }

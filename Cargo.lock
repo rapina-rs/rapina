@@ -2149,8 +2149,11 @@ dependencies = [
  "ctrlc",
  "notify 8.2.0",
  "notify-debouncer-mini",
+ "sea-schema",
  "serde",
  "serde_json",
+ "sqlx",
+ "tokio",
  "toml",
 ]
 
@@ -2411,9 +2414,11 @@ dependencies = [
  "chrono",
  "dyn-clone",
  "ref-cast",
+ "rust_decimal",
  "schemars_derive",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

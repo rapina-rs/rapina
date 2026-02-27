@@ -57,6 +57,11 @@ enum Commands {
         #[command(subcommand)]
         command: AddCommands,
     },
+    /// Import schema from external sources
+    Import {
+        #[command(subcommand)]
+        command: ImportCommands,
+    },
     /// Run tests with pretty output
     Test {
         /// Generate coverage report (requires cargo-llvm-cov)
@@ -87,6 +92,22 @@ enum AddCommands {
         name: String,
         /// Fields in name:type format (e.g., title:string active:bool)
         fields: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImportCommands {
+    /// Import schema from a live database
+    Database {
+        /// Database connection URL (e.g., postgres://user:pass@host/db)
+        #[arg(long, env = "DATABASE_URL")]
+        url: String,
+        /// Only import specific tables (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tables: Option<Vec<String>>,
+        /// Database schema name (default: "public" for Postgres)
+        #[arg(long)]
+        schema: Option<String>,
     },
 }
 
@@ -155,6 +176,31 @@ fn main() {
         Some(Commands::Add { command }) => {
             let result = match command {
                 AddCommands::Resource { name, fields } => commands::add::resource(&name, &fields),
+            };
+            if let Err(e) = result {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Import { command }) => {
+            let result: Result<(), String> = match command {
+                ImportCommands::Database {
+                    url,
+                    tables,
+                    schema,
+                } => {
+                    #[cfg(feature = "import")]
+                    {
+                        commands::import::database(&url, tables.as_deref(), schema.as_deref())
+                    }
+                    #[cfg(not(feature = "import"))]
+                    {
+                        let _ = (url, tables, schema);
+                        Err("The import command requires the import feature. \
+                             Reinstall with: cargo install rapina-cli --features import-postgres"
+                            .to_string())
+                    }
+                }
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
