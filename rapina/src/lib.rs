@@ -136,6 +136,9 @@ pub mod prelude {
     pub use rapina_macros::{Config, delete, get, post, public, put, schema};
 }
 
+// Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
+pub use rapina_macros::{Config, delete, get, post, public, put, schema};
+
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;

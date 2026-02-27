@@ -393,7 +393,17 @@ pub(crate) fn update_entity_file(
     if entity_path.exists() {
         let content = fs::read_to_string(entity_path)
             .map_err(|e| format!("Failed to read entity.rs: {}", e))?;
-        let updated = format!("{}{}", content.trim_end(), schema_block);
+
+        // Ensure schema! macro is importable
+        let needs_import =
+            !content.contains("use rapina::prelude::*") && !content.contains("use rapina::schema");
+        let prefix = if needs_import {
+            "use rapina::schema;\n"
+        } else {
+            ""
+        };
+
+        let updated = format!("{}{}{}", prefix, content.trim_end(), schema_block);
         fs::write(entity_path, updated).map_err(|e| format!("Failed to write entity.rs: {}", e))?;
     } else {
         let content = format!("use rapina::prelude::*;\n{}", schema_block);
