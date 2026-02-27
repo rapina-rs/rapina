@@ -7,7 +7,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Ident, Result, Token, braced};
 
-use super::types::{ScalarType, is_reserved_field};
+use super::types::ScalarType;
 
 /// A complete schema definition containing multiple entities.
 #[derive(Debug)]
@@ -112,16 +112,12 @@ impl Parse for EntityDef {
 
         let fields: Vec<FieldDef> = fields_punctuated.into_iter().collect();
 
-        // Check for reserved field names
+        // Check that 'id' is never declared manually (always auto-generated)
         for field in &fields {
-            let field_name = field.name.to_string();
-            if is_reserved_field(&field_name) {
+            if field.name == "id" {
                 return Err(syn::Error::new(
                     field.name.span(),
-                    format!(
-                        "field '{}' is reserved and automatically generated (id, created_at, updated_at)",
-                        field_name
-                    ),
+                    "field 'id' is reserved and automatically generated",
                 ));
             }
         }

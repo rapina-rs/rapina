@@ -84,11 +84,3 @@ pub enum FieldType {
     /// A belongs_to relationship (Entity or Option<Entity>)
     BelongsTo { target: syn::Ident, optional: bool },
 }
-
-/// Reserved field names that are auto-generated.
-pub const RESERVED_FIELDS: &[&str] = &["id", "created_at", "updated_at"];
-
-/// Check if a field name is reserved.
-pub fn is_reserved_field(name: &str) -> bool {
-    RESERVED_FIELDS.contains(&name)
-}

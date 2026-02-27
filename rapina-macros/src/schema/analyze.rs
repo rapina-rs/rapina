@@ -82,6 +82,23 @@ pub fn analyze_schema(schema: Schema) -> Result<AnalyzedSchema> {
 }
 
 fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<AnalyzedEntity> {
+    // Reject created_at/updated_at only when they'd collide with auto-generated timestamps
+    for field in &entity.fields {
+        let name = field.name.to_string();
+        if name == "created_at" && entity.attrs.has_created_at {
+            return Err(syn::Error::new(
+                field.name.span(),
+                "field 'created_at' is auto-generated. Use #[timestamps(none)] or #[timestamps(updated_at)] to declare it manually",
+            ));
+        }
+        if name == "updated_at" && entity.attrs.has_updated_at {
+            return Err(syn::Error::new(
+                field.name.span(),
+                "field 'updated_at' is auto-generated. Use #[timestamps(none)] or #[timestamps(created_at)] to declare it manually",
+            ));
+        }
+    }
+
     let mut analyzed_fields = Vec::new();
 
     for field in entity.fields {
@@ -299,6 +316,36 @@ mod tests {
             analyzed.entities[0].attrs.table_name,
             Some("people".to_string())
         );
+    }
+
+    #[test]
+    fn test_created_at_allowed_with_timestamps_none() {
+        let input = quote! {
+            #[timestamps(none)]
+            User {
+                email: String,
+                created_at: NaiveDateTime,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_created_at_rejected_with_default_timestamps() {
+        let input = quote! {
+            User {
+                email: String,
+                created_at: NaiveDateTime,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("auto-generated"));
     }
 
     #[test]
