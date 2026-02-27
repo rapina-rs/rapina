@@ -1,6 +1,8 @@
 //! The main application builder for Rapina.
 
+use std::future::Future;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
@@ -13,7 +15,7 @@ use crate::middleware::{
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
-use crate::server::serve;
+use crate::server::{ShutdownHook, serve};
 use crate::state::AppState;
 
 /// The main application type for building Rapina servers.
@@ -63,6 +65,10 @@ pub struct Rapina {
     pub(crate) public_routes: PublicRoutes,
     /// Whether auto-discovery is enabled
     pub(crate) auto_discover: bool,
+    /// Graceful shutdown timeout (default 30s)
+    pub(crate) shutdown_timeout: Duration,
+    /// Hooks to run during graceful shutdown
+    pub(crate) shutdown_hooks: Vec<ShutdownHook>,
 }
 
 impl Rapina {
@@ -82,6 +88,8 @@ impl Rapina {
             auth_config: None,
             public_routes: PublicRoutes::new(),
             auto_discover: false,
+            shutdown_timeout: Duration::from_secs(30),
+            shutdown_hooks: Vec::new(),
         }
     }
 
@@ -232,6 +240,41 @@ impl Rapina {
     /// Introspection is enabled by default in debug builds.
     pub fn with_introspection(mut self, enabled: bool) -> Self {
         self.introspection = enabled;
+        self
+    }
+
+    /// Sets the graceful shutdown timeout.
+    ///
+    /// When the server receives a shutdown signal (SIGINT/SIGTERM), it stops
+    /// accepting new connections and waits up to this duration for in-flight
+    /// requests to complete. Defaults to 30 seconds.
+    pub fn shutdown_timeout(mut self, timeout: Duration) -> Self {
+        self.shutdown_timeout = timeout;
+        self
+    }
+
+    /// Registers an async hook to run during graceful shutdown.
+    ///
+    /// Hooks run after in-flight connections have drained (or the timeout
+    /// expires), in the order they were registered. Use this to close
+    /// database pools, flush metrics, or perform other cleanup.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .on_shutdown(|| async {
+    ///         println!("cleaning up...");
+    ///     })
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn on_shutdown<F, Fut>(mut self, hook: F) -> Self
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.shutdown_hooks.push(Box::new(move || Box::pin(hook())));
         self
     }
 
@@ -414,7 +457,15 @@ impl Rapina {
     pub async fn listen(self, addr: &str) -> std::io::Result<()> {
         let addr: SocketAddr = addr.parse().expect("invalid address");
         let app = self.prepare();
-        serve(app.router, app.state, app.middlewares, addr).await
+        serve(
+            app.router,
+            app.state,
+            app.middlewares,
+            addr,
+            app.shutdown_timeout,
+            app.shutdown_hooks,
+        )
+        .await
     }
 }
 
@@ -575,5 +626,25 @@ mod tests {
     fn test_rapina_with_metrics_disabled() {
         let app = Rapina::new().with_metrics(false);
         assert!(!app.metrics);
+    }
+
+    #[test]
+    fn test_rapina_shutdown_timeout_default() {
+        let app = Rapina::new();
+        assert_eq!(app.shutdown_timeout, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_rapina_shutdown_timeout_custom() {
+        let app = Rapina::new().shutdown_timeout(Duration::from_secs(10));
+        assert_eq!(app.shutdown_timeout, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_rapina_on_shutdown_adds_hook() {
+        let app = Rapina::new()
+            .on_shutdown(|| async { println!("hook 1") })
+            .on_shutdown(|| async { println!("hook 2") });
+        assert_eq!(app.shutdown_hooks.len(), 2);
     }
 }

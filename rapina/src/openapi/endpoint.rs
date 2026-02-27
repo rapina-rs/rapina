@@ -51,3 +51,50 @@ pub async fn openapi_spec(
             .unwrap(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use http::{HeaderValue, Method, StatusCode};
+    use serde_json::Value;
+
+    use crate::{app::Rapina, router::Router, testing::TestClient};
+
+    #[tokio::test]
+    async fn test_openapi_spec_returns_200_with_json_content_type() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).openapi("openapi-test", "1.0");
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_openapi_spec_returns_valid_openapi_json_structure() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).openapi("openapi-test", "1.0");
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+        let json = response.json::<Value>();
+
+        assert!(json.get("openapi").is_some());
+        assert!(json.get("info").is_some());
+        assert!(json.get("paths").is_some());
+        assert!(json.get("components").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_openapi_spec_returns_404_and_empty_body_when_openapi_is_disabled() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router);
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/openapi.json").send().await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(response.text().is_empty());
+    }
+}

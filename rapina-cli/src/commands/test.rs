@@ -1,5 +1,6 @@
 //! Implementation of the `rapina test` command.
 
+use crate::colors;
 use colored::Colorize;
 use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::io::{BufRead, BufReader};
@@ -8,6 +9,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
+
+use crate::commands::verify_rapina_project;
 
 /// Configuration for the test command.
 #[derive(Default)]
@@ -52,34 +55,6 @@ fn check_coverage_tool() -> Result<(), String> {
             Err("cargo-llvm-cov not found. Install with: cargo install cargo-llvm-cov".to_string())
         }
     }
-}
-
-/// Verify that we're in a valid Rapina project directory.
-fn verify_rapina_project() -> Result<(), String> {
-    let cargo_toml = Path::new("Cargo.toml");
-    if !cargo_toml.exists() {
-        return Err("No Cargo.toml found. Are you in a Rust project directory?".to_string());
-    }
-
-    let content = std::fs::read_to_string(cargo_toml)
-        .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
-
-    let parsed: toml::Value = content
-        .parse()
-        .map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
-
-    let has_rapina = parsed
-        .get("dependencies")
-        .and_then(|deps| deps.get("rapina"))
-        .is_some();
-
-    if !has_rapina {
-        return Err(
-            "This doesn't appear to be a Rapina project (no rapina dependency found)".to_string(),
-        );
-    }
-
-    Ok(())
 }
 
 /// Run tests once.
@@ -321,29 +296,4 @@ fn print_summary(summary: &TestSummary, success: bool) {
     }
 
     println!();
-}
-
-/// Catppuccin Mocha color palette.
-mod colors {
-    use colored::CustomColor;
-
-    pub fn subtext() -> CustomColor {
-        CustomColor::new(166, 173, 200)
-    }
-
-    pub fn green() -> CustomColor {
-        CustomColor::new(166, 227, 161)
-    }
-
-    pub fn yellow() -> CustomColor {
-        CustomColor::new(249, 226, 175)
-    }
-
-    pub fn red() -> CustomColor {
-        CustomColor::new(243, 139, 168)
-    }
-
-    pub fn blue() -> CustomColor {
-        CustomColor::new(137, 180, 250)
-    }
 }

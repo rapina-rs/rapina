@@ -61,6 +61,11 @@ pub async fn list_routes(
 
 #[cfg(test)]
 mod tests {
+    use http::{HeaderValue, Method};
+    use serde_json::Value;
+
+    use crate::{app::Rapina, router::Router, testing::TestClient};
+
     use super::*;
 
     #[test]
@@ -112,5 +117,46 @@ mod tests {
         let registry = RouteRegistry::new();
         let debug = format!("{:?}", registry);
         assert!(debug.contains("RouteRegistry"));
+    }
+
+    #[tokio::test]
+    async fn test_list_routes_returns_200_with_json_content_type() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).with_introspection(true);
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/routes").send().await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_routes_response_contains_registered_routes() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).with_introspection(true);
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/routes").send().await;
+        let json = response.json::<Value>();
+
+        assert!(json.is_array());
+
+        let route = &json[0];
+
+        assert_eq!(route["method"], "GET");
+        assert_eq!(route["path"], "/hello");
+        assert_eq!(route["handler_name"], "handler");
+    }
+
+    #[tokio::test]
+    async fn test_list_routes_returns_404_and_empty_body_when_with_introspection_disabled() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).with_introspection(false);
+        let client = TestClient::new(app).await;
+        let response = client.get("/__rapina/routes").send().await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
