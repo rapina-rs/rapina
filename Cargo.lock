@@ -2125,6 +2125,7 @@ dependencies = [
  "nix",
  "prometheus",
  "rapina-macros",
+ "rust_decimal",
  "schemars",
  "sea-orm",
  "sea-orm-migration",
