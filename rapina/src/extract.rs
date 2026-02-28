@@ -9,6 +9,7 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use validator::Validate;
@@ -593,6 +594,39 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
     }
 
     Some(params)
+}
+
+macro_rules! impl_deref {
+    ($name:ident) => {
+        impl<T> Deref for $name<T> {
+            type Target = T;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+
+impl_deref!(State);
+impl_deref!(Json);
+impl_deref!(Path);
+impl_deref!(Query);
+impl_deref!(Form);
+impl_deref!(Cookie);
+impl_deref!(Validated);
+
+impl Deref for Context {
+    type Target = RequestContext;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for Headers {
+    type Target = http::HeaderMap;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 // Database extractor (requires "database" feature)
