@@ -96,6 +96,8 @@ pub mod middleware;
 #[cfg(feature = "database")]
 pub mod migration;
 pub mod observability;
+#[cfg(feature = "database")]
+pub mod pagination;
 pub mod openapi;
 pub mod response;
 pub mod router;
@@ -124,6 +126,8 @@ pub mod prelude {
     pub use crate::introspection::RouteInfo;
     pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
     pub use crate::observability::TracingConfig;
+    #[cfg(feature = "database")]
+    pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
 
