@@ -55,7 +55,7 @@ impl FromRequestParts for CurrentUser {
 
 #[get("/")]
 async fn hello(config: State<AppConfig>) -> String {
-    format!("Hello from {}!", config.into_inner().app_name)
+    format!("Hello from {}!", config.app_name)
 }
 
 #[get("/health")]
@@ -65,8 +65,7 @@ async fn health() -> StatusCode {
 
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> Result<Json<User>> {
-    let id = id.into_inner();
-
+    let id = *id;
     if id == 0 {
         return Err(Error::bad_request("id cannot be zero"));
     }
@@ -93,11 +92,10 @@ async fn get_me(user: CurrentUser) -> Json<User> {
 
 #[post("/users")]
 async fn create_user(body: Json<CreateUser>) -> Json<User> {
-    let input = body.into_inner();
     Json(User {
         id: 1,
-        name: input.name,
-        email: input.email,
+        name: body.name.clone(),
+        email: body.email.clone(),
     })
 }
 

@@ -40,8 +40,7 @@ const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 ///
 /// #[post("/users")]
 /// async fn create_user(body: Json<CreateUser>) -> Json<User> {
-///     let data = body.into_inner();
-///     // Use data.name, data.email...
+///     // Use body.name, body.email...
 /// }
 /// ```
 #[derive(Debug)]
@@ -59,7 +58,7 @@ pub struct Json<T>(pub T);
 ///
 /// #[get("/users/:id")]
 /// async fn get_user(id: Path<u64>) -> String {
-///     format!("User ID: {}", id.into_inner())
+///     format!("User ID: {}", *id) // deref to access value of Path
 /// }
 /// ```
 #[derive(Debug)]
@@ -83,7 +82,7 @@ pub struct Path<T>(pub T);
 ///
 /// #[get("/users")]
 /// async fn list_users(query: Query<Pagination>) -> String {
-///     let page = query.0.page.unwrap_or(1);
+///     let page = query.page.unwrap_or(1);
 ///     format!("Page: {}", page)
 /// }
 /// ```
@@ -108,7 +107,7 @@ pub struct Query<T>(pub T);
 ///
 /// #[post("/login")]
 /// async fn login(form: Form<LoginForm>) -> String {
-///     format!("Welcome, {}", form.0.username)
+///     format!("Welcome, {}", form.username)
 /// }
 /// ```
 #[derive(Debug)]
@@ -152,8 +151,7 @@ pub struct Headers(pub http::HeaderMap);
 ///
 /// #[get("/dashboard")]
 /// async fn dashboard(session: Cookie<Session>) -> Result<Json<Dashboard>> {
-///     let data = session.into_inner();
-///     // Use data.session_id...
+///     // Use session.session_id...
 /// }
 /// ```
 #[derive(Debug)]
@@ -176,7 +174,7 @@ pub struct Cookie<T>(pub T);
 ///
 /// #[get("/config")]
 /// async fn get_config(state: State<AppConfig>) -> String {
-///     state.into_inner().db_url
+///     state.db_url
 /// }
 /// ```
 #[derive(Debug)]
@@ -219,9 +217,8 @@ pub struct Context(pub RequestContext);
 ///
 /// #[post("/users")]
 /// async fn create_user(body: Validated<Json<CreateUser>>) -> String {
-///     let data = body.into_inner().into_inner();
 ///     // data is guaranteed to be valid
-///     format!("Created user: {}", data.email)
+///     format!("Created user: {}", body.email)
 /// }
 /// ```
 #[derive(Debug)]

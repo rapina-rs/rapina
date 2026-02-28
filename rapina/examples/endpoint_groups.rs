@@ -12,7 +12,7 @@ async fn list_users() -> String {
 
 #[get("/:id")]
 async fn get_user(id: Path<u64>) -> String {
-    format!("ID: {}", id.into_inner())
+    format!("ID: {}", *id)
 }
 
 #[tokio::main]

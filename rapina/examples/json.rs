@@ -15,11 +15,10 @@ struct User {
 
 #[post("/users")]
 async fn create_user(body: Json<CreateUser>) -> Json<User> {
-    let input = body.into_inner();
     Json(User {
         id: 1,
-        name: input.name,
-        email: input.email,
+        name: body.name.clone(),
+        email: body.email.clone(),
     })
 }
 

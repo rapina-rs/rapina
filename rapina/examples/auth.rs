@@ -43,13 +43,10 @@ async fn health() -> &'static str {
 #[public]
 #[post("/login")]
 async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
-    let req = body.into_inner();
-    let auth_config = auth.into_inner();
-
     // In a real app, validate credentials against a database
-    if req.username == "admin" && req.password == "password" {
-        let token = auth_config.create_token(&req.username)?;
-        Ok(Json(TokenResponse::new(token, auth_config.expiration())))
+    if body.username == "admin" && body.password == "password" {
+        let token = auth.create_token(&body.username)?;
+        Ok(Json(TokenResponse::new(token, auth.expiration())))
     } else {
         Err(Error::unauthorized("invalid credentials"))
     }
@@ -67,16 +64,14 @@ async fn me(user: CurrentUser) -> Json<UserResponse> {
 // Protected route - get user by ID
 #[get("/users/:id")]
 async fn get_user(id: Path<String>, user: CurrentUser) -> Result<Json<UserResponse>> {
-    let user_id = id.into_inner();
-
     // Only allow users to fetch their own data
-    if user.id != user_id {
+    if user.id != id.to_string() {
         return Err(Error::forbidden("you can only access your own data"));
     }
 
     Ok(Json(UserResponse {
-        id: user_id.clone(),
-        username: user_id,
+        id: id.to_string(),
+        username: user.id,
     }))
 }
 

@@ -1,6 +1,6 @@
-use rapina::prelude::*;
 use rapina::database::DatabaseConfig;
 use rapina::middleware::RequestLogMiddleware;
+use rapina::prelude::*;
 
 mod entity;
 mod migrations;
