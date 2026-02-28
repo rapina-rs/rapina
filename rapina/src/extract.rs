@@ -653,6 +653,11 @@ mod tests {
     use super::*;
     use crate::test::{TestRequest, empty_params, empty_state, params};
 
+    #[derive(Debug, Clone, PartialEq)]
+    struct Data {
+        name: String,
+    }
+
     // Path params extraction tests
     #[test]
     fn test_extract_path_params_exact_match() {
@@ -963,6 +968,111 @@ mod tests {
                 name: "test".to_string()
             }
         );
+    }
+
+    // deref tests
+    #[test]
+    fn test_json_deref() {
+        let json = Json("value".to_string());
+        assert_eq!(*json, "value");
+    }
+
+    #[test]
+    fn test_path_deref() {
+        let path = Path(42u64);
+        assert_eq!(*path, 42);
+    }
+
+    #[test]
+    fn test_query_deref() {
+        let query = Query("test".to_string());
+        assert_eq!(*query, "test");
+    }
+
+    #[test]
+    fn test_form_deref() {
+        let form = Form("data".to_string());
+        assert_eq!(*form, "data");
+    }
+
+    #[test]
+    fn test_state_deref() {
+        let state = State("value".to_string());
+        assert_eq!(*state, "value");
+    }
+
+    #[test]
+    fn test_validated_deref() {
+        let validated = Validated("value".to_string());
+        assert_eq!(*validated, "value");
+    }
+
+    #[test]
+    fn test_validated_deref_with_struct() {
+        let validated = Validated(Data {
+            name: "test".to_string(),
+        });
+        assert_eq!(
+            *validated,
+            Data {
+                name: "test".to_string()
+            }
+        );
+    }
+
+    // autoderef tests
+    #[test]
+    fn test_json_autoderef() {
+        let data = Data {
+            name: "json test".to_string(),
+        };
+
+        let json = Json(data.clone());
+        assert_eq!(json.name, data.name);
+    }
+
+    #[test]
+    fn test_state_autoderef() {
+        let data = Data {
+            name: "state test".to_string(),
+        };
+
+        let state = State(data.clone());
+        assert_eq!(state.name, data.name);
+    }
+
+    #[test]
+    fn test_form_autoderef() {
+        let data = Data {
+            name: "form test".to_string(),
+        };
+
+        let form = State(data.clone());
+        assert_eq!(form.name, data.name);
+    }
+
+    #[test]
+    fn test_headers_autoderef() {
+        let headers = Headers(http::HeaderMap::new());
+        assert!(headers.is_empty());
+    }
+
+    #[test]
+    fn test_context_autoderef() {
+        let ctx = Context(crate::context::RequestContext::with_trace_id(
+            "test".to_string(),
+        ));
+        assert_eq!(ctx.trace_id, "test");
+    }
+
+    #[test]
+    fn test_validated_autoderef() {
+        let data = Data {
+            name: "test".to_string(),
+        };
+
+        let validated = Validated(data.clone());
+        assert_eq!(validated.name, data.name);
     }
 
     // Cookie extractor tests
