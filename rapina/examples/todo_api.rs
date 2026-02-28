@@ -185,7 +185,7 @@ async fn update_todo(
     body: Json<UpdateTodoRequest>,
     store: State<TodoStore>,
 ) -> Result<Json<Todo>> {
-    let updated = store.update(&id, &user.id, body.title.clone(), body.completed.clone())?;
+    let updated = store.update(&id, &user.id, body.title.clone(), body.completed)?;
     Ok::<_, Error>(Json(updated))
 }
 

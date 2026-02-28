@@ -31,7 +31,7 @@ pub async fn get_todo(db: Db, id: Path<i32>) -> Result<Json<Model>> {
 #[errors(TodoError)]
 pub async fn create_todo(db: Db, body: Json<CreateTodo>) -> Result<Json<Model>> {
     let todo = ActiveModel {
-        title: Set(body.title),
+        title: Set(body.title.clone()),
         ..Default::default()
     };
     let result = todo.insert(db.conn()).await.map_err(DbError)?;
@@ -49,7 +49,7 @@ pub async fn update_todo(db: Db, id: Path<i32>, body: Json<UpdateTodo>) -> Resul
         .ok_or_else(|| Error::not_found(format!("Todo {} not found", id)))?;
 
     let mut active: ActiveModel = todo.into_active_model();
-    if let Some(title) = body.title {
+    if let Some(title) = body.title.clone() {
         active.title = Set(title);
     }
     if let Some(done) = body.done {
