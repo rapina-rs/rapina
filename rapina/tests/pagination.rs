@@ -124,10 +124,8 @@ async fn test_paginate_respects_custom_config() {
             |req, params, state: Arc<rapina::state::AppState>| async move {
                 let (parts, _) = req.into_parts();
                 match Paginate::from_request_parts(&parts, &params, &state).await {
-                    Ok(p) => {
-                        Json(serde_json::json!({"page": p.page, "per_page": p.per_page}))
-                            .into_response()
-                    }
+                    Ok(p) => Json(serde_json::json!({"page": p.page, "per_page": p.per_page}))
+                        .into_response(),
                     Err(e) => e.into_response(),
                 }
             },
@@ -176,13 +174,15 @@ async fn test_paginated_response_via_handler() {
     let response = client.get("/items").send().await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .get("content-type")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .contains("application/json"));
+    assert!(
+        response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("application/json")
+    );
 
     let json: serde_json::Value = response.json();
     assert_eq!(json["data"], serde_json::json!(["a", "b", "c"]));

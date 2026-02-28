@@ -96,9 +96,9 @@ pub mod middleware;
 #[cfg(feature = "database")]
 pub mod migration;
 pub mod observability;
+pub mod openapi;
 #[cfg(feature = "database")]
 pub mod pagination;
-pub mod openapi;
 pub mod response;
 pub mod router;
 pub mod server;
