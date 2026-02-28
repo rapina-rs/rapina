@@ -178,7 +178,7 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     println!();
 
     codegen::create_feature_module(singular, plural, pascal, &fields)?;
-    codegen::update_entity_file(pascal, &fields, None)?;
+    codegen::update_entity_file(pascal, &fields, None, None)?;
     codegen::create_migration_file(plural, pascal_plural, &fields)?;
 
     print_next_steps(singular, plural, pascal);
@@ -384,7 +384,7 @@ mod tests {
                 column_method: String::new(),
             },
         ];
-        let content = codegen::generate_schema_block("Todo", &fields, None);
+        let content = codegen::generate_schema_block("Todo", &fields, None, None);
 
         assert!(content.contains("schema! {"));
         assert!(content.contains("Todo {"));

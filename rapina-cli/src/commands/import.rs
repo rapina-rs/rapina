@@ -359,39 +359,31 @@ fn filter_and_validate_tables(
             continue;
         }
 
-        // Must be a single PK column
-        if table.primary_key_columns.len() > 1 {
-            eprintln!(
-                "  {} table {:?} skipped -- composite primary key (schema! requires single PK)",
-                "warn:".yellow(),
-                table.name
-            );
-            continue;
-        }
+        // For single PK: must be named "id" and be i32
+        // For composite PK: all columns must be i32
+        if table.primary_key_columns.len() == 1 {
+            if table.primary_key_columns[0] != "id" {
+                eprintln!(
+                    "  {} table {:?} skipped -- PK column is {:?} (schema! requires column named \"id\" for single PK)",
+                    "warn:".yellow(),
+                    table.name,
+                    table.primary_key_columns[0]
+                );
+                continue;
+            }
 
-        // PK column must be named "id"
-        if table.primary_key_columns[0] != "id" {
-            eprintln!(
-                "  {} table {:?} skipped -- PK column is {:?} (schema! requires column named \"id\")",
-                "warn:".yellow(),
-                table.name,
-                table.primary_key_columns[0]
-            );
-            continue;
-        }
-
-        // PK must be i32 (integer type)
-        if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
-            match &pk_col.col_type {
-                NormalizedType::I32 => {}
-                other => {
-                    eprintln!(
-                        "  {} table {:?} skipped -- PK is {:?} (schema! requires i32)",
-                        "warn:".yellow(),
-                        table.name,
-                        other
-                    );
-                    continue;
+            if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
+                match &pk_col.col_type {
+                    NormalizedType::I32 => {}
+                    other => {
+                        eprintln!(
+                            "  {} table {:?} skipped -- PK is {:?} (schema! requires i32)",
+                            "warn:".yellow(),
+                            table.name,
+                            other
+                        );
+                        continue;
+                    }
                 }
             }
         }
@@ -498,12 +490,21 @@ fn generate_for_table(
     let pascal = codegen::to_pascal_case(&singular);
     let pascal_plural = codegen::to_pascal_case(plural);
 
-    // Filter out id and timestamps — FK columns are kept as plain integer fields
+    let is_composite_pk = table.primary_key_columns.len() > 1;
+
+    // For composite PK, skip only timestamps. PK columns become regular fields.
+    // For single PK, skip id and timestamps as before.
+    let skip_columns: Vec<&str> = if is_composite_pk {
+        vec!["created_at", "updated_at"]
+    } else {
+        vec!["id", "created_at", "updated_at"]
+    };
+
     let mut fields = Vec::new();
     let mut skipped = 0;
 
     for col in &table.columns {
-        if col.name == "id" || col.name == "created_at" || col.name == "updated_at" {
+        if skip_columns.contains(&col.name.as_str()) {
             continue;
         }
 
@@ -526,7 +527,13 @@ fn generate_for_table(
 
     let timestamps = detect_timestamps(table);
 
-    codegen::update_entity_file(&pascal, &fields, timestamps)?;
+    let primary_key = if is_composite_pk {
+        Some(table.primary_key_columns.clone())
+    } else {
+        None
+    };
+
+    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref())?;
     codegen::create_migration_file(plural, &pascal_plural, &fields)?;
     codegen::create_feature_module(&singular, plural, &pascal, &fields)?;
 

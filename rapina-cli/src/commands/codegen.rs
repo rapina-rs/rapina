@@ -282,27 +282,33 @@ pub(crate) fn generate_schema_block(
     pascal: &str,
     fields: &[FieldInfo],
     timestamps: Option<&str>,
+    primary_key: Option<&[String]>,
 ) -> String {
     let schema_fields: Vec<String> = fields
         .iter()
         .map(|f| format!("        {}: {},", f.name, f.schema_type))
         .collect();
 
-    let attr = match timestamps {
-        None => String::new(),
-        Some(ts) => format!("\n    #[timestamps({})]\n", ts),
-    };
+    let mut attrs = String::new();
+
+    if let Some(pk_cols) = primary_key {
+        attrs.push_str(&format!("\n    #[primary_key({})]\n", pk_cols.join(", ")));
+    }
+
+    if let Some(ts) = timestamps {
+        attrs.push_str(&format!("\n    #[timestamps({})]\n", ts));
+    }
 
     format!(
         r#"
 schema! {{
-    {pascal} {{{attr}
+    {pascal} {{{attrs}
 {fields}
     }}
 }}
 "#,
         pascal = pascal,
-        attr = attr,
+        attrs = attrs,
         fields = schema_fields.join("\n"),
     )
 }
@@ -386,9 +392,10 @@ pub(crate) fn update_entity_file(
     pascal: &str,
     fields: &[FieldInfo],
     timestamps: Option<&str>,
+    primary_key: Option<&[String]>,
 ) -> Result<(), String> {
     let entity_path = Path::new("src/entity.rs");
-    let schema_block = generate_schema_block(pascal, fields, timestamps);
+    let schema_block = generate_schema_block(pascal, fields, timestamps, primary_key);
 
     if entity_path.exists() {
         let content = fs::read_to_string(entity_path)
@@ -533,16 +540,41 @@ mod tests {
             column_method: String::new(),
         }];
 
-        let block = generate_schema_block("Post", &fields, None);
+        let block = generate_schema_block("Post", &fields, None, None);
         assert!(block.contains("schema! {"));
         assert!(block.contains("Post {"));
         assert!(block.contains("title: String,"));
         assert!(!block.contains("#[timestamps"));
 
-        let block = generate_schema_block("Post", &fields, Some("none"));
+        let block = generate_schema_block("Post", &fields, Some("none"), None);
         assert!(block.contains("#[timestamps(none)]"));
 
-        let block = generate_schema_block("Post", &fields, Some("created_at"));
+        let block = generate_schema_block("Post", &fields, Some("created_at"), None);
         assert!(block.contains("#[timestamps(created_at)]"));
+    }
+
+    #[test]
+    fn test_generate_schema_block_with_primary_key() {
+        let fields = vec![
+            FieldInfo {
+                name: "user_id".to_string(),
+                rust_type: "i32".to_string(),
+                schema_type: "i32".to_string(),
+                column_method: ".integer().not_null()".to_string(),
+            },
+            FieldInfo {
+                name: "role_id".to_string(),
+                rust_type: "i32".to_string(),
+                schema_type: "i32".to_string(),
+                column_method: ".integer().not_null()".to_string(),
+            },
+        ];
+
+        let pk = vec!["user_id".to_string(), "role_id".to_string()];
+        let block = generate_schema_block("UsersRole", &fields, Some("none"), Some(&pk));
+        assert!(block.contains("#[primary_key(user_id, role_id)]"));
+        assert!(block.contains("#[timestamps(none)]"));
+        assert!(block.contains("user_id: i32,"));
+        assert!(block.contains("role_id: i32,"));
     }
 }

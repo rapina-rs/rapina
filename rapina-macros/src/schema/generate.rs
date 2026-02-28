@@ -78,6 +78,18 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
         quote! { #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, JsonSchema)] }
     };
 
+    // Generate primary key fields
+    let pk_fields = if let Some(ref pk_cols) = entity.attrs.primary_key {
+        // Custom primary key: mark specified fields with #[sea_orm(primary_key, auto_increment = false)]
+        generate_custom_pk_fields(entity, pk_cols)
+    } else {
+        // Default: auto-increment id
+        quote! {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+        }
+    };
+
     quote! {
         pub mod #mod_name {
             use rapina::sea_orm;
@@ -88,8 +100,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
             #derive_attr
             #[sea_orm(table_name = #table_name)]
             pub struct Model {
-                #[sea_orm(primary_key)]
-                pub id: i32,
+                #pk_fields
                 #model_fields
                 #created_at_field
                 #updated_at_field
@@ -107,10 +118,34 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     }
 }
 
+fn generate_custom_pk_fields(entity: &AnalyzedEntity, pk_cols: &[String]) -> TokenStream {
+    let fields: Vec<TokenStream> = pk_cols
+        .iter()
+        .filter_map(|col_name| {
+            let field = entity.fields.iter().find(|f| f.name == col_name)?;
+            if let FieldType::Scalar { scalar, .. } = &field.ty {
+                let field_name = &field.name;
+                let rust_type = scalar.rust_type();
+                Some(quote! {
+                    #[sea_orm(primary_key, auto_increment = false)]
+                    pub #field_name: #rust_type,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    quote! { #(#fields)* }
+}
+
 fn generate_model_fields(entity: &AnalyzedEntity) -> TokenStream {
+    let pk_cols = entity.attrs.primary_key.as_deref().unwrap_or_default();
+
     let fields: Vec<TokenStream> = entity
         .fields
         .iter()
+        .filter(|f| !pk_cols.iter().any(|pk| pk == &f.name.to_string()))
         .filter_map(generate_model_field)
         .collect();
 
@@ -587,5 +622,122 @@ mod tests {
         let output = generated.to_string();
 
         assert!(output.contains("PartialEq , Eq"));
+    }
+
+    #[test]
+    fn test_generate_composite_primary_key() {
+        let input = quote! {
+            #[table_name = "users_roles"]
+            #[primary_key(user_id, role_id)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // Should NOT have auto-generated id field
+        assert!(!output.contains("pub id : i32"));
+        // Should have PK attributes on both columns
+        assert!(output.contains("primary_key"));
+        assert!(output.contains("auto_increment = false"));
+        assert!(output.contains("pub user_id : i32"));
+        assert!(output.contains("pub role_id : i32"));
+        // Should use custom table name
+        assert!(output.contains("table_name = \"users_roles\""));
+        // Should NOT have timestamps
+        assert!(!output.contains("created_at"));
+        assert!(!output.contains("updated_at"));
+    }
+
+    #[test]
+    fn test_generate_composite_pk_with_extra_fields() {
+        let input = quote! {
+            #[primary_key(user_id, role_id)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+                assigned_by: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // PK fields should have the primary_key attribute
+        assert!(output.contains("pub user_id : i32"));
+        assert!(output.contains("pub role_id : i32"));
+        // Non-PK field should be present without PK attribute
+        assert!(output.contains("pub assigned_by : String"));
+    }
+
+    #[test]
+    fn test_generate_single_custom_pk() {
+        let input = quote! {
+            #[primary_key(uuid_pk)]
+            #[timestamps(none)]
+            LegacyItem {
+                uuid_pk: Uuid,
+                name: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(!output.contains("pub id : i32"));
+        assert!(output.contains("auto_increment = false"));
+        assert!(output.contains("pub uuid_pk"));
+        assert!(output.contains("pub name : String"));
+    }
+
+    #[test]
+    fn test_generate_default_pk_unchanged() {
+        // Entities without #[primary_key] should still get auto id
+        let input = quote! {
+            User {
+                name: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("# [sea_orm (primary_key)]"));
+        assert!(output.contains("pub id : i32"));
+    }
+
+    #[test]
+    fn test_generate_composite_pk_preserves_field_order() {
+        let input = quote! {
+            #[primary_key(b_id, a_id)]
+            #[timestamps(none)]
+            JoinTable {
+                b_id: i32,
+                a_id: i32,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // PK fields should appear in the order specified in #[primary_key(...)]
+        let b_pos = output.find("pub b_id").unwrap();
+        let a_pos = output.find("pub a_id").unwrap();
+        assert!(b_pos < a_pos, "b_id should come before a_id in the output");
     }
 }
