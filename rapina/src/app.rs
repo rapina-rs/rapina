@@ -322,7 +322,8 @@ impl Rapina {
         config: crate::cache::CacheConfig,
     ) -> Result<Self, std::io::Error> {
         let backend = config.build().await?;
-        self.middlewares.add(crate::cache::CacheMiddleware::new(backend));
+        self.middlewares
+            .add(crate::cache::CacheMiddleware::new(backend));
         Ok(self)
     }
 

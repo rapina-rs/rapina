@@ -143,7 +143,8 @@ impl CacheBackend for InMemoryCache {
 
         // Remove expired entry on access
         if result.is_none() {
-            self.entries.remove_if(key, |_, entry| entry.expires_at <= Instant::now());
+            self.entries
+                .remove_if(key, |_, entry| entry.expires_at <= Instant::now());
         }
 
         Box::pin(std::future::ready(result))
@@ -167,8 +168,7 @@ impl CacheBackend for InMemoryCache {
     }
 
     fn invalidate_prefix(&self, prefix: &str) -> CacheFuture<'_, ()> {
-        self.entries
-            .retain(|key, _| !key.starts_with(prefix));
+        self.entries.retain(|key, _| !key.starts_with(prefix));
 
         Box::pin(std::future::ready(()))
     }
@@ -200,9 +200,7 @@ impl CacheConfig {
     /// Builds the cache backend from this configuration.
     pub async fn build(self) -> Result<Arc<dyn CacheBackend>, std::io::Error> {
         match self {
-            CacheConfig::InMemory { max_entries } => {
-                Ok(Arc::new(InMemoryCache::new(max_entries)))
-            }
+            CacheConfig::InMemory { max_entries } => Ok(Arc::new(InMemoryCache::new(max_entries))),
             #[cfg(feature = "cache-redis")]
             CacheConfig::Redis { url } => {
                 let backend = crate::cache_redis::RedisCache::connect(&url)
@@ -278,10 +276,7 @@ impl Middleware for CacheMiddleware {
                             .iter()
                             .filter(|(name, _)| name.as_str() != CACHE_TTL_HEADER)
                             .map(|(name, value)| {
-                                (
-                                    name.to_string(),
-                                    value.to_str().unwrap_or("").to_string(),
-                                )
+                                (name.to_string(), value.to_str().unwrap_or("").to_string())
                             })
                             .collect(),
                         body: body_bytes.clone(),
@@ -295,10 +290,9 @@ impl Middleware for CacheMiddleware {
                     // Return response without the internal header, with MISS marker
                     let mut response = Response::from_parts(parts, Full::new(body_bytes));
                     response.headers_mut().remove(CACHE_TTL_HEADER);
-                    response.headers_mut().insert(
-                        CACHE_STATUS_HEADER,
-                        http::HeaderValue::from_static("MISS"),
-                    );
+                    response
+                        .headers_mut()
+                        .insert(CACHE_STATUS_HEADER, http::HeaderValue::from_static("MISS"));
                     return response;
                 }
 
@@ -368,14 +362,11 @@ fn build_response_from_cache(cached: CachedResponse, status: &'static str) -> Re
         }
     }
 
-    let mut response = builder
-        .body(Full::new(cached.body))
-        .unwrap();
+    let mut response = builder.body(Full::new(cached.body)).unwrap();
 
-    response.headers_mut().insert(
-        CACHE_STATUS_HEADER,
-        http::HeaderValue::from_static(status),
-    );
+    response
+        .headers_mut()
+        .insert(CACHE_STATUS_HEADER, http::HeaderValue::from_static(status));
 
     response
 }
@@ -422,9 +413,7 @@ mod tests {
         };
 
         // Insert with very short TTL
-        cache
-            .set("key1", response, Duration::from_millis(1))
-            .await;
+        cache.set("key1", response, Duration::from_millis(1)).await;
 
         // Wait for expiry
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -560,10 +549,7 @@ mod tests {
 
         let response = build_response_from_cache(cached, "HIT");
         assert_eq!(response.status(), 200);
-        assert_eq!(
-            response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-            "HIT"
-        );
+        assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "HIT");
         assert_eq!(
             response.headers().get("content-type").unwrap(),
             "text/plain"

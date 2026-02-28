@@ -95,9 +95,7 @@ impl CacheBackend for RedisCache {
                 Err(_) => return,
             };
 
-            let _: Result<(), _> = conn
-                .set_ex(&full_key, &json, ttl.as_secs())
-                .await;
+            let _: Result<(), _> = conn.set_ex(&full_key, &json, ttl.as_secs()).await;
         })
     }
 
@@ -138,10 +136,7 @@ impl CacheBackend for RedisCache {
             };
 
             if !keys.is_empty() {
-                let _: Result<(), _> = redis::cmd("DEL")
-                    .arg(&keys)
-                    .query_async(&mut conn)
-                    .await;
+                let _: Result<(), _> = redis::cmd("DEL").arg(&keys).query_async(&mut conn).await;
             }
         })
     }

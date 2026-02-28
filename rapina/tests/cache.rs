@@ -12,38 +12,34 @@ async fn test_cache_miss_then_hit() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::GET, "/data", |_, _, _| async {
-            let mut response = http::Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json")
-                .body(http_body_util::Full::new(bytes::Bytes::from(
-                    r#"{"value":42}"#,
-                )))
-                .unwrap();
-            response
-                .headers_mut()
-                .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
-            response
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/data", |_, _, _| async {
+                let mut response = http::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(http_body_util::Full::new(bytes::Bytes::from(
+                        r#"{"value":42}"#,
+                    )))
+                    .unwrap();
+                response
+                    .headers_mut()
+                    .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
+                response
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
     // First request: MISS
     let response = client.get("/data").send().await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "MISS"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "MISS");
     assert_eq!(response.text(), r#"{"value":42}"#);
 
     // Second request: HIT
     let response = client.get("/data").send().await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "HIT"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "HIT");
     assert_eq!(response.text(), r#"{"value":42}"#);
 }
 
@@ -54,16 +50,18 @@ async fn test_cache_strips_internal_ttl_header() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::GET, "/data", |_, _, _| async {
-            let mut response = http::Response::builder()
-                .status(StatusCode::OK)
-                .body(http_body_util::Full::new(bytes::Bytes::from("ok")))
-                .unwrap();
-            response
-                .headers_mut()
-                .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("30"));
-            response
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/data", |_, _, _| async {
+                let mut response = http::Response::builder()
+                    .status(StatusCode::OK)
+                    .body(http_body_util::Full::new(bytes::Bytes::from("ok")))
+                    .unwrap();
+                response
+                    .headers_mut()
+                    .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("30"));
+                response
+            }),
+        );
 
     let client = TestClient::new(app).await;
     let response = client.get("/data").send().await;
@@ -74,8 +72,8 @@ async fn test_cache_strips_internal_ttl_header() {
 
 #[tokio::test]
 async fn test_cache_does_not_cache_without_ttl_header() {
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     let counter = Arc::new(AtomicU32::new(0));
     let counter_clone = counter.clone();
@@ -85,13 +83,15 @@ async fn test_cache_does_not_cache_without_ttl_header() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::GET, "/data", move |_, _, _| {
-            let counter = counter_clone.clone();
-            async move {
-                let n = counter.fetch_add(1, Ordering::Relaxed);
-                format!("call {}", n)
-            }
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/data", move |_, _, _| {
+                let counter = counter_clone.clone();
+                async move {
+                    let n = counter.fetch_add(1, Ordering::Relaxed);
+                    format!("call {}", n)
+                }
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -118,10 +118,9 @@ async fn test_mutation_invalidates_cache() {
                         .status(StatusCode::OK)
                         .body(http_body_util::Full::new(bytes::Bytes::from("items")))
                         .unwrap();
-                    response.headers_mut().insert(
-                        "x-rapina-cache-ttl",
-                        http::HeaderValue::from_static("60"),
-                    );
+                    response
+                        .headers_mut()
+                        .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
                     response
                 })
                 .route(http::Method::POST, "/items", |_, _, _| async {
@@ -133,17 +132,11 @@ async fn test_mutation_invalidates_cache() {
 
     // Populate cache
     let response = client.get("/items").send().await;
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "MISS"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "MISS");
 
     // Verify cache hit
     let response = client.get("/items").send().await;
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "HIT"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "HIT");
 
     // Mutation should invalidate
     let response = client.post("/items").send().await;
@@ -151,10 +144,7 @@ async fn test_mutation_invalidates_cache() {
 
     // Should be a miss again
     let response = client.get("/items").send().await;
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "MISS"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "MISS");
 }
 
 #[tokio::test]
@@ -164,18 +154,20 @@ async fn test_cache_preserves_response_headers() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::GET, "/data", |_, _, _| async {
-            let mut response = http::Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json")
-                .header("x-custom", "preserved")
-                .body(http_body_util::Full::new(bytes::Bytes::from("{}")))
-                .unwrap();
-            response
-                .headers_mut()
-                .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
-            response
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/data", |_, _, _| async {
+                let mut response = http::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .header("x-custom", "preserved")
+                    .body(http_body_util::Full::new(bytes::Bytes::from("{}")))
+                    .unwrap();
+                response
+                    .headers_mut()
+                    .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
+                response
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -184,18 +176,12 @@ async fn test_cache_preserves_response_headers() {
 
     // Cache hit should preserve original headers
     let response = client.get("/data").send().await;
-    assert_eq!(
-        response.headers().get(CACHE_STATUS_HEADER).unwrap(),
-        "HIT"
-    );
+    assert_eq!(response.headers().get(CACHE_STATUS_HEADER).unwrap(), "HIT");
     assert_eq!(
         response.headers().get("content-type").unwrap(),
         "application/json"
     );
-    assert_eq!(
-        response.headers().get("x-custom").unwrap(),
-        "preserved"
-    );
+    assert_eq!(response.headers().get("x-custom").unwrap(), "preserved");
 }
 
 #[tokio::test]
@@ -205,16 +191,18 @@ async fn test_cache_only_caches_get() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::POST, "/data", |_, _, _| async {
-            let mut response = http::Response::builder()
-                .status(StatusCode::CREATED)
-                .body(http_body_util::Full::new(bytes::Bytes::from("created")))
-                .unwrap();
-            response
-                .headers_mut()
-                .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
-            response
-        }));
+        .router(
+            Router::new().route(http::Method::POST, "/data", |_, _, _| async {
+                let mut response = http::Response::builder()
+                    .status(StatusCode::CREATED)
+                    .body(http_body_util::Full::new(bytes::Bytes::from("created")))
+                    .unwrap();
+                response
+                    .headers_mut()
+                    .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
+                response
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
@@ -231,17 +219,19 @@ async fn test_cache_query_params_affect_key() {
         .with_cache(CacheConfig::in_memory(100))
         .await
         .unwrap()
-        .router(Router::new().route(http::Method::GET, "/search", |req, _, _| async move {
-            let query = req.uri().query().unwrap_or("none").to_string();
-            let mut response = http::Response::builder()
-                .status(StatusCode::OK)
-                .body(http_body_util::Full::new(bytes::Bytes::from(query)))
-                .unwrap();
-            response
-                .headers_mut()
-                .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
-            response
-        }));
+        .router(
+            Router::new().route(http::Method::GET, "/search", |req, _, _| async move {
+                let query = req.uri().query().unwrap_or("none").to_string();
+                let mut response = http::Response::builder()
+                    .status(StatusCode::OK)
+                    .body(http_body_util::Full::new(bytes::Bytes::from(query)))
+                    .unwrap();
+                response
+                    .headers_mut()
+                    .insert("x-rapina-cache-ttl", http::HeaderValue::from_static("60"));
+                response
+            }),
+        );
 
     let client = TestClient::new(app).await;
 
