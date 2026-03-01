@@ -81,6 +81,9 @@
 
 pub mod app;
 pub mod auth;
+pub mod cache;
+#[cfg(feature = "cache-redis")]
+pub mod cache_redis;
 pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
@@ -117,6 +120,7 @@ pub mod testing;
 pub mod prelude {
     pub use crate::app::Rapina;
     pub use crate::auth::{AuthConfig, CurrentUser, TokenResponse};
+    pub use crate::cache::{CacheConfig, CacheMiddleware};
     pub use crate::config::{
         ConfigError, get_env, get_env_or, get_env_parsed, get_env_parsed_or, load_dotenv,
     };

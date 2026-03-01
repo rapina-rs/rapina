@@ -84,6 +84,9 @@ fn route_macro_core(
     // Extract #[errors(ErrorType)] attribute if present
     let error_type = extract_errors_attr(&mut func.attrs);
 
+    // Extract #[cache(ttl = N)] attribute if present
+    let cache_ttl = extract_cache_attr(&mut func.attrs);
+
     let error_responses_impl = if let Some(err_type) = &error_type {
         quote! {
             fn error_responses() -> Vec<rapina::error::ErrorVariant> {
@@ -117,13 +120,29 @@ fn route_macro_core(
         syn::ReturnType::Default => quote! {},
     };
 
+    // Optional cache TTL header injection
+    let cache_header_injection = if let Some(ttl) = cache_ttl {
+        let ttl_str = ttl.to_string();
+        quote! {
+            let mut __rapina_response = __rapina_response;
+            __rapina_response.headers_mut().insert(
+                "x-rapina-cache-ttl",
+                rapina::http::HeaderValue::from_static(#ttl_str),
+            );
+        }
+    } else {
+        quote! {}
+    };
+
     // Build the handler body
     // Use __rapina_ prefix for internal variables to avoid shadowing user's variables
     let handler_body = if args.is_empty() {
         let inner_block = &func.block;
         quote! {
             let __rapina_result #return_type_annotation = (async #inner_block).await;
-            rapina::response::IntoResponse::into_response(__rapina_result)
+            let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+            #cache_header_injection
+            __rapina_response
         }
     } else {
         let mut parts_extractions = Vec::new();
@@ -176,7 +195,9 @@ fn route_macro_core(
             #(#parts_extractions)*
             #body_extraction
             let __rapina_result #return_type_annotation = (async #inner_block).await;
-            rapina::response::IntoResponse::into_response(__rapina_result)
+            let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+            #cache_header_injection
+            __rapina_response
         }
     };
 
@@ -273,6 +294,29 @@ fn extract_errors_attr(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Type> {
     let attr = attrs.remove(idx);
     let err_type: syn::Type = attr.parse_args().expect("expected #[errors(ErrorType)]");
     Some(err_type)
+}
+
+/// Extract #[cache(ttl = N)] attribute from function attributes, removing it if found.
+fn extract_cache_attr(attrs: &mut Vec<syn::Attribute>) -> Option<u64> {
+    let idx = attrs
+        .iter()
+        .position(|attr| attr.path().is_ident("cache"))?;
+    let attr = attrs.remove(idx);
+
+    let mut ttl: Option<u64> = None;
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("ttl") {
+            let value = meta.value()?;
+            let lit: syn::LitInt = value.parse()?;
+            ttl = Some(lit.base10_parse()?);
+            Ok(())
+        } else {
+            Err(meta.error("expected `ttl`"))
+        }
+    })
+    .expect("expected #[cache(ttl = N)]");
+
+    ttl
 }
 
 /// Extract #[public] attribute from function attributes, removing it if found.
@@ -699,5 +743,55 @@ mod tests {
         let output_str = output.to_string();
 
         assert!(output_str.contains("is_public : true"));
+    }
+
+    #[test]
+    fn test_cache_attr_injects_ttl_header() {
+        let path = quote!("/products");
+        let input = quote! {
+            #[cache(ttl = 60)]
+            async fn list_products() -> &'static str {
+                "products"
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("x-rapina-cache-ttl"));
+        assert!(output_str.contains("60"));
+    }
+
+    #[test]
+    fn test_no_cache_attr_no_ttl_header() {
+        let path = quote!("/products");
+        let input = quote! {
+            async fn list_products() -> &'static str {
+                "products"
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        assert!(!output_str.contains("x-rapina-cache-ttl"));
+    }
+
+    #[test]
+    fn test_cache_attr_with_extractors() {
+        let path = quote!("/users/:id");
+        let input = quote! {
+            #[cache(ttl = 120)]
+            async fn get_user(id: rapina::extract::Path<u64>) -> String {
+                format!("{}", id.into_inner())
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("x-rapina-cache-ttl"));
+        assert!(output_str.contains("120"));
+        assert!(output_str.contains("FromRequestParts"));
     }
 }
