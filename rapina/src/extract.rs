@@ -1044,7 +1044,7 @@ mod tests {
             name: "form test".to_string(),
         };
 
-        let form = State(data.clone());
+        let form = Form(data.clone());
         assert_eq!(form.name, data.name);
     }
 
