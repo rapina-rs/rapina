@@ -36,14 +36,20 @@ fn parse_field(input: &str) -> Result<FieldInfo, String> {
         "f64" | "double" => ("f64", "f64", ".double().not_null()"),
         "bool" | "boolean" => ("bool", "bool", ".boolean().not_null()"),
         "uuid" => ("Uuid", "Uuid", ".uuid().not_null()"),
-        "datetime" => ("DateTimeUtc", "DateTime", ".date_time().not_null()"),
+        "datetime" | "timestamptz" => (
+            "DateTimeUtc",
+            "DateTime",
+            ".timestamp_with_time_zone().not_null()",
+        ),
+        "naivedatetime" | "timestamp" => ("DateTime", "NaiveDateTime", ".date_time().not_null()"),
         "date" => ("Date", "Date", ".date().not_null()"),
         "decimal" => ("Decimal", "Decimal", ".decimal().not_null()"),
         "json" => ("Json", "Json", ".json().not_null()"),
         _ => {
             return Err(format!(
                 "Unknown field type '{}'. Supported types: string, text, i32/integer, i64/bigint, \
-                 f32/float, f64/double, bool/boolean, uuid, datetime, date, decimal, json",
+                 f32/float, f64/double, bool/boolean, uuid, datetime/timestamptz, \
+                 naivedatetime/timestamp, date, decimal, json",
                 type_str
             ));
         }
@@ -172,7 +178,7 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     println!();
 
     codegen::create_feature_module(singular, plural, pascal, &fields)?;
-    codegen::update_entity_file(pascal, &fields, None)?;
+    codegen::update_entity_file(pascal, &fields, None, None)?;
     codegen::create_migration_file(plural, pascal_plural, &fields)?;
 
     print_next_steps(singular, plural, pascal);
@@ -229,6 +235,9 @@ mod tests {
             ("x:boolean", "bool", "bool"),
             ("x:uuid", "Uuid", "Uuid"),
             ("x:datetime", "DateTimeUtc", "DateTime"),
+            ("x:timestamptz", "DateTimeUtc", "DateTime"),
+            ("x:naivedatetime", "DateTime", "NaiveDateTime"),
+            ("x:timestamp", "DateTime", "NaiveDateTime"),
             ("x:date", "Date", "Date"),
             ("x:decimal", "Decimal", "Decimal"),
             ("x:json", "Json", "Json"),
@@ -375,7 +384,7 @@ mod tests {
                 column_method: String::new(),
             },
         ];
-        let content = codegen::generate_schema_block("Todo", &fields, None);
+        let content = codegen::generate_schema_block("Todo", &fields, None, None);
 
         assert!(content.contains("schema! {"));
         assert!(content.contains("Todo {"));

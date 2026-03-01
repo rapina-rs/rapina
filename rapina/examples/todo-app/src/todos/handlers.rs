@@ -1,5 +1,5 @@
-use rapina::prelude::*;
 use rapina::database::{Db, DbError};
+use rapina::prelude::*;
 use rapina::sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 
 use crate::entity::Todo;
@@ -18,7 +18,7 @@ pub async fn list_todos(db: Db) -> Result<Json<Vec<Model>>> {
 #[get("/todos/:id")]
 #[errors(TodoError)]
 pub async fn get_todo(db: Db, id: Path<i32>) -> Result<Json<Model>> {
-    let id = id.into_inner();
+    let id = *id;
     let todo = Todo::find_by_id(id)
         .one(db.conn())
         .await
@@ -31,7 +31,7 @@ pub async fn get_todo(db: Db, id: Path<i32>) -> Result<Json<Model>> {
 #[errors(TodoError)]
 pub async fn create_todo(db: Db, body: Json<CreateTodo>) -> Result<Json<Model>> {
     let todo = ActiveModel {
-        title: Set(body.into_inner().title),
+        title: Set(body.title.clone()),
         ..Default::default()
     };
     let result = todo.insert(db.conn()).await.map_err(DbError)?;
@@ -41,19 +41,18 @@ pub async fn create_todo(db: Db, body: Json<CreateTodo>) -> Result<Json<Model>> 
 #[put("/todos/:id")]
 #[errors(TodoError)]
 pub async fn update_todo(db: Db, id: Path<i32>, body: Json<UpdateTodo>) -> Result<Json<Model>> {
-    let id = id.into_inner();
+    let id = *id;
     let todo = Todo::find_by_id(id)
         .one(db.conn())
         .await
         .map_err(DbError)?
         .ok_or_else(|| Error::not_found(format!("Todo {} not found", id)))?;
 
-    let update = body.into_inner();
     let mut active: ActiveModel = todo.into_active_model();
-    if let Some(title) = update.title {
+    if let Some(title) = body.title.clone() {
         active.title = Set(title);
     }
-    if let Some(done) = update.done {
+    if let Some(done) = body.done {
         active.done = Set(done);
     }
 
@@ -64,7 +63,7 @@ pub async fn update_todo(db: Db, id: Path<i32>, body: Json<UpdateTodo>) -> Resul
 #[delete("/todos/:id")]
 #[errors(TodoError)]
 pub async fn delete_todo(db: Db, id: Path<i32>) -> Result<Json<serde_json::Value>> {
-    let id = id.into_inner();
+    let id = *id;
     let result = Todo::delete_by_id(id)
         .exec(db.conn())
         .await

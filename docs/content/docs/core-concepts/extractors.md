@@ -21,6 +21,7 @@ Extractors automatically parse request data and inject it into your handlers. If
 | `Cookie<T>` | Typed cookie access |
 | `CurrentUser` | Authenticated user (JWT) |
 | `Validated<T>` | Validated extractor |
+| `Paginate` | Pagination params (requires feature) |
 | `Db` | Database connection (requires feature) |
 
 ## Path Parameters

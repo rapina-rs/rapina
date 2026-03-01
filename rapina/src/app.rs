@@ -301,6 +301,32 @@ impl Rapina {
         self
     }
 
+    /// Enables response caching with the given configuration.
+    ///
+    /// Caches GET responses that use `#[cache(ttl = N)]` and auto-invalidates
+    /// on successful mutations (POST/PUT/DELETE/PATCH).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::cache::CacheConfig;
+    ///
+    /// Rapina::new()
+    ///     .with_cache(CacheConfig::in_memory(1000)).await?
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub async fn with_cache(
+        mut self,
+        config: crate::cache::CacheConfig,
+    ) -> Result<Self, std::io::Error> {
+        let backend = config.build().await?;
+        self.middlewares
+            .add(crate::cache::CacheMiddleware::new(backend));
+        Ok(self)
+    }
+
     /// Configures database connection with the given configuration.
     ///
     /// This method connects to the database and registers the connection
@@ -445,6 +471,10 @@ impl Rapina {
                 self.router
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
         }
+
+        // Sort routes so static segments take priority over parameterized ones.
+        // This prevents `/users/:id` from shadowing `/users/current`.
+        self.router.sort_routes();
 
         self
     }

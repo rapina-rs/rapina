@@ -15,6 +15,7 @@ pub enum ScalarType {
     Bool,
     Uuid,
     DateTime,
+    NaiveDateTime,
     Date,
     Decimal,
     Json,
@@ -33,6 +34,7 @@ impl ScalarType {
             "bool" => Some(ScalarType::Bool),
             "Uuid" => Some(ScalarType::Uuid),
             "DateTime" => Some(ScalarType::DateTime),
+            "NaiveDateTime" => Some(ScalarType::NaiveDateTime),
             "Date" => Some(ScalarType::Date),
             "Decimal" => Some(ScalarType::Decimal),
             "Json" => Some(ScalarType::Json),
@@ -49,10 +51,11 @@ impl ScalarType {
             ScalarType::F32 => quote! { f32 },
             ScalarType::F64 => quote! { f64 },
             ScalarType::Bool => quote! { bool },
-            ScalarType::Uuid => quote! { Uuid },
+            ScalarType::Uuid => quote! { rapina::uuid::Uuid },
             ScalarType::DateTime => quote! { DateTimeUtc },
+            ScalarType::NaiveDateTime => quote! { DateTime },
             ScalarType::Date => quote! { Date },
-            ScalarType::Decimal => quote! { Decimal },
+            ScalarType::Decimal => quote! { rapina::rust_decimal::Decimal },
             ScalarType::Json => quote! { Json },
         }
     }
@@ -80,12 +83,4 @@ pub enum FieldType {
     HasMany { target: syn::Ident },
     /// A belongs_to relationship (Entity or Option<Entity>)
     BelongsTo { target: syn::Ident, optional: bool },
-}
-
-/// Reserved field names that are auto-generated.
-pub const RESERVED_FIELDS: &[&str] = &["id", "created_at", "updated_at"];
-
-/// Check if a field name is reserved.
-pub fn is_reserved_field(name: &str) -> bool {
-    RESERVED_FIELDS.contains(&name)
 }

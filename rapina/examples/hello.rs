@@ -12,7 +12,7 @@ async fn health() -> StatusCode {
 
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> String {
-    format!("ID: {}", id.into_inner())
+    format!("ID: {}", *id)
 }
 
 #[tokio::main]

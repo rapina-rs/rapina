@@ -142,12 +142,9 @@ struct UpdateTodoRequest {
 #[public]
 #[post("/login")]
 async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
-    let req = body.into_inner();
-    let auth_config = auth.into_inner();
-
-    if req.username == "admin" && req.password == "password" {
-        let token = auth_config.create_token(&req.username)?;
-        Ok(Json(TokenResponse::new(token, auth_config.expiration())))
+    if body.username == "admin" && body.password == "password" {
+        let token = auth.create_token(&body.username)?;
+        Ok(Json(TokenResponse::new(token, auth.expiration())))
     } else {
         Err(Error::unauthorized("invalid credentials"))
     }
@@ -157,7 +154,6 @@ async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json
 /// CurrentUser is injected by the auth middleware from the JWT.
 #[get("/todos")]
 async fn list_todos(user: CurrentUser, store: State<TodoStore>) -> Json<Vec<Todo>> {
-    let store = store.into_inner();
     let todos = store.list_by_user(&user.id);
     Json(todos)
 }
@@ -170,13 +166,11 @@ async fn create_todo(
     body: Json<CreateTodoRequest>,
     store: State<TodoStore>,
 ) -> Result<(StatusCode, Json<Todo>)> {
-    let store = store.into_inner();
-    let req = body.into_inner();
     let id = uuid::Uuid::new_v4().to_string();
     let todo = Todo {
         id: id.clone(),
         user_id: user.id.clone(),
-        title: req.title,
+        title: body.title.clone(),
         completed: false,
     };
     let created = store.create(todo)?;
@@ -191,10 +185,7 @@ async fn update_todo(
     body: Json<UpdateTodoRequest>,
     store: State<TodoStore>,
 ) -> Result<Json<Todo>> {
-    let store = store.into_inner();
-    let id = id.into_inner();
-    let req = body.into_inner();
-    let updated = store.update(&id, &user.id, req.title, req.completed)?;
+    let updated = store.update(&id, &user.id, body.title.clone(), body.completed)?;
     Ok::<_, Error>(Json(updated))
 }
 
@@ -205,8 +196,7 @@ async fn delete_todo(
     user: CurrentUser,
     store: State<TodoStore>,
 ) -> Result<StatusCode> {
-    let store = store.into_inner();
-    let id = id.into_inner();
+    let id = id.to_string();
     store.delete(&id, &user.id)?;
     Ok::<_, Error>(StatusCode::NO_CONTENT)
 }

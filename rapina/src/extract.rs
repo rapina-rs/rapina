@@ -9,6 +9,7 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use validator::Validate;
@@ -39,8 +40,7 @@ const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 ///
 /// #[post("/users")]
 /// async fn create_user(body: Json<CreateUser>) -> Json<User> {
-///     let data = body.into_inner();
-///     // Use data.name, data.email...
+///     // Use body.name, body.email...
 /// }
 /// ```
 #[derive(Debug)]
@@ -58,7 +58,7 @@ pub struct Json<T>(pub T);
 ///
 /// #[get("/users/:id")]
 /// async fn get_user(id: Path<u64>) -> String {
-///     format!("User ID: {}", id.into_inner())
+///     format!("User ID: {}", *id) // deref to access value of Path
 /// }
 /// ```
 #[derive(Debug)]
@@ -82,7 +82,7 @@ pub struct Path<T>(pub T);
 ///
 /// #[get("/users")]
 /// async fn list_users(query: Query<Pagination>) -> String {
-///     let page = query.0.page.unwrap_or(1);
+///     let page = query.page.unwrap_or(1);
 ///     format!("Page: {}", page)
 /// }
 /// ```
@@ -107,7 +107,7 @@ pub struct Query<T>(pub T);
 ///
 /// #[post("/login")]
 /// async fn login(form: Form<LoginForm>) -> String {
-///     format!("Welcome, {}", form.0.username)
+///     format!("Welcome, {}", form.username)
 /// }
 /// ```
 #[derive(Debug)]
@@ -151,8 +151,7 @@ pub struct Headers(pub http::HeaderMap);
 ///
 /// #[get("/dashboard")]
 /// async fn dashboard(session: Cookie<Session>) -> Result<Json<Dashboard>> {
-///     let data = session.into_inner();
-///     // Use data.session_id...
+///     // Use session.session_id...
 /// }
 /// ```
 #[derive(Debug)]
@@ -175,7 +174,7 @@ pub struct Cookie<T>(pub T);
 ///
 /// #[get("/config")]
 /// async fn get_config(state: State<AppConfig>) -> String {
-///     state.into_inner().db_url
+///     state.db_url
 /// }
 /// ```
 #[derive(Debug)]
@@ -218,9 +217,8 @@ pub struct Context(pub RequestContext);
 ///
 /// #[post("/users")]
 /// async fn create_user(body: Validated<Json<CreateUser>>) -> String {
-///     let data = body.into_inner().into_inner();
 ///     // data is guaranteed to be valid
-///     format!("Created user: {}", data.email)
+///     format!("Created user: {}", body.email)
 /// }
 /// ```
 #[derive(Debug)]
@@ -595,6 +593,39 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
     Some(params)
 }
 
+macro_rules! impl_deref {
+    ($name:ident) => {
+        impl<T> Deref for $name<T> {
+            type Target = T;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+
+impl_deref!(State);
+impl_deref!(Json);
+impl_deref!(Path);
+impl_deref!(Query);
+impl_deref!(Form);
+impl_deref!(Cookie);
+impl_deref!(Validated);
+
+impl Deref for Context {
+    type Target = RequestContext;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for Headers {
+    type Target = http::HeaderMap;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 // Database extractor (requires "database" feature)
 #[cfg(feature = "database")]
 impl FromRequestParts for crate::database::Db {
@@ -618,6 +649,11 @@ impl FromRequestParts for crate::database::Db {
 mod tests {
     use super::*;
     use crate::test::{TestRequest, empty_params, empty_state, params};
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct Data {
+        name: String,
+    }
 
     // Path params extraction tests
     #[test]
@@ -929,6 +965,111 @@ mod tests {
                 name: "test".to_string()
             }
         );
+    }
+
+    // deref tests
+    #[test]
+    fn test_json_deref() {
+        let json = Json("value".to_string());
+        assert_eq!(*json, "value");
+    }
+
+    #[test]
+    fn test_path_deref() {
+        let path = Path(42u64);
+        assert_eq!(*path, 42);
+    }
+
+    #[test]
+    fn test_query_deref() {
+        let query = Query("test".to_string());
+        assert_eq!(*query, "test");
+    }
+
+    #[test]
+    fn test_form_deref() {
+        let form = Form("data".to_string());
+        assert_eq!(*form, "data");
+    }
+
+    #[test]
+    fn test_state_deref() {
+        let state = State("value".to_string());
+        assert_eq!(*state, "value");
+    }
+
+    #[test]
+    fn test_validated_deref() {
+        let validated = Validated("value".to_string());
+        assert_eq!(*validated, "value");
+    }
+
+    #[test]
+    fn test_validated_deref_with_struct() {
+        let validated = Validated(Data {
+            name: "test".to_string(),
+        });
+        assert_eq!(
+            *validated,
+            Data {
+                name: "test".to_string()
+            }
+        );
+    }
+
+    // autoderef tests
+    #[test]
+    fn test_json_autoderef() {
+        let data = Data {
+            name: "json test".to_string(),
+        };
+
+        let json = Json(data.clone());
+        assert_eq!(json.name, data.name);
+    }
+
+    #[test]
+    fn test_state_autoderef() {
+        let data = Data {
+            name: "state test".to_string(),
+        };
+
+        let state = State(data.clone());
+        assert_eq!(state.name, data.name);
+    }
+
+    #[test]
+    fn test_form_autoderef() {
+        let data = Data {
+            name: "form test".to_string(),
+        };
+
+        let form = Form(data.clone());
+        assert_eq!(form.name, data.name);
+    }
+
+    #[test]
+    fn test_headers_autoderef() {
+        let headers = Headers(http::HeaderMap::new());
+        assert!(headers.is_empty());
+    }
+
+    #[test]
+    fn test_context_autoderef() {
+        let ctx = Context(crate::context::RequestContext::with_trace_id(
+            "test".to_string(),
+        ));
+        assert_eq!(ctx.trace_id, "test");
+    }
+
+    #[test]
+    fn test_validated_autoderef() {
+        let data = Data {
+            name: "test".to_string(),
+        };
+
+        let validated = Validated(data.clone());
+        assert_eq!(validated.name, data.name);
     }
 
     // Cookie extractor tests

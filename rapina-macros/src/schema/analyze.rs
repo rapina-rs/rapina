@@ -82,10 +82,59 @@ pub fn analyze_schema(schema: Schema) -> Result<AnalyzedSchema> {
 }
 
 fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<AnalyzedEntity> {
+    // Reject created_at/updated_at only when they'd collide with auto-generated timestamps
+    for field in &entity.fields {
+        let name = field.name.to_string();
+        if name == "created_at" && entity.attrs.has_created_at {
+            return Err(syn::Error::new(
+                field.name.span(),
+                "field 'created_at' is auto-generated. Use #[timestamps(none)] or #[timestamps(updated_at)] to declare it manually",
+            ));
+        }
+        if name == "updated_at" && entity.attrs.has_updated_at {
+            return Err(syn::Error::new(
+                field.name.span(),
+                "field 'updated_at' is auto-generated. Use #[timestamps(none)] or #[timestamps(created_at)] to declare it manually",
+            ));
+        }
+    }
+
     let mut analyzed_fields = Vec::new();
 
     for field in entity.fields {
         analyzed_fields.push(analyze_field(field, registry)?);
+    }
+
+    // Validate custom primary key columns exist in the entity
+    if let Some(ref pk_cols) = entity.attrs.primary_key {
+        let field_names: HashSet<String> =
+            analyzed_fields.iter().map(|f| f.name.to_string()).collect();
+
+        for col in pk_cols {
+            if !field_names.contains(col) {
+                return Err(syn::Error::new(
+                    entity.name.span(),
+                    format!(
+                        "primary_key column '{}' does not exist in entity '{}'",
+                        col, entity.name
+                    ),
+                ));
+            }
+        }
+
+        // Validate PK columns are scalar types (not relationships)
+        for field in &analyzed_fields {
+            let fname = field.name.to_string();
+            if pk_cols.contains(&fname) && !matches!(field.ty, FieldType::Scalar { .. }) {
+                return Err(syn::Error::new(
+                    field.name.span(),
+                    format!(
+                        "primary_key column '{}' must be a scalar type, not a relationship",
+                        fname
+                    ),
+                ));
+            }
+        }
     }
 
     Ok(AnalyzedEntity {
@@ -302,6 +351,36 @@ mod tests {
     }
 
     #[test]
+    fn test_created_at_allowed_with_timestamps_none() {
+        let input = quote! {
+            #[timestamps(none)]
+            User {
+                email: String,
+                created_at: NaiveDateTime,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_created_at_rejected_with_default_timestamps() {
+        let input = quote! {
+            User {
+                email: String,
+                created_at: NaiveDateTime,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("auto-generated"));
+    }
+
+    #[test]
     fn test_analyze_preserves_field_attrs() {
         let input = quote! {
             User {
@@ -317,5 +396,87 @@ mod tests {
         let field = &analyzed.entities[0].fields[0];
         assert!(field.attrs.unique);
         assert_eq!(field.attrs.column_name, Some("user_email".to_string()));
+    }
+
+    #[test]
+    fn test_analyze_composite_primary_key() {
+        let input = quote! {
+            #[primary_key(user_id, role_id)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let entity = &analyzed.entities[0];
+        assert_eq!(
+            entity.attrs.primary_key,
+            Some(vec!["user_id".to_string(), "role_id".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_analyze_primary_key_column_not_found() {
+        let input = quote! {
+            #[primary_key(user_id, nonexistent)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_must_be_scalar() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            #[primary_key(author)]
+            #[timestamps(none)]
+            Post {
+                author: User,
+                title: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("scalar type"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_with_extra_fields() {
+        let input = quote! {
+            #[primary_key(user_id, role_id)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+                assigned_at: NaiveDateTime,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let entity = &analyzed.entities[0];
+        assert_eq!(entity.fields.len(), 3);
+        assert_eq!(
+            entity.attrs.primary_key,
+            Some(vec!["user_id".to_string(), "role_id".to_string()])
+        );
     }
 }

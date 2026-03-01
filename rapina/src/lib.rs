@@ -81,6 +81,9 @@
 
 pub mod app;
 pub mod auth;
+pub mod cache;
+#[cfg(feature = "cache-redis")]
+pub mod cache_redis;
 pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
@@ -97,6 +100,8 @@ pub mod middleware;
 pub mod migration;
 pub mod observability;
 pub mod openapi;
+#[cfg(feature = "database")]
+pub mod pagination;
 pub mod response;
 pub mod router;
 pub mod server;
@@ -115,6 +120,7 @@ pub mod testing;
 pub mod prelude {
     pub use crate::app::Rapina;
     pub use crate::auth::{AuthConfig, CurrentUser, TokenResponse};
+    pub use crate::cache::{CacheConfig, CacheMiddleware};
     pub use crate::config::{
         ConfigError, get_env, get_env_or, get_env_parsed, get_env_parsed_or, load_dotenv,
     };
@@ -124,6 +130,8 @@ pub mod prelude {
     pub use crate::introspection::RouteInfo;
     pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
     pub use crate::observability::TracingConfig;
+    #[cfg(feature = "database")]
+    pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
 
@@ -136,10 +144,15 @@ pub mod prelude {
     pub use rapina_macros::{Config, delete, get, post, public, put, schema};
 }
 
+// Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
+pub use rapina_macros::{Config, delete, get, post, public, put, schema};
+
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
+pub use rust_decimal;
 pub use schemars;
+pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;

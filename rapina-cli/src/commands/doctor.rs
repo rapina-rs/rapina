@@ -1,11 +1,9 @@
 //! Health checks for your Rapina API.
 
+use crate::common::urls;
 use colored::Colorize;
 use serde_json::Value;
 use std::process::Command;
-
-const ROUTES_URL: &str = "http://127.0.0.1:3000/__rapina/routes";
-const OPENAPI_URL: &str = "http://127.0.0.1:3000/__rapina/openapi.json";
 
 struct DiagnosticResult {
     warnings: Vec<String>,
@@ -13,14 +11,24 @@ struct DiagnosticResult {
     passed: Vec<String>,
 }
 
+pub struct DoctorConfig {
+    pub host: String,
+    pub port: u16,
+}
+
 /// Run health checks on the API.
-pub fn execute() -> Result<(), String> {
+pub fn execute(config: DoctorConfig) -> Result<(), String> {
     println!();
-    println!("  {} Running API health checks...", "→".cyan());
+    println!(
+        "  {} Running API health checks on http://{}:{}...",
+        "→".cyan(),
+        config.host,
+        config.port
+    );
     println!();
 
-    let routes = fetch_json(ROUTES_URL)?;
-    let openapi = fetch_json(OPENAPI_URL);
+    let routes = fetch_json(&urls::build_routes_url(&config.host, config.port))?;
+    let openapi = fetch_json(&urls::build_openapi_url(&config.host, config.port));
 
     let mut result = DiagnosticResult {
         warnings: Vec::new(),

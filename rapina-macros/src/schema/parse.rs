@@ -7,7 +7,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Ident, Result, Token, braced};
 
-use super::types::{ScalarType, is_reserved_field};
+use super::types::ScalarType;
 
 /// A complete schema definition containing multiple entities.
 #[derive(Debug)]
@@ -24,6 +24,9 @@ pub struct EntityAttrs {
     pub has_created_at: bool,
     /// Include updated_at timestamp (default: true)
     pub has_updated_at: bool,
+    /// Custom primary key columns, e.g., #[primary_key(user_id, role_id)]
+    /// When None, a single auto-increment `id: i32` is generated.
+    pub primary_key: Option<Vec<String>>,
 }
 
 impl Default for EntityAttrs {
@@ -32,6 +35,7 @@ impl Default for EntityAttrs {
             table_name: None,
             has_created_at: true,
             has_updated_at: true,
+            primary_key: None,
         }
     }
 }
@@ -112,17 +116,16 @@ impl Parse for EntityDef {
 
         let fields: Vec<FieldDef> = fields_punctuated.into_iter().collect();
 
-        // Check for reserved field names
-        for field in &fields {
-            let field_name = field.name.to_string();
-            if is_reserved_field(&field_name) {
-                return Err(syn::Error::new(
-                    field.name.span(),
-                    format!(
-                        "field '{}' is reserved and automatically generated (id, created_at, updated_at)",
-                        field_name
-                    ),
-                ));
+        // Check that 'id' is never declared manually (always auto-generated)
+        // unless a custom primary key is defined
+        if attrs.primary_key.is_none() {
+            for field in &fields {
+                if field.name == "id" {
+                    return Err(syn::Error::new(
+                        field.name.span(),
+                        "field 'id' is reserved and automatically generated. Use #[primary_key(...)] to define a custom primary key",
+                    ));
+                }
             }
         }
 
@@ -196,11 +199,28 @@ fn parse_entity_attrs(input: ParseStream) -> Result<EntityAttrs> {
                     }
                 }
             }
+            "primary_key" => {
+                // Parse primary_key(col1, col2, ...)
+                let inner;
+                syn::parenthesized!(inner in content);
+                let columns: Punctuated<Ident, Token![,]> =
+                    inner.parse_terminated(Ident::parse, Token![,])?;
+
+                let pk_cols: Vec<String> = columns.iter().map(|c| c.to_string()).collect();
+                if pk_cols.is_empty() {
+                    return Err(syn::Error::new(
+                        attr_name.span(),
+                        "primary_key requires at least one column",
+                    ));
+                }
+
+                attrs.primary_key = Some(pk_cols);
+            }
             _ => {
                 return Err(syn::Error::new(
                     attr_name.span(),
                     format!(
-                        "unknown entity attribute '{}'. Supported: table_name, timestamps",
+                        "unknown entity attribute '{}'. Supported: table_name, timestamps, primary_key",
                         attr_name_str
                     ),
                 ));
@@ -617,5 +637,140 @@ mod tests {
         let schema = parse_schema(input).unwrap();
         assert!(schema.entities[0].attrs.has_created_at);
         assert!(schema.entities[0].attrs.has_updated_at);
+    }
+
+    #[test]
+    fn test_parse_primary_key_single() {
+        let input = quote! {
+            #[primary_key(user_id)]
+            UserPreference {
+                user_id: i32,
+                theme: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].attrs.primary_key,
+            Some(vec!["user_id".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_primary_key_composite() {
+        let input = quote! {
+            #[primary_key(user_id, role_id)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].attrs.primary_key,
+            Some(vec!["user_id".to_string(), "role_id".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_primary_key_three_columns() {
+        let input = quote! {
+            #[primary_key(a_id, b_id, c_id)]
+            ThreeWayJoin {
+                a_id: i32,
+                b_id: i32,
+                c_id: i32,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let pk = schema.entities[0].attrs.primary_key.as_ref().unwrap();
+        assert_eq!(pk.len(), 3);
+        assert_eq!(pk, &["a_id", "b_id", "c_id"]);
+    }
+
+    #[test]
+    fn test_parse_primary_key_with_table_name() {
+        let input = quote! {
+            #[table_name = "users_roles"]
+            #[primary_key(user_id, role_id)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].attrs.table_name,
+            Some("users_roles".to_string())
+        );
+        assert_eq!(
+            schema.entities[0].attrs.primary_key,
+            Some(vec!["user_id".to_string(), "role_id".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_primary_key_with_timestamps_none() {
+        let input = quote! {
+            #[primary_key(user_id, role_id)]
+            #[timestamps(none)]
+            UsersRole {
+                user_id: i32,
+                role_id: i32,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].attrs.primary_key.is_some());
+        assert!(!schema.entities[0].attrs.has_created_at);
+        assert!(!schema.entities[0].attrs.has_updated_at);
+    }
+
+    #[test]
+    fn test_id_allowed_with_custom_primary_key() {
+        // When primary_key is set, 'id' field should not be rejected
+        let input = quote! {
+            #[primary_key(id)]
+            LegacyTable {
+                id: i64,
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert_eq!(
+            schema.entities[0].attrs.primary_key,
+            Some(vec!["id".to_string()])
+        );
+        assert_eq!(schema.entities[0].fields.len(), 2);
+    }
+
+    #[test]
+    fn test_id_rejected_without_custom_primary_key() {
+        let input = quote! {
+            User {
+                id: i32,
+                name: String,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("reserved"));
+    }
+
+    #[test]
+    fn test_default_no_primary_key() {
+        let input = quote! {
+            User {
+                name: String,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        assert!(schema.entities[0].attrs.primary_key.is_none());
     }
 }

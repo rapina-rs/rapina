@@ -1,10 +1,9 @@
 //! List all registered routes.
 
+use crate::common::urls;
 use colored::Colorize;
 use serde::Deserialize;
 use std::process::Command;
-
-const DEFAULT_URL: &str = "http://127.0.0.1:3000/__rapina/routes";
 
 #[derive(Deserialize)]
 struct RouteInfo {
@@ -13,12 +12,21 @@ struct RouteInfo {
     handler_name: String,
 }
 
-/// List all registered routes from the running application.
-pub fn execute() -> Result<(), String> {
-    println!();
-    println!("  {} Fetching routes...", "→".cyan());
+pub struct RoutesConfig {
+    pub host: String,
+    pub port: u16,
+}
 
-    let routes = fetch_routes()?;
+/// List all registered routes from the running application.
+pub fn execute(config: RoutesConfig) -> Result<(), String> {
+    println!();
+    println!(
+        "  {} Fetching routes on http://{}:{}...",
+        "→".cyan(),
+        config.host,
+        config.port
+    );
+    let routes = fetch_routes(&urls::build_routes_url(&config.host, config.port))?;
 
     if routes.is_empty() {
         println!("  {} No routes registered", "⚠".yellow());
@@ -58,16 +66,16 @@ pub fn execute() -> Result<(), String> {
 }
 
 /// Fetch routes from running application.
-fn fetch_routes() -> Result<Vec<RouteInfo>, String> {
+fn fetch_routes(url: &str) -> Result<Vec<RouteInfo>, String> {
     let output = Command::new("curl")
-        .args(["-s", "-f", DEFAULT_URL])
+        .args(["-s", "-f", url])
         .output()
         .map_err(|e| format!("Failed to run curl: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
             "Failed to fetch routes. Is the server running on {}?",
-            DEFAULT_URL
+            url
         ));
     }
 

@@ -222,3 +222,115 @@ async fn test_introspection_endpoint() {
     assert!(route_paths.contains(&"/health"));
     assert!(route_paths.contains(&"/users"));
 }
+
+#[tokio::test]
+async fn test_static_route_not_shadowed_by_parameterized() {
+    // Register parameterized route BEFORE the static one —
+    // the sort in prepare() should still let /users/current win.
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/users/:id", |_, _, _| async { "param" })
+            .route(http::Method::GET, "/users/current", |_, _, _| async {
+                "static"
+            }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    let response = client.get("/users/current").send().await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "static");
+
+    // Parameterized route still works for other values
+    let response = client.get("/users/42").send().await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "param");
+}
+
+#[tokio::test]
+async fn test_multi_level_param_specificity() {
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/users/:id/:action", |_, _, _| async {
+                "two params"
+            })
+            .route(http::Method::GET, "/users/:id/posts", |_, _, _| async {
+                "one param"
+            }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    let response = client.get("/users/5/posts").send().await;
+    assert_eq!(response.text(), "one param");
+
+    let response = client.get("/users/5/settings").send().await;
+    assert_eq!(response.text(), "two params");
+}
+
+#[tokio::test]
+async fn test_different_methods_not_affected_by_sort() {
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/users/:id", |_, _, _| async {
+                "get param"
+            })
+            .route(http::Method::POST, "/users/current", |_, _, _| async {
+                "post static"
+            }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    // GET /users/current matches the param route (no static GET exists)
+    let response = client.get("/users/current").send().await;
+    assert_eq!(response.text(), "get param");
+
+    // POST /users/current matches the static POST
+    let response = client.post("/users/current").send().await;
+    assert_eq!(response.text(), "post static");
+}
+
+#[tokio::test]
+async fn test_root_level_param_does_not_shadow_static() {
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/:slug", |_, _, _| async { "param" })
+            .route(http::Method::GET, "/about", |_, _, _| async { "static" }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    let response = client.get("/about").send().await;
+    assert_eq!(response.text(), "static");
+
+    let response = client.get("/anything-else").send().await;
+    assert_eq!(response.text(), "param");
+}
+
+#[tokio::test]
+async fn test_param_at_different_positions() {
+    // /api/:version/users has the param at position 1
+    // /api/v1/:resource has the param at position 2
+    // The one with the earlier static segment should win for /api/v1/users
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/api/:version/users", |_, _, _| async {
+                "version param"
+            })
+            .route(http::Method::GET, "/api/v1/:resource", |_, _, _| async {
+                "resource param"
+            }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    // /api/v1/users matches both patterns, but /api/v1/:resource
+    // has the static segment earlier (v1 at pos 1 vs :version at pos 1)
+    let response = client.get("/api/v1/users").send().await;
+    assert_eq!(response.text(), "resource param");
+
+    // /api/v2/users only matches /api/:version/users
+    let response = client.get("/api/v2/users").send().await;
+    assert_eq!(response.text(), "version param");
+}

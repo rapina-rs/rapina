@@ -291,6 +291,17 @@ impl Router {
         StatusCode::NOT_FOUND.into_response()
     }
 
+    /// Sorts routes so static segments come before parameterized ones.
+    ///
+    /// This ensures `/users/current` is matched before `/users/:id` regardless
+    /// of registration order. Uses a stable sort so routes with identical
+    /// specificity keep their original order.
+    pub(crate) fn sort_routes(&mut self) {
+        self.routes.sort_by(|(_, a), (_, b)| {
+            route_specificity(&a.pattern).cmp(&route_specificity(&b.pattern))
+        });
+    }
+
     fn join_group_route_pattern(prefix: &str, route_path: &str) -> String {
         let prefix = prefix.trim_end_matches('/');
         let route_path = route_path.trim_start_matches('/');
@@ -303,6 +314,18 @@ impl Router {
             format!("{}/{}", prefix, route_path)
         }
     }
+}
+
+/// Returns a specificity key for a route pattern.
+///
+/// Each segment maps to `0` (static) or `1` (`:param`). When sorted
+/// ascending, static segments win over parameterized ones at every position,
+/// so `/users/current` always comes before `/users/:id`.
+fn route_specificity(pattern: &str) -> Vec<u8> {
+    pattern
+        .split('/')
+        .map(|seg| if seg.starts_with(':') { 1 } else { 0 })
+        .collect()
 }
 
 impl Default for Router {
@@ -530,6 +553,38 @@ mod tests {
     #[should_panic(expected = "A group's prefix pattern must start with /")]
     fn test_invalid_router_group_prefix_pattern() {
         Router::new().group("api/users", Router::new());
+    }
+
+    #[test]
+    fn test_route_specificity() {
+        assert_eq!(super::route_specificity("/users/current"), vec![0, 0, 0]);
+        assert_eq!(super::route_specificity("/users/:id"), vec![0, 0, 1]);
+        assert_eq!(
+            super::route_specificity("/users/:id/:action"),
+            vec![0, 0, 1, 1]
+        );
+        assert_eq!(
+            super::route_specificity("/users/:id/posts"),
+            vec![0, 0, 1, 0]
+        );
+    }
+
+    #[test]
+    fn test_sort_routes_static_before_param() {
+        let mut router = Router::new()
+            .route(Method::GET, "/users/:id", |_req, _params, _state| async {
+                StatusCode::OK
+            })
+            .route(
+                Method::GET,
+                "/users/current",
+                |_req, _params, _state| async { StatusCode::OK },
+            );
+
+        router.sort_routes();
+
+        assert_eq!(router.routes[0].1.pattern, "/users/current");
+        assert_eq!(router.routes[1].1.pattern, "/users/:id");
     }
 
     #[test]
