@@ -62,20 +62,7 @@ pub(crate) fn singularize(s: &str) -> String {
 }
 
 pub(crate) fn verify_rapina_project() -> Result<(), String> {
-    let cargo_path = Path::new("Cargo.toml");
-    if !cargo_path.exists() {
-        return Err(
-            "No Cargo.toml found. Run this command from the root of a Rapina project.".to_string(),
-        );
-    }
-
-    let content =
-        fs::read_to_string(cargo_path).map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
-
-    if !content.contains("rapina") {
-        return Err("This doesn't appear to be a Rapina project (no rapina dependency found in Cargo.toml).".to_string());
-    }
-
+    super::verify_rapina_project()?;
     Ok(())
 }
 
@@ -520,6 +507,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "import")]
     fn test_singularize() {
         assert_eq!(singularize("users"), "user");
         assert_eq!(singularize("posts"), "post");

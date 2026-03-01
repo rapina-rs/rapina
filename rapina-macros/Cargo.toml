@@ -1,6 +1,6 @@
 [package]
 name = "rapina-macros"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Procedural macros for the Rapina web framework"

@@ -72,7 +72,7 @@ enum Commands {
         #[command(subcommand)]
         command: AddCommands,
     },
-    /// Import schema from external sources
+    /// Import from external sources (OpenAPI specs, databases, etc.)
     Import {
         #[command(subcommand)]
         command: ImportCommands,
@@ -123,6 +123,18 @@ enum ImportCommands {
         /// Database schema name (default: "public" for Postgres)
         #[arg(long)]
         schema: Option<String>,
+    },
+    /// Import handlers, DTOs, and module structure from an OpenAPI 3.0 spec
+    #[cfg(feature = "import-openapi")]
+    Openapi {
+        /// Path to OpenAPI spec file (JSON or YAML)
+        file: String,
+        /// Preview generated files without writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Only import endpoints with these tags (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tags: Option<Vec<String>>,
     },
 }
 
@@ -198,6 +210,7 @@ fn main() {
             }
         }
         Some(Commands::Import { command }) => {
+            #[allow(unreachable_patterns)]
             let result: Result<(), String> = match command {
                 ImportCommands::Database {
                     url,
@@ -216,6 +229,16 @@ fn main() {
                             .to_string())
                     }
                 }
+                #[cfg(feature = "import-openapi")]
+                ImportCommands::Openapi {
+                    file,
+                    dry_run,
+                    tags,
+                } => commands::import_openapi::openapi(&file, tags.as_deref(), dry_run),
+                _ => Err(
+                    "No import subcommands available. Enable features like 'import-openapi'."
+                        .to_string(),
+                ),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);

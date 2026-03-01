@@ -1,6 +1,6 @@
 [package]
 name = "rapina"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
@@ -58,7 +58,7 @@ dashmap = "6.1.0"
 flate2 = "1.1"
 
 # Our macros
-rapina-macros = { version = "0.7.3", path = "../rapina-macros/" }
+rapina-macros = { version = "0.8.0", path = "../rapina-macros/" }
 
 # Auto-discovery
 inventory = "0.3"
