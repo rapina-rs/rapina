@@ -29,7 +29,6 @@ pub(crate) fn pluralize(s: &str) -> String {
     format!("{}s", s)
 }
 
-#[cfg(feature = "import")]
 pub(crate) fn singularize(s: &str) -> String {
     if let Some(stem) = s.strip_suffix("ies") {
         format!("{}y", stem)

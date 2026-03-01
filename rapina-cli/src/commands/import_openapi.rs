@@ -107,24 +107,7 @@ fn to_snake_case(s: &str) -> String {
 }
 
 /// Best-effort singularization for common English plurals.
-/// Handles regular cases (users->user, categories->category, boxes->box).
-/// Irregular plurals (analyses, people, data) are not covered — those are
-/// rare in API resource names and can be fixed manually.
-fn singularize(s: &str) -> String {
-    if let Some(stripped) = s.strip_suffix("ies") {
-        format!("{}y", stripped)
-    } else if s.ends_with("ses") || s.ends_with("xes") || s.ends_with("zes") {
-        // "boxes" -> "box", "buses" -> "bus", "fizzes" -> "fizz"
-        s[..s.len() - 2].to_string()
-    } else if s.ends_with("ss") {
-        // "class" stays "class"
-        s.to_string()
-    } else if let Some(stripped) = s.strip_suffix('s') {
-        stripped.to_string()
-    } else {
-        s.to_string()
-    }
-}
+use super::codegen::singularize;
 
 // ---------------------------------------------------------------------------
 // Path and naming utilities
