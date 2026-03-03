@@ -202,7 +202,7 @@ Cargo.lock
 fn generate_agent_md() -> String {
     r#"# Rapina Project
 
-This is a Rust web application built with [Rapina](https://github.com/arferreira/rapina), an opinionated web framework.
+This is a Rust web application built with [Rapina](https://github.com/rapina-rs/rapina), an opinionated web framework.
 
 ## Key Conventions
 

@@ -12,7 +12,7 @@ Thanks for your interest in contributing to Rapina. This document outlines the p
    ```
 3. Add the upstream remote:
    ```bash
-   git remote add upstream https://github.com/arferreira/rapina.git
+   git remote add upstream https://github.com/rapina-rs/rapina.git
    ```
 
 ## Development Setup

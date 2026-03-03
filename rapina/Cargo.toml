@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
 license = "MIT"
-repository = "https://github.com/arferreira/rapina"
+repository = "https://github.com/rapina-rs/rapina"
 documentation = "https://docs.rs/rapina"
 readme = "../README.md"
 keywords = ["web", "framework", "http", "async", "api"]
@@ -77,7 +77,7 @@ prometheus = { version = '0.13', optional = true }
 redis = { version = "0.27", optional = true, features = ["tokio-comp"] }
 
 [dev-dependencies]
-nix = { version = "0.30", features = ["signal"] }
+nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 
 [features]
