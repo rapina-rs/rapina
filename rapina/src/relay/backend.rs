@@ -7,6 +7,9 @@
 //! Uses `BoxFuture` returns instead of `async_trait` to avoid the macro
 //! overhead on the hot push path, following the same pattern as
 //! [`CacheBackend`](crate::cache::CacheBackend).
+//!
+// TODO: relay-redis feature — add RedisBackend behind a feature flag,
+// following the same pattern as cache_redis.rs.
 
 use std::future::Future;
 use std::pin::Pin;

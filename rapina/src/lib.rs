@@ -137,7 +137,7 @@ pub mod prelude {
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     #[cfg(feature = "websocket")]
-    pub use crate::relay::{Relay, RelayConfig};
+    pub use crate::relay::{Relay, RelayConfig, RelayEvent};
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
 
@@ -147,11 +147,11 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, post, public, put, schema};
+    pub use rapina_macros::{Config, delete, get, post, public, put, relay, schema};
 }
 
 // Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
-pub use rapina_macros::{Config, delete, get, post, public, put, schema};
+pub use rapina_macros::{Config, delete, get, post, public, put, relay, schema};
 
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;

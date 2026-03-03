@@ -481,7 +481,24 @@ impl Rapina {
         if let Some(config) = self.relay_config.take() {
             let path = config.path.clone();
             let backend = Box::new(crate::relay::InMemoryBackend::new(config.topic_capacity));
-            let hub = std::sync::Arc::new(crate::relay::RelayHub::new(config, backend));
+
+            // Collect channel handlers from inventory, sorted by specificity:
+            // exact matches first, then prefix matches ordered by match_prefix
+            // length descending (longer = more specific). Ensures "room:vip:*"
+            // always wins over "room:*" regardless of inventory iteration order.
+            let mut channels: Vec<&'static crate::relay::ChannelDescriptor> =
+                inventory::iter::<crate::relay::ChannelDescriptor>
+                    .into_iter()
+                    .collect();
+            channels.sort_by(|a, b| match (a.is_prefix, b.is_prefix) {
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, false) => a.pattern.cmp(b.pattern),
+                (true, true) => b.match_prefix.len().cmp(&a.match_prefix.len()),
+            });
+
+            let hub =
+                std::sync::Arc::new(crate::relay::RelayHub::new(config, backend, channels));
             self.state = self.state.with(hub);
             self.router =
                 self.router

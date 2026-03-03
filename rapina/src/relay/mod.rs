@@ -26,10 +26,12 @@
 //! ```
 
 pub mod backend;
+pub mod channel;
 mod hub;
 pub mod protocol;
 
 pub use backend::{InMemoryBackend, RelayBackend, TopicReceiver};
+pub use channel::{ChannelDescriptor, PresenceEntry, RelayEvent};
 pub use hub::{Relay, RelayHub};
 
 /// Configuration for the relay system.
