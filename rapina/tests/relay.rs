@@ -57,6 +57,7 @@ fn relay_app() -> Rapina {
                 };
                 relay
                     .push("orders:new", "created", &serde_json::json!({"id": 1}))
+                    .await
                     .unwrap();
                 StatusCode::OK.into_response()
             },
@@ -259,6 +260,7 @@ async fn test_relay_extractor_via_proc_macro() {
     async fn notify(relay: Relay) -> StatusCode {
         relay
             .push("events", "ping", &serde_json::json!({"ok": true}))
+            .await
             .unwrap();
         StatusCode::OK
     }

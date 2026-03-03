@@ -474,7 +474,8 @@ impl Rapina {
         #[cfg(feature = "websocket")]
         if let Some(config) = self.relay_config.take() {
             let path = config.path.clone();
-            let hub = std::sync::Arc::new(crate::relay::RelayHub::new(config));
+            let backend = Box::new(crate::relay::InMemoryBackend::new(config.topic_capacity));
+            let hub = std::sync::Arc::new(crate::relay::RelayHub::new(config, backend));
             self.state = self.state.with(hub);
             self.router =
                 self.router

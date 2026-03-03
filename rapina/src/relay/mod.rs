@@ -11,7 +11,7 @@
 //! #[post("/orders")]
 //! async fn create_order(relay: Relay, body: Json<NewOrder>) -> Result<Json<Order>> {
 //!     let order = save_order(&body).await?;
-//!     relay.push("orders:new", "created", &order)?;
+//!     relay.push("orders:new", "created", &order).await?;
 //!     Ok(Json(order))
 //! }
 //!
@@ -25,9 +25,11 @@
 //! }
 //! ```
 
+pub mod backend;
 mod hub;
 pub mod protocol;
 
+pub use backend::{InMemoryBackend, RelayBackend, TopicReceiver};
 pub use hub::{Relay, RelayHub};
 
 /// Configuration for the relay system.

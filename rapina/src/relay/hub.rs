@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use dashmap::DashMap;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use crate::error::Error;
 use crate::extract::{FromRequest, FromRequestParts, PathParams};
+use crate::relay::backend::RelayBackend;
 use crate::relay::protocol::ClientMessage;
 use crate::state::AppState;
 use crate::websocket::{Message, WebSocket, WebSocketUpgrade};
@@ -26,25 +26,24 @@ struct PushEnvelope<'a, T: serde::Serialize> {
 
 /// Shared relay state stored in [`AppState`].
 ///
-/// Manages per-topic broadcast channels. Handlers use the [`Relay`] extractor
-/// to push messages; WebSocket clients subscribe via the wire protocol.
+/// Delegates pub/sub to a pluggable [`RelayBackend`]. The default
+/// [`InMemoryBackend`](super::backend::InMemoryBackend) uses per-topic
+/// broadcast channels. Handlers use the [`Relay`] extractor to push messages;
+/// WebSocket clients subscribe via the wire protocol.
 pub struct RelayHub {
-    topics: DashMap<String, broadcast::Sender<Arc<String>>>,
+    backend: Box<dyn RelayBackend>,
     config: RelayConfig,
 }
 
 impl RelayHub {
-    pub(crate) fn new(config: RelayConfig) -> Self {
-        Self {
-            topics: DashMap::new(),
-            config,
-        }
+    pub(crate) fn new(config: RelayConfig, backend: Box<dyn RelayBackend>) -> Self {
+        Self { backend, config }
     }
 
     /// Push a JSON-serializable payload to all subscribers of `topic`.
     ///
     /// If nobody is subscribed to the topic, the message is silently dropped.
-    pub fn push<T: serde::Serialize>(
+    pub async fn push<T: serde::Serialize>(
         &self,
         topic: &str,
         event: &str,
@@ -59,10 +58,7 @@ impl RelayHub {
         let json = serde_json::to_string(&envelope)
             .map_err(|e| Error::internal(format!("relay serialization error: {e}")))?;
 
-        if let Some(tx) = self.topics.get(topic) {
-            let _ = tx.send(Arc::new(json));
-        }
-        Ok(())
+        self.backend.push(topic, Arc::new(json)).await
     }
 
     /// The handler function for the built-in relay WebSocket endpoint.
@@ -85,23 +81,15 @@ impl RelayHub {
     }
 }
 
-/// Remove a topic from the map if it has zero receivers.
-///
-/// Uses `remove_if` to hold the shard lock across the check-and-remove,
-/// preventing a race where another connection subscribes between the
-/// receiver_count check and the removal.
-fn cleanup_topic(topics: &DashMap<String, broadcast::Sender<Arc<String>>>, topic: &str) {
-    topics.remove_if(topic, |_, tx| tx.receiver_count() == 0);
-}
-
 /// Per-connection event loop. Manages subscriptions and forwards pushes.
 async fn connection_loop(socket: WebSocket, hub: Arc<RelayHub>) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
-    // Aggregates messages from all subscribed broadcast receivers.
+    // Aggregates messages from all subscribed topic receivers.
     let (funnel_tx, mut funnel_rx) = mpsc::channel::<Arc<String>>(256);
 
     // Map topic -> forwarding task handle, so unsubscribe can abort the right one.
+    // Aborting a task drops the TopicReceiver, which triggers cleanup via Drop.
     let mut subscriptions: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
 
     loop {
@@ -143,18 +131,11 @@ async fn connection_loop(socket: WebSocket, hub: Arc<RelayHub>) {
                             continue;
                         }
 
-                        let tx_entry = hub
-                            .topics
-                            .entry(topic.clone())
-                            .or_insert_with(|| {
-                                broadcast::channel(hub.config.topic_capacity).0
-                            })
-                            .clone();
-                        let mut rx = tx_entry.subscribe();
+                        let mut receiver = hub.backend.subscribe(&topic).await;
                         let funnel = funnel_tx.clone();
 
                         let handle = tokio::spawn(async move {
-                            while let Ok(msg) = rx.recv().await {
+                            while let Some(msg) = receiver.recv().await {
                                 if funnel.send(msg).await.is_err() {
                                     break;
                                 }
@@ -171,7 +152,6 @@ async fn connection_loop(socket: WebSocket, hub: Arc<RelayHub>) {
                         if let Some(handle) = subscriptions.remove(&topic) {
                             handle.abort();
                         }
-                        cleanup_topic(&hub.topics, &topic);
 
                         let json = unsubscribed_json(&topic);
                         ws_tx.send(Message::Text(json)).await.ok();
@@ -192,9 +172,7 @@ async fn connection_loop(socket: WebSocket, hub: Arc<RelayHub>) {
                         };
                         let json = Arc::new(serde_json::to_string(&envelope).unwrap());
 
-                        if let Some(tx) = hub.topics.get(&topic) {
-                            let _ = tx.send(json);
-                        }
+                        let _ = hub.backend.push(&topic, json).await;
                     }
 
                     ClientMessage::Ping => {
@@ -211,10 +189,10 @@ async fn connection_loop(socket: WebSocket, hub: Arc<RelayHub>) {
         }
     }
 
-    // Abort all forwarding tasks and clean up empty topics.
-    for (topic, handle) in subscriptions {
+    // Abort all forwarding tasks. Each abort drops the TopicReceiver,
+    // which handles backend cleanup (e.g. removing empty broadcast channels).
+    for (_topic, handle) in subscriptions {
         handle.abort();
-        cleanup_topic(&hub.topics, &topic);
     }
 }
 
@@ -253,7 +231,7 @@ fn json_string(s: &str) -> String {
 /// #[post("/orders")]
 /// async fn create_order(relay: Relay, body: Json<NewOrder>) -> Result<Json<Order>> {
 ///     let order = save_order(&body).await?;
-///     relay.push("orders:new", "created", &order)?;
+///     relay.push("orders:new", "created", &order).await?;
 ///     Ok(Json(order))
 /// }
 /// ```
@@ -264,13 +242,13 @@ pub struct Relay {
 
 impl Relay {
     /// Push a JSON-serializable payload to all subscribers of `topic`.
-    pub fn push<T: serde::Serialize>(
+    pub async fn push<T: serde::Serialize>(
         &self,
         topic: &str,
         event: &str,
         payload: &T,
     ) -> Result<(), Error> {
-        self.hub.push(topic, event, payload)
+        self.hub.push(topic, event, payload).await
     }
 }
 
