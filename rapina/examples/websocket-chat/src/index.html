@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rapina WebSocket Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui; }
+        body { display: flex; justify-content: center; padding: 2rem; background: #f5f5f5; }
+        .chat { width: 500px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+        h1 { padding: 1rem; font-size: 1.1rem; border-bottom: 1px solid #eee; }
+        #messages { height: 400px; overflow-y: auto; padding: 1rem; }
+        .msg { margin-bottom: 0.5rem; padding: 0.5rem; background: #f0f0f0; border-radius: 4px; }
+        form { display: flex; border-top: 1px solid #eee; }
+        input { flex: 1; padding: 0.75rem; border: none; outline: none; font-size: 1rem; }
+        button { padding: 0.75rem 1.5rem; background: #333; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="chat">
+        <h1>Rapina WebSocket Chat</h1>
+        <div id="messages"></div>
+        <form id="form">
+            <input id="input" autocomplete="off" placeholder="Type a message..." />
+            <button>Send</button>
+        </form>
+    </div>
+    <script>
+        const ws = new WebSocket(`ws://${location.host}/ws`);
+        const messages = document.getElementById('messages');
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+
+        ws.onmessage = (e) => {
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.textContent = e.data;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        };
+
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            if (input.value) {
+                ws.send(input.value);
+                input.value = '';
+            }
+        };
+    </script>
+</body>
+</html>

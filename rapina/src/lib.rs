@@ -108,6 +108,8 @@ pub mod server;
 pub mod state;
 pub mod test;
 pub mod testing;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 /// Convenient re-exports for common Rapina types.
 ///
@@ -156,6 +158,11 @@ pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;
+
+#[cfg(feature = "websocket")]
+pub use futures_util;
+#[cfg(feature = "websocket")]
+pub use tokio_tungstenite;
 
 // Re-export sea-orm when database feature is enabled
 #[cfg(feature = "database")]

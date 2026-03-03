@@ -77,6 +77,11 @@ prometheus = { version = '0.13', optional = true }
 # Redis cache backend (optional)
 redis = { version = "0.27", optional = true, features = ["tokio-comp"] }
 
+# WebSocket (optional)
+hyper-tungstenite = { version = "0.19", optional = true }
+tokio-tungstenite = { version = "0.28", optional = true }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
+
 [dev-dependencies]
 nix = { version = "0.30", features = ["signal"] }
 serial_test = "3"
@@ -89,3 +94,4 @@ mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
 cache-redis = ["redis"]
+websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
