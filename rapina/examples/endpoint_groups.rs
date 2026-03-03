@@ -19,8 +19,5 @@ async fn hello() -> &'static str {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    Rapina::new()
-        .discover()
-        .listen("127.0.0.1:3000")
-        .await
+    Rapina::new().discover().listen("127.0.0.1:3000").await
 }

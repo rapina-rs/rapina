@@ -386,11 +386,17 @@ async fn test_grouped_introspection_shows_method_correctly() {
         r.get("path").and_then(|p| p.as_str()) == Some("/api/grp-users")
             && r.get("method").and_then(|m| m.as_str()) == Some("POST")
     });
-    assert!(grouped_post.is_some(), "POST /api/grp-users should appear in introspection");
+    assert!(
+        grouped_post.is_some(),
+        "POST /api/grp-users should appear in introspection"
+    );
 
     // The unprefixed path should NOT appear
-    let unprefixed = routes.iter().find(|r| {
-        r.get("path").and_then(|p| p.as_str()) == Some("/grp-users")
-    });
-    assert!(unprefixed.is_none(), "/grp-users should not appear in introspection");
+    let unprefixed = routes
+        .iter()
+        .find(|r| r.get("path").and_then(|p| p.as_str()) == Some("/grp-users"));
+    assert!(
+        unprefixed.is_none(),
+        "/grp-users should not appear in introspection"
+    );
 }
