@@ -21,6 +21,7 @@ hyper-util = { version = "0.1.19", features = [
   "tokio",
   "client-legacy",
   "http1",
+  "server-auto",
   "server-graceful",
 ] }
 http = "1.4.0"

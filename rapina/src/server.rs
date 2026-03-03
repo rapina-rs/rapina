@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use hyper::Request;
 use hyper::body::Incoming;
-use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use hyper_util::server::graceful::GracefulShutdown;
 use tokio::net::TcpListener;
 use tokio::signal::unix::SignalKind;
@@ -63,7 +63,9 @@ pub(crate) async fn serve(
                     }
                 });
 
-                let conn = http1::Builder::new().serve_connection(io, service);
+                let conn = auto::Builder::new(TokioExecutor::new())
+                    .serve_connection_with_upgrades(io, service)
+                    .into_owned();
                 let conn = graceful.watch(conn);
 
                 tokio::spawn(async move {
