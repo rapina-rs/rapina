@@ -497,8 +497,7 @@ impl Rapina {
                 (true, true) => b.match_prefix.len().cmp(&a.match_prefix.len()),
             });
 
-            let hub =
-                std::sync::Arc::new(crate::relay::RelayHub::new(config, backend, channels));
+            let hub = std::sync::Arc::new(crate::relay::RelayHub::new(config, backend, channels));
             self.state = self.state.with(hub);
             self.router =
                 self.router

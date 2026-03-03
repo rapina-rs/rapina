@@ -2,8 +2,8 @@
 //! the per-connection event loop.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::mpsc;
 
@@ -109,9 +109,7 @@ impl RelayHub {
         let hub = Arc::clone(hub);
         let state = Arc::clone(&state);
 
-        Ok(upgrade.on_upgrade(move |socket| {
-            connection_loop(socket, hub, state, current_user)
-        }))
+        Ok(upgrade.on_upgrade(move |socket| connection_loop(socket, hub, state, current_user)))
     }
 }
 

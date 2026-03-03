@@ -29,10 +29,9 @@ async fn ws_connect(addr: std::net::SocketAddr) -> (WsTx, WsRx) {
 async fn ws_connect_with_auth(addr: std::net::SocketAddr, token: &str) -> (WsTx, WsRx) {
     use tungstenite::client::IntoClientRequest;
     let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
-    request.headers_mut().insert(
-        "Authorization",
-        format!("Bearer {token}").parse().unwrap(),
-    );
+    request
+        .headers_mut()
+        .insert("Authorization", format!("Bearer {token}").parse().unwrap());
     let (ws, _) = rapina::tokio_tungstenite::connect_async(request)
         .await
         .unwrap();
@@ -74,11 +73,7 @@ impl TestLog {
 
 /// Handles "test:*" topics — logs events, tracks presence, echoes messages.
 #[rapina::relay("test:*")]
-async fn test_channel(
-    event: RelayEvent,
-    relay: Relay,
-    log: State<TestLog>,
-) -> Result<()> {
+async fn test_channel(event: RelayEvent, relay: Relay, log: State<TestLog>) -> Result<()> {
     match &event {
         RelayEvent::Join { topic, conn_id } => {
             log.push(format!("join:{topic}:{conn_id}")).await;
@@ -191,11 +186,7 @@ async fn test_join_handler_runs_on_subscribe() {
 
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"test:room1"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"test:room1"}"#).await;
     let msg = recv_server_msg(&mut ws_rx).await;
     assert!(matches!(msg, ServerMessage::Subscribed { topic } if topic == "test:room1"));
 
@@ -214,11 +205,7 @@ async fn test_join_handler_rejection() {
 
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"reject:room"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"reject:room"}"#).await;
     let msg = recv_server_msg(&mut ws_rx).await;
     match msg {
         ServerMessage::Error { message } => {
@@ -239,11 +226,7 @@ async fn test_message_handler_runs_and_echoes() {
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
     // Subscribe
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"test:chat"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"test:chat"}"#).await;
     let _ = recv_server_msg(&mut ws_rx).await;
 
     // Send a message — handler should echo it back via relay.push
@@ -281,18 +264,10 @@ async fn test_leave_on_unsubscribe() {
 
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"test:room2"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"test:room2"}"#).await;
     let _ = recv_server_msg(&mut ws_rx).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"unsubscribe","topic":"test:room2"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"unsubscribe","topic":"test:room2"}"#).await;
     let msg = recv_server_msg(&mut ws_rx).await;
     assert!(matches!(msg, ServerMessage::Unsubscribed { topic } if topic == "test:room2"));
 
@@ -313,11 +288,7 @@ async fn test_leave_on_disconnect() {
 
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"test:room3"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"test:room3"}"#).await;
     let _ = recv_server_msg(&mut ws_rx).await;
 
     // Drop the connection
@@ -341,18 +312,10 @@ async fn test_no_channel_default_broadcast() {
     let (mut tx1, mut rx1) = ws_connect(addr).await;
     let (mut tx2, mut rx2) = ws_connect(addr).await;
 
-    send_json(
-        &mut tx1,
-        r#"{"type":"subscribe","topic":"nohandler:chat"}"#,
-    )
-    .await;
+    send_json(&mut tx1, r#"{"type":"subscribe","topic":"nohandler:chat"}"#).await;
     let _ = recv_server_msg(&mut rx1).await;
 
-    send_json(
-        &mut tx2,
-        r#"{"type":"subscribe","topic":"nohandler:chat"}"#,
-    )
-    .await;
+    send_json(&mut tx2, r#"{"type":"subscribe","topic":"nohandler:chat"}"#).await;
     let _ = recv_server_msg(&mut rx2).await;
 
     // Client 1 sends a message — should be broadcast (no channel handler intercepts)
@@ -407,11 +370,7 @@ async fn test_presence_auto_cleanup() {
 
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"test:cleanup"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"test:cleanup"}"#).await;
     let _ = recv_server_msg(&mut ws_rx).await;
 
     // Verify presence exists
@@ -441,18 +400,16 @@ async fn test_current_user_available_in_channel_handler() {
     let token = auth_config.create_token("user42").unwrap();
     let (mut ws_tx, mut ws_rx) = ws_connect_with_auth(addr, &token).await;
 
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"auth:room"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"auth:room"}"#).await;
     let msg = recv_server_msg(&mut ws_rx).await;
     assert!(matches!(msg, ServerMessage::Subscribed { topic } if topic == "auth:room"));
 
     let entries = log.lock().await;
-    assert!(entries
-        .iter()
-        .any(|e| e.starts_with("auth-join:auth:room:user42:")));
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.starts_with("auth-join:auth:room:user42:"))
+    );
 
     ws_tx.close().await.ok();
 }
@@ -466,11 +423,7 @@ async fn test_exact_pattern_match() {
     let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
 
     // "exact:topic" matches the exact handler
-    send_json(
-        &mut ws_tx,
-        r#"{"type":"subscribe","topic":"exact:topic"}"#,
-    )
-    .await;
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"exact:topic"}"#).await;
     let msg = recv_server_msg(&mut ws_rx).await;
     assert!(matches!(msg, ServerMessage::Subscribed { topic } if topic == "exact:topic"));
 
@@ -498,9 +451,7 @@ async fn test_prefix_pattern_match() {
     assert!(matches!(msg, ServerMessage::Subscribed { topic } if topic == "test:anything"));
 
     let entries = log.lock().await;
-    assert!(entries
-        .iter()
-        .any(|e| e.starts_with("join:test:anything:")));
+    assert!(entries.iter().any(|e| e.starts_with("join:test:anything:")));
 
     ws_tx.close().await.ok();
 }
