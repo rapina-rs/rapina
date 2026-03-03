@@ -2,23 +2,92 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
+/// Parsed route macro attribute: `"/path"` or `"/path", group = "/prefix"`.
+struct RouteAttr {
+    path: LitStr,
+    group: Option<LitStr>,
+}
+
+impl syn::parse::Parse for RouteAttr {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let path: LitStr = input.parse()?;
+        let group = if input.peek(syn::Token![,]) {
+            input.parse::<syn::Token![,]>()?;
+            let ident: syn::Ident = input.parse()?;
+            if ident != "group" {
+                return Err(syn::Error::new(ident.span(), "expected `group`"));
+            }
+            input.parse::<syn::Token![=]>()?;
+            let value: LitStr = input.parse()?;
+            Some(value)
+        } else {
+            None
+        };
+        if !input.is_empty() {
+            return Err(input.error("unexpected tokens after route attribute"));
+        }
+        Ok(RouteAttr { path, group })
+    }
+}
+
+/// Join a group prefix with a route path at compile time.
+fn join_paths(prefix: &str, path: &str) -> String {
+    let prefix = prefix.trim_end_matches('/');
+    if path.is_empty() || path == "/" {
+        if prefix.is_empty() {
+            return "/".to_string();
+        }
+        return prefix.to_string();
+    }
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    format!("{prefix}{path}")
+}
+
 mod schema;
 
+/// Registers a GET route handler.
+///
+/// # Syntax
+///
+/// ```ignore
+/// #[get("/users")]
+/// async fn list_users() -> Json<Vec<User>> { /* ... */ }
+///
+/// // With a group prefix (registers at /api/users):
+/// #[get("/users", group = "/api")]
+/// async fn list_users() -> Json<Vec<User>> { /* ... */ }
+/// ```
+///
+/// The `group` parameter joins the prefix with the path at compile time,
+/// so the handler is registered at the full path during auto-discovery.
 #[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro("GET", attr, item)
 }
 
+/// Registers a POST route handler.
+///
+/// See [`get`] for syntax details including the optional `group` parameter.
 #[proc_macro_attribute]
 pub fn post(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro("POST", attr, item)
 }
 
+/// Registers a PUT route handler.
+///
+/// See [`get`] for syntax details including the optional `group` parameter.
 #[proc_macro_attribute]
 pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro("PUT", attr, item)
 }
 
+/// Registers a DELETE route handler.
+///
+/// See [`get`] for syntax details including the optional `group` parameter.
 #[proc_macro_attribute]
 pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro("DELETE", attr, item)
@@ -70,8 +139,17 @@ fn route_macro_core(
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    let path: LitStr = syn::parse2(attr).expect("expected path as string literal");
-    let path_str = path.value();
+    let route_attr: RouteAttr = syn::parse2(attr).expect("expected path as string literal");
+    let path_str = if let Some(ref group) = route_attr.group {
+        let g = group.value();
+        assert!(
+            g.starts_with('/'),
+            "group prefix must start with `/`, got: {g:?}"
+        );
+        join_paths(&g, &route_attr.path.value())
+    } else {
+        route_attr.path.value()
+    };
     let mut func: ItemFn = syn::parse2(item).expect("expected function");
 
     let func_name = &func.sig.ident;
@@ -492,7 +570,7 @@ fn derive_config_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStre
 
 #[cfg(test)]
 mod tests {
-    use super::route_macro_core;
+    use super::{join_paths, route_macro_core};
     use quote::quote;
 
     #[test]
@@ -793,5 +871,181 @@ mod tests {
         assert!(output_str.contains("x-rapina-cache-ttl"));
         assert!(output_str.contains("120"));
         assert!(output_str.contains("FromRequestParts"));
+    }
+
+    #[test]
+    fn test_group_param_joins_path() {
+        let attr = quote!("/users", group = "/api");
+        let input = quote! {
+            async fn list_users() -> &'static str {
+                "users"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/users\""));
+        assert!(output_str.contains("__rapina_router . get (\"/api/users\""));
+    }
+
+    #[test]
+    fn test_group_param_with_nested_prefix() {
+        let attr = quote!("/items", group = "/api/v1");
+        let input = quote! {
+            async fn list_items() -> &'static str {
+                "items"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/v1/items\""));
+    }
+
+    #[test]
+    fn test_without_group_param_backward_compatible() {
+        let attr = quote!("/users");
+        let input = quote! {
+            async fn list_users() -> &'static str {
+                "users"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/users\""));
+        assert!(output_str.contains("__rapina_router . get (\"/users\""));
+    }
+
+    #[test]
+    #[should_panic(expected = "group prefix must start with `/`")]
+    fn test_group_prefix_must_start_with_slash() {
+        let attr = quote!("/users", group = "api");
+        let input = quote! {
+            async fn list_users() -> &'static str {
+                "users"
+            }
+        };
+
+        route_macro_core("GET", attr, input);
+    }
+
+    #[test]
+    fn test_group_with_trailing_slash_normalized() {
+        let attr = quote!("/users", group = "/api/");
+        let input = quote! {
+            async fn list_users() -> &'static str {
+                "users"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/users\""));
+    }
+
+    #[test]
+    fn test_group_with_public_attr() {
+        let attr = quote!("/health", group = "/api");
+        let input = quote! {
+            #[public]
+            async fn health() -> &'static str {
+                "ok"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/health\""));
+        assert!(output_str.contains("is_public : true"));
+    }
+
+    #[test]
+    fn test_group_with_cache_attr() {
+        let attr = quote!("/products", group = "/api");
+        let input = quote! {
+            #[cache(ttl = 60)]
+            async fn list_products() -> &'static str {
+                "products"
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/products\""));
+        assert!(output_str.contains("x-rapina-cache-ttl"));
+        assert!(output_str.contains("60"));
+    }
+
+    #[test]
+    fn test_group_with_errors_attr() {
+        let attr = quote!("/users", group = "/api");
+        let input = quote! {
+            #[errors(UserError)]
+            async fn get_user() -> Result<Json<UserResponse>> {
+                Ok(Json(UserResponse { id: 1 }))
+            }
+        };
+
+        let output = route_macro_core("GET", attr, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("path : \"/api/users\""));
+        assert!(output_str.contains("fn error_responses"));
+        assert!(output_str.contains("UserError"));
+    }
+
+    #[test]
+    fn test_group_with_all_methods() {
+        for method in &["GET", "POST", "PUT", "DELETE"] {
+            let attr = quote!("/items", group = "/api");
+            let input = quote! {
+                async fn handler() -> &'static str {
+                    "ok"
+                }
+            };
+
+            let output = route_macro_core(method, attr, input);
+            let output_str = output.to_string();
+
+            assert!(
+                output_str.contains("path : \"/api/items\""),
+                "{method} should produce /api/items"
+            );
+            let method_lower = method.to_lowercase();
+            assert!(
+                output_str.contains(&format!("__rapina_router . {method_lower}")),
+                "{method} should use .{method_lower}() on router"
+            );
+        }
+    }
+
+    #[test]
+    fn test_join_paths_basic() {
+        assert_eq!(join_paths("/api", "/users"), "/api/users");
+        assert_eq!(join_paths("/api/v1", "/items"), "/api/v1/items");
+    }
+
+    #[test]
+    fn test_join_paths_trailing_slash() {
+        assert_eq!(join_paths("/api/", "/users"), "/api/users");
+    }
+
+    #[test]
+    fn test_join_paths_empty_path() {
+        assert_eq!(join_paths("/api", ""), "/api");
+        assert_eq!(join_paths("/api", "/"), "/api");
+    }
+
+    #[test]
+    fn test_join_paths_empty_prefix() {
+        assert_eq!(join_paths("", "/users"), "/users");
+        assert_eq!(join_paths("", ""), "/");
     }
 }

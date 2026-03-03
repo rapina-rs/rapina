@@ -128,6 +128,40 @@ Rapina::new()
 
 See [Authentication](/docs/core-concepts/authentication/) for details.
 
+### Route Groups
+
+When using auto-discovery, you can nest routes under a common prefix with the `group` parameter:
+
+```rust
+#[get("/users", group = "/api")]
+async fn list_users() -> Json<Vec<User>> {
+    // accessible at /api/users
+}
+
+#[get("/users/:id", group = "/api")]
+async fn get_user(id: Path<u64>) -> Result<Json<User>> {
+    // accessible at /api/users/:id
+}
+
+#[post("/users", group = "/api")]
+async fn create_user(body: Json<CreateUser>) -> (StatusCode, Json<User>) {
+    // accessible at /api/users
+}
+```
+
+The prefix is joined with the path at compile time — no runtime overhead. This replaces the need for `Router::group()` when using discovery.
+
+`group` composes with other attributes:
+
+```rust
+#[public]
+#[get("/health", group = "/api")]
+async fn health() -> &'static str {
+    "ok"
+}
+// Public route at /api/health
+```
+
 ## Path Parameters
 
 Extract dynamic values from URL segments using the `:param` syntax:

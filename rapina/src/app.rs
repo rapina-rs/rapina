@@ -106,6 +106,9 @@ impl Rapina {
     /// Routes marked with `#[public]` are automatically added to the public
     /// routes registry (no manual `.public_route()` calls needed).
     ///
+    /// Use the `group` parameter on route macros to nest discovered routes
+    /// under a prefix: `#[get("/users", group = "/api")]` registers at `/api/users`.
+    ///
     /// Discovery is additive with manual `.router()` — both work together.
     ///
     /// # Example
@@ -115,6 +118,9 @@ impl Rapina {
     ///
     /// #[get("/")]
     /// async fn hello() -> &'static str { "Hello!" }
+    ///
+    /// #[get("/users", group = "/api")]
+    /// async fn list_users() -> &'static str { "users" }
     ///
     /// #[tokio::main]
     /// async fn main() -> std::io::Result<()> {

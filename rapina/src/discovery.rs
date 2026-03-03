@@ -5,6 +5,14 @@
 //! at link time. Calling [`Rapina::discover()`](crate::app::Rapina::discover)
 //! iterates these descriptors and wires them into the router automatically.
 //!
+//! Use the `group` parameter to nest discovered routes under a prefix:
+//!
+//! ```ignore
+//! #[get("/users", group = "/api")]
+//! async fn list_users() -> Json<Vec<User>> { /* ... */ }
+//! // registers at /api/users
+//! ```
+//!
 //! The `#[public]` attribute emits a [`PublicMarker`] so the discovery loop
 //! can mark routes as public without manual `.public_route()` calls.
 
