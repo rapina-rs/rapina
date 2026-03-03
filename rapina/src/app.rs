@@ -69,6 +69,9 @@ pub struct Rapina {
     pub(crate) shutdown_timeout: Duration,
     /// Hooks to run during graceful shutdown
     pub(crate) shutdown_hooks: Vec<ShutdownHook>,
+    /// Relay configuration (if enabled)
+    #[cfg(feature = "websocket")]
+    pub(crate) relay_config: Option<crate::relay::RelayConfig>,
 }
 
 impl Rapina {
@@ -90,6 +93,8 @@ impl Rapina {
             auto_discover: false,
             shutdown_timeout: Duration::from_secs(30),
             shutdown_hooks: Vec::new(),
+            #[cfg(feature = "websocket")]
+            relay_config: None,
         }
     }
 
@@ -181,6 +186,33 @@ impl Rapina {
     /// Enables response compression (gzip, deflate).
     pub fn with_compression(mut self, config: CompressionConfig) -> Self {
         self.middlewares.add(CompressionMiddleware::new(config));
+        self
+    }
+
+    /// Enables the Relay system for real-time push over WebSocket.
+    ///
+    /// Registers a WebSocket endpoint (default `/ws`) through the normal
+    /// routing and middleware stack. If authentication is enabled, mark the
+    /// relay path as public with `.public_route("GET", "/ws")` — or leave it
+    /// protected so only authenticated clients can connect.
+    ///
+    /// Handlers use the [`Relay`](crate::relay::Relay) extractor to push
+    /// messages to subscribed clients.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::relay::RelayConfig;
+    ///
+    /// Rapina::new()
+    ///     .with_relay(RelayConfig::default())
+    ///     .discover()
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "websocket")]
+    pub fn with_relay(mut self, config: crate::relay::RelayConfig) -> Self {
+        self.relay_config = Some(config);
         self
     }
 
@@ -436,6 +468,17 @@ impl Rapina {
                 discovered_count,
                 discovered_public
             );
+        }
+
+        // Register relay WebSocket endpoint as a normal route (goes through middleware stack)
+        #[cfg(feature = "websocket")]
+        if let Some(config) = self.relay_config.take() {
+            let path = config.path.clone();
+            let hub = std::sync::Arc::new(crate::relay::RelayHub::new(config));
+            self.state = self.state.with(hub);
+            self.router =
+                self.router
+                    .get_named(&path, "relay_ws", crate::relay::RelayHub::ws_handler);
         }
 
         // Add auth middleware if configured
