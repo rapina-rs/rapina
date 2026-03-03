@@ -145,12 +145,24 @@ enum OpenapiCommands {
         /// Output file path (stdout if not specified)
         #[arg(short, long)]
         output: Option<String>,
+        /// Port to connect to
+        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        port: u16,
+        /// Host to connect to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
     /// Check if openapi.json matches the current code
     Check {
         /// Path to openapi.json file
         #[arg(default_value = "openapi.json")]
         file: String,
+        /// Port to connect to
+        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        port: u16,
+        /// Host to connect to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
     /// Compare spec with another branch and detect breaking changes
     Diff {
@@ -160,6 +172,12 @@ enum OpenapiCommands {
         /// Path to openapi.json file
         #[arg(default_value = "openapi.json")]
         file: String,
+        /// Port to connect to
+        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        port: u16,
+        /// Host to connect to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
 }
 
@@ -247,9 +265,18 @@ fn main() {
         }
         Some(Commands::Openapi { command }) => {
             let result = match command {
-                OpenapiCommands::Export { output } => commands::openapi::export(output),
-                OpenapiCommands::Check { file } => commands::openapi::check(&file),
-                OpenapiCommands::Diff { base, file } => commands::openapi::diff(&base, &file),
+                OpenapiCommands::Export { output, host, port } => {
+                    commands::openapi::export(output, &host, port)
+                }
+                OpenapiCommands::Check { file, host, port } => {
+                    commands::openapi::check(&file, &host, port)
+                }
+                OpenapiCommands::Diff {
+                    base,
+                    file,
+                    host,
+                    port,
+                } => commands::openapi::diff(&base, &file, &host, port),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
