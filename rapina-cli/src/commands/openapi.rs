@@ -5,11 +5,9 @@ use serde_json::Value;
 use std::fs;
 use std::process::Command;
 
-const DEFAULT_URL: &str = "http://127.0.0.1:3000/__rapina/openapi.json";
-
 /// Export OpenAPI spec to stdout or file.
-pub fn export(output: Option<String>) -> Result<(), String> {
-    let spec = fetch_openapi_spec()?;
+pub fn export(output: Option<String>, host: &str, port: u16) -> Result<(), String> {
+    let spec = fetch_openapi_spec(host, port)?;
     let canonical = canonicalize_json(&spec)?;
 
     match output {
@@ -26,7 +24,7 @@ pub fn export(output: Option<String>) -> Result<(), String> {
 }
 
 /// Check if the committed openapi.json matches the current code.
-pub fn check(file: &str) -> Result<(), String> {
+pub fn check(file: &str, host: &str, port: u16) -> Result<(), String> {
     println!();
     println!("  {} Checking OpenAPI spec...", "→".cyan());
 
@@ -37,7 +35,7 @@ pub fn check(file: &str) -> Result<(), String> {
         serde_json::from_str(&committed).map_err(|e| format!("Failed to parse {}: {}", file, e))?;
 
     // Fetch current spec
-    let current = fetch_openapi_spec()?;
+    let current = fetch_openapi_spec(host, port)?;
 
     // Compare canonical versions
     let committed_canonical = canonicalize_json(&committed_json)?;
@@ -58,7 +56,7 @@ pub fn check(file: &str) -> Result<(), String> {
 }
 
 /// Compare spec with another branch and detect breaking changes.
-pub fn diff(base: &str, file: &str) -> Result<(), String> {
+pub fn diff(base: &str, file: &str, host: &str, port: u16) -> Result<(), String> {
     println!();
     println!(
         "  {} Comparing OpenAPI spec with {} branch...",
@@ -70,7 +68,7 @@ pub fn diff(base: &str, file: &str) -> Result<(), String> {
     let base_spec = get_spec_from_branch(base, file)?;
 
     // Fetch current spec
-    let current_spec = fetch_openapi_spec()?;
+    let current_spec = fetch_openapi_spec(host, port)?;
 
     // Detect breaking changes
     let changes = detect_breaking_changes(&base_spec, &current_spec);
@@ -109,16 +107,17 @@ pub fn diff(base: &str, file: &str) -> Result<(), String> {
 }
 
 /// Fetch OpenAPI spec from running application.
-fn fetch_openapi_spec() -> Result<Value, String> {
+fn fetch_openapi_spec(host: &str, port: u16) -> Result<Value, String> {
+    let url = crate::common::urls::build_openapi_url(host, port);
     let output = Command::new("curl")
-        .args(["-s", "-f", DEFAULT_URL])
+        .args(["-s", "-f", &url])
         .output()
         .map_err(|e| format!("Failed to run curl: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
             "Failed to fetch OpenAPI spec. Is the server running on {}?",
-            DEFAULT_URL
+            url
         ));
     }
 

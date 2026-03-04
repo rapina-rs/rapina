@@ -78,7 +78,7 @@ prometheus = { version = '0.13', optional = true }
 redis = { version = "0.27", optional = true, features = ["tokio-comp"] }
 
 [dev-dependencies]
-nix = { version = "0.30", features = ["signal"] }
+nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 
 [features]
