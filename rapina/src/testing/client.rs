@@ -8,10 +8,10 @@ use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use http_body_util::{BodyExt, Full};
 use hyper::Request;
 use hyper::body::Incoming;
-use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::client::legacy::Client;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -99,8 +99,9 @@ impl TestClient {
                                         }
                                     });
 
-                                    let _ = http1::Builder::new()
-                                        .serve_connection(io, service)
+                                    let _ = auto::Builder::new(TokioExecutor::new())
+                                        .serve_connection_with_upgrades(io, service)
+                                        .into_owned()
                                         .await;
                                 });
                             }
