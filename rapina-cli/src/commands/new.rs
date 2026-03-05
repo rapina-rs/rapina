@@ -4,12 +4,15 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+use super::templates;
+
 /// Execute the `new` command to create a new Rapina project.
-pub fn execute(name: &str, no_ai: bool) -> Result<(), String> {
-    // Validate project name
+///
+/// `template` is `None` for the default starter and `Some("crud")` / `Some("auth")`
+/// for the optional starter templates.
+pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), String> {
     validate_project_name(name)?;
 
-    // Check if directory already exists
     let project_path = Path::new(name);
     if project_path.exists() {
         return Err(format!("Directory '{}' already exists", name));
@@ -23,55 +26,43 @@ pub fn execute(name: &str, no_ai: bool) -> Result<(), String> {
     );
     println!();
 
-    // Create project directory structure
     let src_path = project_path.join("src");
     fs::create_dir_all(&src_path).map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    // Create Cargo.toml
-    let cargo_toml = generate_cargo_toml(name);
-    let cargo_path = project_path.join("Cargo.toml");
-    fs::write(&cargo_path, cargo_toml).map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
-    println!("  {} Created {}", "✓".green(), "Cargo.toml".cyan());
-
-    // Create src/main.rs
-    let main_rs = generate_main_rs();
-    let main_path = src_path.join("main.rs");
-    fs::write(&main_path, main_rs).map_err(|e| format!("Failed to write main.rs: {}", e))?;
-    println!("  {} Created {}", "✓".green(), "src/main.rs".cyan());
-
-    // Create .gitignore
-    let gitignore = generate_gitignore();
-    let gitignore_path = project_path.join(".gitignore");
-    fs::write(&gitignore_path, gitignore)
-        .map_err(|e| format!("Failed to write .gitignore: {}", e))?;
-    println!("  {} Created {}", "✓".green(), ".gitignore".cyan());
+    match template {
+        None | Some("rest-api") => templates::rest_api::generate(name, project_path, &src_path)?,
+        Some("crud") => templates::crud::generate(name, project_path, &src_path)?,
+        Some("auth") => templates::auth::generate(name, project_path, &src_path)?,
+        Some(other) => {
+            return Err(format!(
+                "Unknown template '{}'. Available: rest-api, crud, auth",
+                other
+            ));
+        }
+    }
 
     // Create README.md
     let readme = generate_readme(name);
-    let readme_path = project_path.join("README.md");
-    fs::write(&readme_path, readme).map_err(|e| format!("Failed to write README.md: {}", e))?;
+    fs::write(project_path.join("README.md"), readme)
+        .map_err(|e| format!("Failed to write README.md: {}", e))?;
     println!("  {} Created {}", "✓".green(), "README.md".cyan());
 
     // Create AI assistant config files
     if !no_ai {
-        let agent_md = generate_agent_md();
         let agent_path = project_path.join("AGENT.md");
-        fs::write(&agent_path, agent_md).map_err(|e| format!("Failed to write AGENT.md: {}", e))?;
+        fs::write(&agent_path, generate_agent_md())
+            .map_err(|e| format!("Failed to write AGENT.md: {}", e))?;
         println!("  {} Created {}", "✓".green(), "AGENT.md".cyan());
 
         let claude_dir = project_path.join(".claude");
         fs::create_dir_all(&claude_dir).map_err(|e| format!("Failed to create .claude/: {}", e))?;
-        let claude_md = generate_claude_md();
-        let claude_path = claude_dir.join("CLAUDE.md");
-        fs::write(&claude_path, claude_md)
+        fs::write(claude_dir.join("CLAUDE.md"), generate_claude_md())
             .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
         println!("  {} Created {}", "✓".green(), ".claude/CLAUDE.md".cyan());
 
         let cursor_dir = project_path.join(".cursor");
         fs::create_dir_all(&cursor_dir).map_err(|e| format!("Failed to create .cursor/: {}", e))?;
-        let cursor_rules = generate_cursor_rules();
-        let cursor_path = cursor_dir.join("rules");
-        fs::write(&cursor_path, cursor_rules)
+        fs::write(cursor_dir.join("rules"), generate_cursor_rules())
             .map_err(|e| format!("Failed to write .cursor/rules: {}", e))?;
         println!("  {} Created {}", "✓".green(), ".cursor/rules".cyan());
     }
@@ -86,119 +77,15 @@ pub fn execute(name: &str, no_ai: bool) -> Result<(), String> {
 
     Ok(())
 }
+
+// ── README ───────────────────────────────────────────────────────────────────
+
 fn generate_readme(name: &str) -> String {
     format!(
         "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /health` — Health check\n"
     )
 }
 
-/// Validate that the project name is a valid Rust crate name.
-fn validate_project_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("Project name cannot be empty".to_string());
-    }
-
-    // Check if name starts with a digit
-    if name.chars().next().unwrap().is_ascii_digit() {
-        return Err("Project name cannot start with a digit".to_string());
-    }
-
-    // Check for valid characters (alphanumeric, underscore, hyphen)
-    for c in name.chars() {
-        if !c.is_alphanumeric() && c != '_' && c != '-' {
-            return Err(format!(
-                "Project name contains invalid character: '{}'. Only alphanumeric characters, underscores, and hyphens are allowed.",
-                c
-            ));
-        }
-    }
-
-    // Check for reserved names
-    let reserved = ["test", "self", "super", "crate", "Self"];
-    if reserved.contains(&name) {
-        return Err(format!("'{}' is a reserved Rust keyword", name));
-    }
-
-    Ok(())
-}
-
-/// Generate the content for Cargo.toml.
-fn generate_cargo_toml(name: &str) -> String {
-    let version = env!("CARGO_PKG_VERSION");
-    format!(
-        r#"[package]
-name = "{name}"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-rapina = "{version}"
-tokio = {{ version = "1", features = ["full"] }}
-serde = {{ version = "1", features = ["derive"] }}
-serde_json = "1"
-hyper = "1"
-"#
-    )
-}
-
-/// Generate the content for src/main.rs.
-fn generate_main_rs() -> String {
-    r#"use rapina::prelude::*;
-use rapina::middleware::RequestLogMiddleware;
-use rapina::schemars;
-
-#[derive(Serialize, JsonSchema)]
-struct MessageResponse {
-    message: String,
-}
-
-#[derive(Serialize, JsonSchema)]
-struct HealthResponse {
-    status: String,
-    version: String,
-}
-
-#[get("/")]
-async fn hello() -> Json<MessageResponse> {
-    Json(MessageResponse {
-        message: "Hello from Rapina!".to_string(),
-    })
-}
-
-#[get("/health")]
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })
-}
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", hello)
-        .get("/health", health);
-
-    Rapina::new()
-        .with_tracing(TracingConfig::new())
-        .middleware(RequestLogMiddleware::new())
-        .router(router)
-        .listen("127.0.0.1:3000")
-        .await
-}
-"#
-    .to_string()
-}
-
-/// Generate the content for .gitignore.
-fn generate_gitignore() -> String {
-    r#"/target
-Cargo.lock
-"#
-    .to_string()
-}
-
-/// Generate the content for AGENT.md (generic AI assistant context).
 fn generate_agent_md() -> String {
     r#"# Rapina Project
 
@@ -297,7 +184,6 @@ Rapina::new()
     .to_string()
 }
 
-/// Generate the content for .claude/CLAUDE.md (Claude Code specific instructions).
 fn generate_claude_md() -> String {
     r#"# Rapina Project Instructions
 
@@ -352,6 +238,8 @@ Rapina::new()
     .router(router)
     .listen("127.0.0.1:3000")
     .await
+```
+
 ### Error handling pattern
 
 Each feature module has its own error type:
@@ -434,7 +322,6 @@ rapina routes           # list all routes
     .to_string()
 }
 
-/// Generate the content for .cursor/rules (Cursor AI rules).
 fn generate_cursor_rules() -> String {
     r#"# Rapina Framework Rules
 
@@ -504,6 +391,33 @@ Rapina::new()
     .to_string()
 }
 
+/// Validate that the project name is a valid Rust crate name.
+fn validate_project_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Project name cannot be empty".to_string());
+    }
+
+    if name.chars().next().unwrap().is_ascii_digit() {
+        return Err("Project name cannot start with a digit".to_string());
+    }
+
+    for c in name.chars() {
+        if !c.is_alphanumeric() && c != '_' && c != '-' {
+            return Err(format!(
+                "Project name contains invalid character: '{}'. Only alphanumeric characters, underscores, and hyphens are allowed.",
+                c
+            ));
+        }
+    }
+
+    let reserved = ["test", "self", "super", "crate", "Self"];
+    if reserved.contains(&name) {
+        return Err(format!("'{}' is a reserved Rust keyword", name));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,6 +447,8 @@ mod tests {
         assert!(content.contains("#[public]"));
         assert!(content.contains("trace_id"));
         assert!(content.contains("Json<T>"));
+        assert!(content.contains("IntoApiError"));
+        assert!(content.contains("rapina add resource"));
     }
 
     #[test]
@@ -542,6 +458,8 @@ mod tests {
         assert!(content.contains("TestClient"));
         assert!(content.contains("#[errors("));
         assert!(content.contains("Validated<Json<T>>"));
+        assert!(content.contains("IntoApiError"));
+        assert!(content.contains("DocumentedError"));
     }
 
     #[test]
@@ -550,5 +468,7 @@ mod tests {
         assert!(content.contains("Rapina"));
         assert!(content.contains("#[public]"));
         assert!(content.contains("IntoApiError"));
+        assert!(content.contains("DocumentedError"));
+        assert!(content.contains("rapina add resource"));
     }
 }
