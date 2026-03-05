@@ -102,12 +102,16 @@ pub mod observability;
 pub mod openapi;
 #[cfg(feature = "database")]
 pub mod pagination;
+#[cfg(feature = "websocket")]
+pub mod relay;
 pub mod response;
 pub mod router;
 pub mod server;
 pub mod state;
 pub mod test;
 pub mod testing;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 /// Convenient re-exports for common Rapina types.
 ///
@@ -132,6 +136,8 @@ pub mod prelude {
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
+    #[cfg(feature = "websocket")]
+    pub use crate::relay::{Relay, RelayConfig};
     pub use crate::response::IntoResponse;
     pub use crate::router::Router;
 
@@ -156,6 +162,11 @@ pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;
+
+#[cfg(feature = "websocket")]
+pub use futures_util;
+#[cfg(feature = "websocket")]
+pub use tokio_tungstenite;
 
 // Re-export sea-orm when database feature is enabled
 #[cfg(feature = "database")]
