@@ -34,7 +34,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --body "Thanks for your first PR! A maintainer will review it shortly.
 
-          Make sure CI passes and take a look at our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) if you haven't already."
+          Make sure CI passes and take a look at our [contributing guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md) if you haven't already."
 
   welcome-issue:
     if: github.event_name == 'issues'
@@ -61,4 +61,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --body "Thanks for opening your first issue! We appreciate you taking the time to report this.
 
-          If you're interested in contributing a fix, check out our [contributing guide](https://github.com/arferreira/rapina/blob/main/CONTRIBUTING.md) and feel free to open a PR."
+          If you're interested in contributing a fix, check out our [contributing guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md) and feel free to open a PR."

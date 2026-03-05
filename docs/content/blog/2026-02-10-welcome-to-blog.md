@@ -31,7 +31,7 @@ Quick wins and practical patterns to make your development experience even bette
 
 ## Stay Connected
 
-- **GitHub**: [arferreira/rapina](https://github.com/arferreira/rapina)
+- **GitHub**: [rapina-rs/rapina](https://github.com/rapina-rs/rapina)
 - **Crates.io**: [rapina](https://crates.io/crates/rapina)
 - **Docs**: [docs.rs/rapina](https://docs.rs/rapina)
 

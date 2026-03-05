@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Discussions
-    url: https://github.com/arferreira/rapina/discussions
+    url: https://github.com/rapina-rs/rapina/discussions
     about: For general discussions and community support
   - name: crates.io
     url: https://crates.io/crates/rapina

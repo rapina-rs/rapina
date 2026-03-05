@@ -23,9 +23,17 @@ enum Commands {
     New {
         /// Name of the project to create
         name: String,
-        /// Skip AI assistant config files (AGENT.md, .claude/, .cursor/)
+        /// Starter template to use: rest-api (default), crud, auth
+        #[arg(long)]
+        template: Option<String>,
+        /// Skip generating AI assistant config files (AGENT.md, .claude/, .cursor/)
         #[arg(long)]
         no_ai: bool,
+    },
+    /// Add a resource to an existing Rapina project
+    Add {
+        #[command(subcommand)]
+        command: AddCommands,
     },
     /// Start development server with hot reload
     Dev {
@@ -67,11 +75,6 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
-    /// Add components to your Rapina project
-    Add {
-        #[command(subcommand)]
-        command: AddCommands,
-    },
     /// Import from external sources (OpenAPI specs, databases, etc.)
     Import {
         #[command(subcommand)]
@@ -91,22 +94,22 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
+enum AddCommands {
+    /// Scaffold a new CRUD resource (handlers, DTO, error type, migration)
+    Resource {
+        /// Name of the resource in snake_case (e.g., post, blog_post)
+        name: String,
+        /// Fields in name:type format (e.g., title:string body:text published:bool)
+        fields: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum MigrateCommands {
     /// Generate a new migration file
     New {
         /// Name of the migration (e.g., create_users)
         name: String,
-    },
-}
-
-#[derive(Subcommand)]
-enum AddCommands {
-    /// Generate a new CRUD resource (handlers, DTOs, error type, entity, migration)
-    Resource {
-        /// Name of the resource (lowercase, e.g., user, blog_post)
-        name: String,
-        /// Fields in name:type format (e.g., title:string active:bool)
-        fields: Vec<String>,
     },
 }
 
@@ -170,8 +173,21 @@ fn main() {
         Some(Commands::Version) => {
             print_version();
         }
-        Some(Commands::New { name, no_ai }) => {
-            if let Err(e) = commands::new::execute(&name, no_ai) {
+        Some(Commands::New {
+            name,
+            template,
+            no_ai,
+        }) => {
+            if let Err(e) = commands::new::execute(&name, template.as_deref(), no_ai) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Add { command }) => {
+            let result = match command {
+                AddCommands::Resource { name, fields } => commands::add::resource(&name, &fields),
+            };
+            if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
@@ -200,11 +216,20 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Some(Commands::Add { command }) => {
+        Some(Commands::Openapi { command }) => {
             let result = match command {
-                AddCommands::Resource { name, fields } => commands::add::resource(&name, &fields),
+                OpenapiCommands::Export { output } => commands::openapi::export(output),
+                OpenapiCommands::Check { file } => commands::openapi::check(&file),
+                OpenapiCommands::Diff { base, file } => commands::openapi::diff(&base, &file),
             };
             if let Err(e) = result {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Routes { host, port }) => {
+            let config = commands::routes::RoutesConfig { host, port };
+            if let Err(e) = commands::routes::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
@@ -241,24 +266,6 @@ fn main() {
                 ),
             };
             if let Err(e) = result {
-                eprintln!("{} {}", "Error:".red().bold(), e);
-                std::process::exit(1);
-            }
-        }
-        Some(Commands::Openapi { command }) => {
-            let result = match command {
-                OpenapiCommands::Export { output } => commands::openapi::export(output),
-                OpenapiCommands::Check { file } => commands::openapi::check(&file),
-                OpenapiCommands::Diff { base, file } => commands::openapi::diff(&base, &file),
-            };
-            if let Err(e) = result {
-                eprintln!("{} {}", "Error:".red().bold(), e);
-                std::process::exit(1);
-            }
-        }
-        Some(Commands::Routes { host, port }) => {
-            let config = commands::routes::RoutesConfig { host, port };
-            if let Err(e) = commands::routes::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
@@ -322,3 +329,4 @@ fn print_banner() {
 fn print_version() {
     println!("rapina-cli {}", env!("CARGO_PKG_VERSION"));
 }
+
