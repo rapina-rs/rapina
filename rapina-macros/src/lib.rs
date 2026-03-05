@@ -338,6 +338,7 @@ fn is_parts_only_extractor(type_str: &str) -> bool {
         || type_str.contains("CurrentUser")
         || type_str.contains("Db")
         || type_str.contains("Cookie")
+        || type_str.contains("Relay")
 }
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
