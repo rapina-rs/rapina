@@ -142,10 +142,10 @@ async fn list_users(
 ) -> Result<Paginated<user::Model>> {
     let mut select = User::find();
 
-    if let Some(role) = &query.0.role {
+    if let Some(role) = &query.role {
         select = select.filter(user::Column::Role.eq(role.clone()));
     }
-    if let Some(active) = query.0.active {
+    if let Some(active) = query.active {
         select = select.filter(user::Column::Active.eq(active));
     }
 
@@ -202,7 +202,7 @@ async fn list_user_posts(
     page: Paginate,
 ) -> Result<Paginated<post::Model>> {
     let select = Post::find()
-        .filter(post::Column::AuthorId.eq(id.into_inner()))
+        .filter(post::Column::AuthorId.eq(*id))
         .order_by_desc(post::Column::CreatedAt);
 
     page.exec(select, db.conn()).await

@@ -24,6 +24,32 @@ Extractors automatically parse request data and inject it into your handlers. If
 | `Paginate` | Pagination params (requires feature) |
 | `Db` | Database connection (requires feature) |
 
+## Accessing Extractor Values
+
+Every Rapina extractor implements `Deref` to its inner type. This means you can access fields and methods directly without unwrapping:
+
+```rust
+#[get("/users/:id")]
+async fn get_user(id: Path<u64>, config: State<AppConfig>) -> String {
+    // Deref lets you access fields directly
+    format!("User {} on {}", *id, config.app_name)
+}
+
+#[post("/users")]
+async fn create_user(body: Json<CreateUser>) -> String {
+    // Access struct fields through the extractor
+    format!("Hello, {}", body.name)
+}
+```
+
+**When to use what:**
+
+- **Direct field access** — `body.name`, `config.app_name`, `query.page`. Works anywhere you need `&T` thanks to auto-deref. This is the common case.
+- **Explicit deref (`*`)** — `*id`, `*count`. Needed for primitives in format strings or when passing a `Copy` value where the compiler needs the concrete type.
+- **`into_inner()`** — when you need to *own* the value. Moving it into a struct, passing it to a function that takes `T` (not `&T`), or consuming it in a builder chain.
+
+Avoid using `.0` to access extractor contents — it's an implementation detail. Deref or `into_inner()` are always clearer.
+
 ## Path Parameters
 
 Extract values from URL path segments:
@@ -31,12 +57,12 @@ Extract values from URL path segments:
 ```rust
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> String {
-    format!("User ID: {}", id.into_inner())
+    format!("User ID: {}", *id)
 }
 
 #[get("/posts/:year/:month")]
 async fn archive(year: Path<u32>, month: Path<u32>) -> String {
-    format!("{}/{}", year.into_inner(), month.into_inner())
+    format!("{}/{}", *year, *month)
 }
 ```
 
@@ -53,8 +79,8 @@ struct Pagination {
 
 #[get("/users")]
 async fn list_users(query: Query<Pagination>) -> String {
-    let page = query.0.page.unwrap_or(1);
-    let limit = query.0.limit.unwrap_or(20);
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
     format!("Page {} with {} items", page, limit)
 }
 ```
@@ -72,8 +98,8 @@ struct CreateUser {
 
 #[post("/users")]
 async fn create_user(body: Json<CreateUser>) -> Json<User> {
-    let input = body.into_inner();
-    // Create user...
+    // Access fields directly through Deref
+    let user = User::new(&body.name, &body.email);
     Json(user)
 }
 ```
@@ -91,8 +117,8 @@ struct LoginForm {
 
 #[post("/login")]
 async fn login(form: Form<LoginForm>) -> Result<Json<TokenResponse>> {
-    let credentials = form.into_inner();
-    // Authenticate...
+    // Access fields directly through Deref
+    authenticate(&form.username, &form.password).await
 }
 ```
 
@@ -124,7 +150,7 @@ struct AppConfig {
 
 #[get("/info")]
 async fn info(config: State<AppConfig>) -> String {
-    format!("App: {}", config.into_inner().app_name)
+    format!("App: {}", config.app_name)
 }
 ```
 
@@ -140,7 +166,7 @@ struct Session {
 
 #[get("/dashboard")]
 async fn dashboard(session: Cookie<Session>) -> String {
-    format!("Session: {}", session.into_inner().session_id)
+    format!("Session: {}", session.session_id)
 }
 ```
 
@@ -175,9 +201,9 @@ struct CreateUser {
 
 #[post("/users")]
 async fn create_user(body: Validated<Json<CreateUser>>) -> Json<User> {
-    // body is guaranteed to be valid
-    let input = body.into_inner().into_inner();
-    // ...
+    // Validated also implements Deref — access fields directly
+    let user = User::new(&body.email, &body.password);
+    Json(user)
 }
 ```
 

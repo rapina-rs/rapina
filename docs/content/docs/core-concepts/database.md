@@ -265,7 +265,7 @@ Database errors are automatically converted to appropriate HTTP responses:
 ```rust
 #[get("/posts/:id")]
 async fn get_post(id: Path<i32>, db: Db) -> Result<Json<PostResponse>> {
-    let post = Post::find_by_id(id.into_inner())
+    let post = Post::find_by_id(*id)
         .one(db.conn())
         .await
         .map_err(DbError::from)?  // Converts to 500

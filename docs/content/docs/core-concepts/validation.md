@@ -128,8 +128,8 @@ struct RegisterUser {
 
 #[post("/v1/users/register")]
 async fn register(body: Validated<Json<RegisterUser>>) -> impl IntoResponse {
-    let user = body.into_inner().0;
-    // All fields are valid — safe to persist
+    // All fields are valid — Validated derefs through to the inner type
+    let user = body.into_inner().into_inner();
     Json(serde_json::json!({
         "message": "user registered",
         "email": user.email

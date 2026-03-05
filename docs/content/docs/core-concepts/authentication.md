@@ -91,13 +91,10 @@ Use `AuthConfig` to create tokens:
 #[public]
 #[post("/login")]
 async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
-    let req = body.into_inner();
-    let auth_config = auth.into_inner();
-
     // Validate credentials (example)
-    if req.username == "admin" && req.password == "secret" {
-        let token = auth_config.create_token(&req.username)?;
-        Ok(Json(TokenResponse::new(token, auth_config.expiration())))
+    if body.username == "admin" && body.password == "secret" {
+        let token = auth.create_token(&body.username)?;
+        Ok(Json(TokenResponse::new(token, auth.expiration())))
     } else {
         Err(Error::unauthorized("invalid credentials"))
     }
