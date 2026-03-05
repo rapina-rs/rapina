@@ -10,6 +10,7 @@ pub mod migrate;
 pub mod new;
 pub mod openapi;
 pub mod routes;
+pub mod templates;
 pub mod test;
 
 #[cfg(feature = "import-openapi")]
