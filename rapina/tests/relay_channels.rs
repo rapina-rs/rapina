@@ -113,6 +113,16 @@ async fn exact_channel(event: RelayEvent, log: State<TestLog>) -> Result<()> {
     Ok(())
 }
 
+/// Handles "exact:*" topics — prefix handler that should lose to exact_channel
+/// for the literal "exact:topic" but win for anything else like "exact:other".
+#[rapina::relay("exact:*")]
+async fn exact_prefix_channel(event: RelayEvent, log: State<TestLog>) -> Result<()> {
+    if let RelayEvent::Join { topic, .. } = &event {
+        log.push(format!("exact-prefix-join:{topic}")).await;
+    }
+    Ok(())
+}
+
 /// Handles "auth:*" topics — requires CurrentUser, records user id.
 #[rapina::relay("auth:*")]
 async fn auth_channel(
@@ -452,6 +462,34 @@ async fn test_prefix_pattern_match() {
 
     let entries = log.lock().await;
     assert!(entries.iter().any(|e| e.starts_with("join:test:anything:")));
+
+    ws_tx.close().await.ok();
+}
+
+#[tokio::test]
+async fn test_exact_pattern_beats_prefix() {
+    let (app, log) = channel_app();
+    let client = TestClient::new(app).await;
+    let addr = client.addr();
+
+    let (mut ws_tx, mut ws_rx) = ws_connect(addr).await;
+
+    // "exact:topic" should match the exact handler, not "exact:*"
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"exact:topic"}"#).await;
+    let msg = recv_server_msg(&mut ws_rx).await;
+    assert!(matches!(msg, ServerMessage::Subscribed { topic } if topic == "exact:topic"));
+
+    let entries = log.lock().await;
+    assert!(entries.iter().any(|e| e == "exact-join:exact:topic"));
+    assert!(!entries.iter().any(|e| e.starts_with("exact-prefix-join:")));
+    drop(entries);
+
+    // "exact:other" should match the prefix handler instead
+    send_json(&mut ws_tx, r#"{"type":"subscribe","topic":"exact:other"}"#).await;
+    let _ = recv_server_msg(&mut ws_rx).await;
+
+    let entries = log.lock().await;
+    assert!(entries.iter().any(|e| e == "exact-prefix-join:exact:other"));
 
     ws_tx.close().await.ok();
 }
