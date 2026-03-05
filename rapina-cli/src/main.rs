@@ -23,7 +23,7 @@ enum Commands {
     New {
         /// Name of the project to create
         name: String,
-        /// Starter template to use: rest-api (default), crud, auth
+        /// Starter template (crud, auth). Defaults to a REST API scaffold when omitted.
         #[arg(long)]
         template: Option<String>,
         /// Skip generating AI assistant config files (AGENT.md, .claude/, .cursor/)
