@@ -1,7 +1,7 @@
 +++
 title = "Configuration"
 description = "Type-safe configuration from environment variables"
-weight = 2
+weight = 3
 date = 2025-02-13
 +++
 
@@ -54,11 +54,12 @@ async fn main() -> std::io::Result<()> {
     load_dotenv();
 
     let config = AppConfig::from_env().expect("Missing config");
+    let addr = format!("{}:{}", config.host, config.port);
 
     Rapina::new()
-        .state(config.clone())
-        .router(router)
-        .listen(format!("{}:{}", config.host, config.port))
+        .state(config)
+        .discover()
+        .listen(addr)
         .await
 }
 ```
@@ -82,11 +83,11 @@ This prevents the frustrating cycle of fixing one error at a time.
 
 ## Accessing Config in Handlers
 
-Use the `State` extractor to access configuration in handlers:
+Use the `State` extractor to access configuration in handlers. `State<T>` implements `Deref`, so you can access fields directly:
 
 ```rust
 #[get("/config")]
 async fn show_config(config: State<AppConfig>) -> String {
-    format!("Running on port {}", config.into_inner().port)
+    format!("Running on port {}", config.port)
 }
 ```

@@ -10,62 +10,152 @@
     </div>
 
     <div class="changelog-timeline">
+
         <div class="timeline-item">
             <div class="timeline-marker"></div>
             <div class="timeline-content">
-                <div class="timeline-date">February 13, 2025</div>
-                <h2>v0.1.0-alpha.5</h2>
+                <div class="timeline-date">Unreleased</div>
+                <h2>v0.9.0</h2>
                 <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-docs">Docs</span>
+                <span class="timeline-tag tag-fix">Fix</span>
                 <ul>
-                    <li>Added <code>schema!</code> macro for database entity definition</li>
-                    <li>Re-exported http, hyper, schemars to eliminate user dependencies</li>
-                    <li>Improved documentation site with Bruno-inspired design</li>
+                    <li>WebSocket support with raw message handling behind <code>websocket</code> feature flag</li>
+                    <li>Relay system for real-time push over WebSocket with pub/sub, channel handlers, and presence tracking</li>
+                    <li>Endpoint groups in route macros: <code>#[get("/users", group = "/api")]</code> for auto-discovery</li>
+                    <li>Starter templates: <code>rapina new --template crud</code> and <code>--template auth</code></li>
+                    <li>HTTP upgrade support via <code>auto::Builder</code></li>
+                    <li>Testing, OpenAPI, and validation documentation pages</li>
+                    <li>Migration documentation page</li>
+                    <li>WebSocket and Relay documentation</li>
+                    <li>Fixed syntax highlighting on documentation site</li>
+                    <li>OpenAPI check now respects <code>SERVER_PORT</code> environment variable</li>
                 </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/LevelUpExtreme">@LevelUpExtreme</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/uemuradevexe">@uemuradevexe</a></p>
             </div>
         </div>
 
         <div class="timeline-item">
             <div class="timeline-marker"></div>
             <div class="timeline-content">
-                <div class="timeline-date">February 10, 2025</div>
-                <h2>v0.1.0-alpha.4</h2>
+                <div class="timeline-date">March 1, 2026</div>
+                <h2>v0.8.0</h2>
                 <span class="timeline-tag tag-feature">Feature</span>
                 <span class="timeline-tag tag-fix">Fix</span>
                 <ul>
-                    <li>Added database integration with SeaORM</li>
-                    <li>New <code>Validated&lt;T&gt;</code> extractor for request validation</li>
-                    <li>Rate limiting middleware</li>
-                    <li>Fixed clippy lints and formatting issues</li>
+                    <li>Built-in pagination with <code>Paginate</code> extractor</li>
+                    <li>Response caching layer with in-memory and Redis backends</li>
+                    <li><code>Deref</code> implementation on all extractor newtypes</li>
+                    <li>Fixed static routes shadowed by parameterized routes with <code>discover()</code></li>
+                    <li>Fixed <code>schema!</code> macro <code>JsonSchema</code> for <code>Uuid</code> and <code>Decimal</code> types</li>
+                    <li><code>NaiveDateTime</code> and composite primary key support in <code>schema!</code> macro</li>
                 </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a></p>
             </div>
         </div>
 
         <div class="timeline-item">
             <div class="timeline-marker"></div>
             <div class="timeline-content">
-                <div class="timeline-date">February 5, 2025</div>
-                <h2>v0.1.0-alpha.3</h2>
+                <div class="timeline-date">February 27, 2026</div>
+                <h2>v0.7.0</h2>
                 <span class="timeline-tag tag-feature">Feature</span>
-                <ul>
-                    <li>JWT authentication support</li>
-                    <li>OpenAPI generation from routes</li>
-                    <li>Cookie extractors</li>
-                    <li>Compression middleware</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="timeline-item">
-            <div class="timeline-marker"></div>
-            <div class="timeline-content">
-                <div class="timeline-date">January 28, 2025</div>
-                <h2>v0.1.0-alpha.2</h2>
-                <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-fix">Fix</span>
                 <span class="timeline-tag tag-docs">Docs</span>
                 <ul>
-                    <li>Rapina CLI with <code>new</code>, <code>dev</code>, <code>routes</code>, <code>doctor</code> commands</li>
-                    <li>State extractors for dependency injection</li>
-                    <li>Documentation site launch</li>
+                    <li><code>rapina import database</code> — reverse-engineer a live PostgreSQL, MySQL, or SQLite database into full feature modules with handlers, DTOs, entities, and migrations</li>
+                    <li>Graceful shutdown with proper SIGTERM/SIGINT handling</li>
+                    <li>Replaced <code>println</code>/<code>eprintln</code> with <code>tracing</code> across server code</li>
+                    <li><code>rapina doctor</code> and <code>rapina routes</code> now accept <code>--port</code> and <code>--host</code> params</li>
+                    <li>AI assistant config files (AGENT.md, .claude/, .cursor/) in <code>rapina new</code> template</li>
+                    <li>Catppuccin color palette extracted into shared CLI module</li>
+                    <li>Unit tests for OpenAPI and introspection endpoint handlers</li>
+                    <li>Fixed Cargo.toml parser error on <code>rapina dev</code> and <code>rapina test</code></li>
+                    <li>Middleware documentation page</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/uemuradevexe">@uemuradevexe</a>, <a href="https://github.com/KelvinDiasMoreira">@KelvinDiasMoreira</a>, <a href="https://github.com/LevelUpExtreme">@LevelUpExtreme</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 22, 2026</div>
+                <h2>v0.6.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Route auto-discovery with <code>.discover()</code> — annotate handlers, call one method, routes are registered at startup via <code>inventory</code></li>
+                    <li>Prometheus metrics endpoint</li>
+                    <li>Upgraded <code>toml</code> to 1.0 (TOML spec 1.1 support)</li>
+                    <li>Upgraded <code>jsonwebtoken</code> to 10.3.0</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/Jamersom-silva">@Jamersom-silva</a>, <a href="https://github.com/lucaserm">@lucaserm</a>, <a href="https://github.com/uemuradevexe">@uemuradevexe</a>, <a href="https://github.com/sofia-araujo">@sofia-araujo</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 18, 2026</div>
+                <h2>v0.5.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li><code>rapina add resource</code> — scaffolds complete CRUD resource with handlers, DTOs, error types, <code>schema!</code> entity, and migrations from a single command</li>
+                    <li><code>rapina migrate new</code> for standalone database migrations</li>
+                    <li>12 supported field types with aliases for resource scaffolding</li>
+                    <li>TraceIdMiddleware unit and integration tests</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/yan-pi">@yan-pi</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">February 12, 2026</div>
+                <h2>v0.4.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Database integration with SeaORM and <code>schema!</code> macro for declarative entity definition with automatic relationship inference</li>
+                    <li><code>rapina test</code> command with <code>--coverage</code> and <code>--watch</code> modes</li>
+                    <li>Rate limiting middleware with token bucket algorithm</li>
+                    <li>Response compression (gzip/brotli)</li>
+                    <li>CORS middleware with configurable origins, methods, and headers</li>
+                    <li>Cookie extractor for typed cookie access in handlers</li>
+                    <li>Modular API grouping with <code>Router::group()</code></li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/juv">@juv</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/uemuradevexe">@uemuradevexe</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 29, 2026</div>
+                <h2>v0.2.1</h2>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Fixed infinite restart loop when server crashes in <code>rapina dev</code></li>
+                    <li>Fixed <code>rapina new</code> scaffolded projects failing to build</li>
+                    <li>Made OpenAPI endpoint optional in <code>rapina doctor</code></li>
+                    <li>Extracted x-trace-id header and content-type strings into constants</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/uemuradevexe">@uemuradevexe</a>, <a href="https://github.com/juv">@juv</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 25, 2026</div>
+                <h2>v0.2.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>OpenAPI as a living contract — automatic spec generation, <code>rapina openapi export</code>, <code>check</code>, <code>diff</code> for breaking change detection</li>
+                    <li>Domain errors as first-class citizens with typed error handling</li>
+                    <li>JWT authentication with protected-by-default routes</li>
+                    <li>Type-safe configuration with <code>#[derive(Config)]</code> and <code>from_env()</code></li>
+                    <li><code>rapina doctor</code> introspection for catching misconfigurations</li>
                 </ul>
             </div>
         </div>
@@ -73,7 +163,57 @@
         <div class="timeline-item">
             <div class="timeline-marker"></div>
             <div class="timeline-content">
-                <div class="timeline-date">January 20, 2025</div>
+                <div class="timeline-date">January 24, 2026</div>
+                <h2>v0.1.0-alpha.4</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Automatic OpenAPI 3.0 spec generation with response schemas</li>
+                    <li>CLI tools: <code>rapina openapi export</code>, <code>check</code>, <code>diff</code></li>
+                    <li>Breaking change detection for API contracts</li>
+                    <li>Re-exported <code>schemars</code> for easy <code>JsonSchema</code> derive</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 22, 2026</div>
+                <h2>v0.1.0-alpha.3</h2>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Fixed missing <code>hyper</code> dependency in generated template</li>
+                    <li>Changed "Next steps" from <code>cargo run</code> to <code>rapina dev</code></li>
+                    <li>Generated template now returns JSON responses with proper structs</li>
+                    <li>Catppuccin Mocha color palette for CLI output</li>
+                    <li>Tracing and request logging in generated template</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 22, 2026</div>
+                <h2>v0.1.0-alpha.2</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Rapina CLI with <code>new</code>, <code>dev</code>, <code>routes</code>, <code>doctor</code> commands</li>
+                    <li>Built-in <code>TestClient</code> for integration testing</li>
+                    <li>Route introspection endpoint at <code>/__rapina/routes</code></li>
+                    <li>Middleware system with timeout, body limit, and trace ID</li>
+                    <li><code>Query</code>, <code>Headers</code>, and <code>Form</code> extractors</li>
+                    <li><code>Validated&lt;T&gt;</code> extractor for request validation</li>
+                    <li>Structured logging with tracing</li>
+                    <li>State extractors for dependency injection</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">January 21, 2026</div>
                 <h2>v0.1.0-alpha.1</h2>
                 <span class="timeline-tag tag-release">Initial Release</span>
                 <ul>
@@ -84,6 +224,7 @@
                 </ul>
             </div>
         </div>
+
     </div>
 </div>
 {% endblock %}
