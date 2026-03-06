@@ -38,6 +38,7 @@ pub(crate) async fn serve(
     let mut sigterm: Pin<Box<dyn Future<Output = ()> + Send>> = Box::pin(async {
         #[cfg(unix)]
         {
+            use tokio::signal::unix::SignalKind;
             tokio::signal::unix::signal(SignalKind::terminate())
                 .expect("failed to install SIGTERM handler")
                 .recv()
