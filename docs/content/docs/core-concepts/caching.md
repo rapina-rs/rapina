@@ -24,7 +24,7 @@ async fn list_products(db: Db) -> Result<Json<Vec<Product>>> {
 
 #[post("/products")]
 async fn create_product(db: Db, body: Json<NewProduct>) -> Result<Json<Product>> {
-    let product = body.into_inner().insert(db.conn()).await?;
+    let product = body.into_inner().insert(db.conn()).await?;  // into_inner() — ownership needed for insert
     Ok(Json(product))
 }
 
@@ -293,7 +293,7 @@ async fn list_products(db: Db) -> Result<Json<Vec<Product>>> {
 #[get("/products/:id")]
 #[cache(ttl = 120)]
 async fn get_product(db: Db, id: Path<i32>) -> Result<Json<Product>> {
-    let product = Product::find_by_id(id.into_inner())
+    let product = Product::find_by_id(*id)
         .one(db.conn())
         .await?
         .ok_or(Error::not_found("product not found"))?;
@@ -302,7 +302,7 @@ async fn get_product(db: Db, id: Path<i32>) -> Result<Json<Product>> {
 
 #[post("/products")]
 async fn create_product(db: Db, body: Validated<Json<NewProduct>>) -> Result<Json<Product>> {
-    let product = body.into_inner().into_inner().insert(db.conn()).await?;
+    let product = body.into_inner().into_inner().insert(db.conn()).await?;  // ownership needed for insert
     Ok(Json(product))
 }
 

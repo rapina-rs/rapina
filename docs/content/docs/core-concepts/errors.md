@@ -43,13 +43,11 @@ Return `Result<T, Error>` or just `Result<T>` from handlers:
 ```rust
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> Result<Json<User>> {
-    let id = id.into_inner();
-
-    if id == 0 {
+    if *id == 0 {
         return Err(Error::bad_request("id cannot be zero"));
     }
 
-    let user = find_user(id)
+    let user = find_user(*id)
         .ok_or_else(|| Error::not_found("user not found"))?;
 
     Ok(Json(user))
@@ -109,8 +107,7 @@ Use with the `?` operator:
 ```rust
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> Result<Json<User>, UserError> {
-    let id = id.into_inner();
-    let user = find_user(id).ok_or(UserError::NotFound(id))?;
+    let user = find_user(*id).ok_or(UserError::NotFound(*id))?;
     Ok(Json(user))
 }
 ```

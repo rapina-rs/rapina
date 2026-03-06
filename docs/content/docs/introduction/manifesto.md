@@ -24,17 +24,6 @@ Predictable patterns make onboarding faster, code reviews easier, and AI assista
 
 A handler's signature tells you everything: what it expects, what it returns, whether it's protected. No magic, no hidden behavior.
 
-## Opinionated by design
-
-We believe that constraints breed creativity. By making decisions for you, we free you to focus on what matters: your business logic.
-
-- Routes are protected by default
-- Errors follow a standard format
-- Validation happens automatically
-- OpenAPI is generated from code
-
-You can override any of these. But you probably won't need to.
-
 ## Fail fast, fail loud
 
 Missing configuration? Crash at startup, not at 3am when a user hits that endpoint.

@@ -4,8 +4,14 @@
 //! to be converted into HTTP responses.
 
 use bytes::Bytes;
-use http::{Response, StatusCode};
+use http::{Response, StatusCode, header::CONTENT_TYPE};
 use http_body_util::Full;
+
+pub(crate) const APPLICATION_JSON: &str = "application/json";
+pub(crate) const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
+#[cfg(feature = "metrics")]
+pub(crate) const PROMETHEUS_TEXT_FORMAT: &str = "text/plain; version=0.0.4; charset=utf-8";
+const TEXT_PLAIN_UTF8: &str = "text/plain; charset=utf-8";
 
 /// The body type used for HTTP responses.
 pub type BoxBody = Full<Bytes>;
@@ -47,7 +53,7 @@ impl IntoResponse for &str {
     fn into_response(self) -> Response<BoxBody> {
         Response::builder()
             .status(StatusCode::OK)
-            .header("content-type", "text/plain; charset=utf-8")
+            .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
             .body(Full::new(Bytes::from(self.to_owned())))
             .unwrap()
     }
@@ -57,7 +63,7 @@ impl IntoResponse for String {
     fn into_response(self) -> Response<BoxBody> {
         Response::builder()
             .status(StatusCode::OK)
-            .header("content-type", "text/plain; charset=utf-8")
+            .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
             .body(Full::new(Bytes::from(self.to_owned())))
             .unwrap()
     }
@@ -76,7 +82,7 @@ impl IntoResponse for (StatusCode, String) {
     fn into_response(self) -> Response<BoxBody> {
         Response::builder()
             .status(self.0)
-            .header("content-type", "text/plain; charset=utf-8")
+            .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
             .body(Full::new(Bytes::from(self.1)))
             .unwrap()
     }

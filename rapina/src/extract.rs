@@ -16,11 +16,9 @@ use validator::Validate;
 
 use crate::context::RequestContext;
 use crate::error::Error;
-use crate::response::{BoxBody, IntoResponse};
+use crate::response::{APPLICATION_JSON, BoxBody, FORM_CONTENT_TYPE, IntoResponse};
 use crate::state::AppState;
-
-const JSON_CONTENT_TYPE: &str = "application/json";
-const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
+use http::header::CONTENT_TYPE;
 
 /// Extracts and deserializes JSON request bodies.
 ///
@@ -357,7 +355,7 @@ impl<T: serde::Serialize> IntoResponse for (http::StatusCode, Json<T>) {
         let body = serde_json::to_vec(&(self.1).0).unwrap_or_default();
         http::Response::builder()
             .status(self.0)
-            .header("content-type", JSON_CONTENT_TYPE)
+            .header(CONTENT_TYPE, APPLICATION_JSON)
             .body(http_body_util::Full::new(Bytes::from(body)))
             .unwrap()
     }

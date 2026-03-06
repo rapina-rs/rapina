@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::context::RequestContext;
 use crate::extract::PathParams;
+use crate::response::{APPLICATION_JSON, FORM_CONTENT_TYPE};
 use crate::state::AppState;
 
 /// A test request builder for creating mock HTTP requests
@@ -74,7 +75,7 @@ impl TestRequest {
         self.body = Bytes::from(serde_json::to_vec(body).unwrap());
         self.headers.insert(
             http::header::CONTENT_TYPE,
-            http::header::HeaderValue::from_static("application/json"),
+            http::header::HeaderValue::from_static(APPLICATION_JSON),
         );
         self
     }
@@ -84,7 +85,7 @@ impl TestRequest {
         self.body = Bytes::from(serde_urlencoded::to_string(body).unwrap());
         self.headers.insert(
             http::header::CONTENT_TYPE,
-            http::header::HeaderValue::from_static("application/x-www-form-urlencoded"),
+            http::header::HeaderValue::from_static(FORM_CONTENT_TYPE),
         );
         self
     }

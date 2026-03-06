@@ -79,7 +79,7 @@ async fn home() -> &'static str {
 
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> String {
-    format!("User ID: {}", id.into_inner())
+    format!("User ID: {}", *id)
 }
 
 #[tokio::main]
@@ -169,7 +169,7 @@ Extract dynamic values from URL segments using the `:param` syntax:
 ```rust
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> String {
-    format!("User ID: {}", id.into_inner())
+    format!("User ID: {}", *id)
 }
 ```
 
@@ -181,14 +181,14 @@ Path parameters are automatically parsed to their target type:
 #[get("/items/:id")]
 async fn get_item(id: Path<u64>) -> Result<Json<Item>> {
     // id is parsed as u64
-    let item = find_item(id.into_inner()).await?;
+    let item = find_item(*id).await?;
     Ok(Json(item))
 }
 
 #[get("/products/:slug")]
 async fn get_product(slug: Path<String>) -> Result<Json<Product>> {
-    // slug is kept as String
-    let product = find_by_slug(&slug.into_inner()).await?;
+    // slug is kept as String — deref coercion gives &str
+    let product = find_by_slug(&slug).await?;
     Ok(Json(product))
 }
 ```
@@ -294,7 +294,7 @@ async fn list_users() -> Json<Vec<User>> {
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> Result<Json<User>> {
     let user = User {
-        id: id.into_inner(),
+        id: *id,
         name: "Alice".into(),
         email: "alice@example.com".into(),
     };
@@ -303,11 +303,10 @@ async fn get_user(id: Path<u64>) -> Result<Json<User>> {
 
 #[post("/users")]
 async fn create_user(body: Json<CreateUser>) -> (StatusCode, Json<User>) {
-    let input = body.into_inner();
     let user = User {
         id: 3,
-        name: input.name,
-        email: input.email,
+        name: body.name.clone(),
+        email: body.email.clone(),
     };
     (StatusCode::CREATED, Json(user))
 }
