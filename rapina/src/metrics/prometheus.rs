@@ -9,8 +9,9 @@ use prometheus::{
 };
 
 use crate::extract::PathParams;
-use crate::response::BoxBody;
+use crate::response::{BoxBody, PROMETHEUS_TEXT_FORMAT};
 use crate::state::AppState;
+use http::header::CONTENT_TYPE;
 
 #[derive(Clone)]
 pub struct MetricsRegistry {
@@ -96,7 +97,7 @@ pub async fn metrics_handler(
             let body = registry.encode();
             Response::builder()
                 .status(StatusCode::OK)
-                .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+                .header(CONTENT_TYPE, PROMETHEUS_TEXT_FORMAT)
                 .body(Full::new(Bytes::from(body)))
                 .unwrap()
         }

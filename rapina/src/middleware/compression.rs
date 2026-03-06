@@ -9,7 +9,7 @@ use hyper::Request;
 use hyper::body::Incoming;
 
 use crate::context::RequestContext;
-use crate::response::BoxBody;
+use crate::response::{APPLICATION_JSON, BoxBody};
 
 use super::{BoxFuture, Middleware, Next};
 
@@ -97,7 +97,7 @@ impl CompressionMiddleware {
         let ct_str = ct.to_str().unwrap_or("");
 
         ct_str.starts_with("text/")
-            || ct_str.starts_with("application/json")
+            || ct_str.starts_with(APPLICATION_JSON)
             || ct_str.starts_with("application/xml")
             || ct_str.starts_with("application/javascript")
             || ct_str.contains("+json")

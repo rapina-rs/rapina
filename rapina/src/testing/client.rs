@@ -18,8 +18,10 @@ use tokio::sync::oneshot;
 
 use crate::context::RequestContext;
 use crate::middleware::MiddlewareStack;
+use crate::response::{APPLICATION_JSON, FORM_CONTENT_TYPE};
 use crate::router::Router;
 use crate::state::AppState;
+use http::header::CONTENT_TYPE;
 
 /// A test client for making HTTP requests to a Rapina application.
 ///
@@ -194,7 +196,7 @@ impl<'a> TestRequestBuilder<'a> {
         self.body = Bytes::from(serde_json::to_vec(body).unwrap());
         self.headers.insert(
             http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
+            HeaderValue::from_static(APPLICATION_JSON),
         );
         self
     }
@@ -204,7 +206,7 @@ impl<'a> TestRequestBuilder<'a> {
         self.body = Bytes::from(serde_urlencoded::to_string(body).unwrap());
         self.headers.insert(
             http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/x-www-form-urlencoded"),
+            HeaderValue::from_static(FORM_CONTENT_TYPE),
         );
         self
     }
@@ -367,7 +369,7 @@ mod tests {
                 Router::new().route(http::Method::GET, "/json", |_, _, _| async {
                     http::Response::builder()
                         .status(StatusCode::OK)
-                        .header("content-type", "application/json")
+                        .header(CONTENT_TYPE, APPLICATION_JSON)
                         .body(http_body_util::Full::new(bytes::Bytes::from(
                             r#"{"id":1,"name":"test"}"#,
                         )))

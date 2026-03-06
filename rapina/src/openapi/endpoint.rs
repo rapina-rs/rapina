@@ -2,10 +2,15 @@
 
 use std::sync::Arc;
 
-use http::{Request, Response, StatusCode};
+use http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 use hyper::body::Incoming;
 
-use crate::{extract::PathParams, openapi::OpenApiSpec, response::BoxBody, state::AppState};
+use crate::{
+    extract::PathParams,
+    openapi::OpenApiSpec,
+    response::{APPLICATION_JSON, BoxBody},
+    state::AppState,
+};
 
 /// Registry for storing the OpenAPI spec
 #[derive(Debug, Clone)]
@@ -38,13 +43,13 @@ pub async fn openapi_spec(
             let json = serde_json::to_vec_pretty(registry.spec()).unwrap_or_default();
             Response::builder()
                 .status(StatusCode::OK)
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE, APPLICATION_JSON)
                 .body(http_body_util::Full::new(bytes::Bytes::from(json)))
                 .unwrap()
         }
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .header("content-type", "application/json")
+            .header(CONTENT_TYPE, APPLICATION_JSON)
             .body(http_body_util::Full::new(bytes::Bytes::from(
                 r#"{"error": "OpenAPI spec not configured"}"#,
             )))
