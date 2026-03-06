@@ -248,8 +248,13 @@
             return excerpt;
         }
 
-        // Initialize syntax highlighting
-        hljs.highlightAll();
+        // Initialize syntax highlighting for template code blocks only.
+        // Skip blocks already highlighted by Zola (they have inline styles).
+        document.querySelectorAll('pre code').forEach(function(block) {
+            if (!block.parentElement.style.color) {
+                hljs.highlightElement(block);
+            }
+        });
 
         // Mobile menu
         function toggleMobileMenu() {

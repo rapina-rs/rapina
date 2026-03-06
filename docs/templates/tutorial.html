@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{{ page.title }} — Rapina Interactive Tutorial">
+    <title>{{ page.title }} — Rapina Tutorial</title>
+    <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
+    <link rel="stylesheet" href="{{ get_url(path='tutorial/tutorial.css') }}">
+    <link rel="icon" type="image/png" href="{{ get_url(path='images/rapina-icon.png') }}">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+    <div class="tutorial-page">
+        <!-- Top bar -->
+        <div class="tutorial-topbar">
+            <div class="tutorial-topbar-left">
+                <a href="{{ get_url(path='/') }}">
+                    <img src="{{ get_url(path='images/rapina-icon.png') }}" alt="Rapina">
+                    <span>Rapina</span>
+                </a>
+                <span class="tutorial-topbar-sep">/</span>
+                <span class="tutorial-title">Tutorial</span>
+            </div>
+
+            <div class="tutorial-topbar-right">
+                {% if page.extra.doc %}
+                <a href="{{ get_url(path=page.extra.doc) }}" class="tutorial-doc-link">Read the docs</a>
+                {% endif %}
+
+                <select class="tutorial-chapter-select" onchange="if(this.value) window.location.href=this.value">
+                    {% set tutorial_section = get_section(path="tutorial/_index.md") %}
+                    {% for ch in tutorial_section.pages %}
+                    <option value="{{ ch.permalink }}" {% if ch.path == page.path %}selected{% endif %}>
+                        {{ ch.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <button class="tutorial-topbar-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+                    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2"></path><path d="M12 20v2"></path>
+                        <path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path>
+                        <path d="M2 12h2"></path><path d="M20 12h2"></path>
+                        <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
+                    </svg>
+                    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Three-panel layout -->
+        <div class="tutorial-panels">
+            <!-- Left: Task & Tests -->
+            <div class="tutorial-task">
+                {{ page.content | safe }}
+
+                <div class="tutorial-tests">
+                    <div class="tutorial-tests-title">Tests</div>
+                    <div id="tutorial-test-list"></div>
+                    <div class="tutorial-complete">All tests passing — nice work!</div>
+                </div>
+            </div>
+
+            <!-- Right top: Editor -->
+            <div class="tutorial-editor">
+                <div class="tutorial-editor-header">
+                    <span class="tutorial-editor-filename">main.rs</span>
+                    <div class="tutorial-editor-actions">
+                        <button class="tutorial-reset-btn" id="tutorial-reset">Reset</button>
+                    </div>
+                </div>
+                <div class="tutorial-editor-container" id="tutorial-editor"></div>
+            </div>
+
+            <!-- Right bottom: Response preview -->
+            <div class="tutorial-response">
+                <div class="tutorial-response-header">
+                    <span class="tutorial-response-label">Response Preview</span>
+                </div>
+                <div class="tutorial-response-content" id="tutorial-response-body">
+                    <div class="tutorial-response-placeholder">Complete the tests to see the response preview.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom navigation -->
+        <div class="tutorial-bottombar">
+            {% if page.extra.prev %}
+            <a href="{{ get_url(path=page.extra.prev) }}" class="tutorial-nav-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                Previous
+            </a>
+            {% else %}
+            <span class="tutorial-nav-btn hidden">Previous</span>
+            {% endif %}
+
+            <span class="tutorial-progress">
+                {% set tutorial_section = get_section(path="tutorial/_index.md") %}
+                {% set total = tutorial_section.pages | length %}
+                {{ page.extra.chapter | default(value=1) }} / {{ total }}
+            </span>
+
+            {% if page.extra.next %}
+            <a href="{{ get_url(path=page.extra.next) }}" class="tutorial-nav-btn">
+                Next
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+            {% else %}
+            <span class="tutorial-nav-btn hidden">Next</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Hidden data for JS -->
+    <script type="text/plain" id="tutorial-code">{{ page.extra.code }}</script>
+    <script type="text/plain" id="tutorial-testcases">{{ page.extra.testcases }}</script>
+
+    <!-- Scripts -->
+    <script src="{{ get_url(path='tutorial/codemirror.min.js') }}"></script>
+    <script src="{{ get_url(path='tutorial/tutorial.js') }}"></script>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const t = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', t);
+            localStorage.setItem('theme', t);
+            updateThemeIcons();
+        }
+        function updateThemeIcons() {
+            const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            document.querySelector('.sun-icon').style.display = dark ? 'none' : 'block';
+            document.querySelector('.moon-icon').style.display = dark ? 'block' : 'none';
+        }
+        document.addEventListener('DOMContentLoaded', updateThemeIcons);
+    </script>
+</body>
+</html>

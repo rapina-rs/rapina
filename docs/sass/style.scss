@@ -306,142 +306,232 @@ pre {
 
 .hero {
     text-align: center;
-    padding: 4rem 1.5rem 3rem;
-    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg) 100%);
+    padding: 6rem 1.5rem 4rem;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+        display: none;
+    }
+}
+
+.hero-bg {
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(
+            100deg,
+            rgba(4, 154, 242, 0.03) 0px,
+            rgba(4, 154, 242, 0.03) 1px,
+            transparent 1px,
+            transparent 40px
+        ),
+        repeating-linear-gradient(
+            100deg,
+            rgba(99, 102, 241, 0.04) 0px,
+            rgba(99, 102, 241, 0.04) 1px,
+            transparent 1px,
+            transparent 80px
+        );
+    animation: ray-move 60s linear infinite;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 70%);
+    z-index: 0;
+    pointer-events: none;
+}
+
+@keyframes ray-move {
+    0% { background-position: 0 0; }
+    100% { background-position: 200px 0; }
+}
+
+.hero-container {
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+}
+
+.hero-eyebrow {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+.hero h1,
+.hero-title {
+    font-size: 3.75rem;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+    color: var(--text);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+}
+
+.gradient-text {
+    background: linear-gradient(135deg, #049af2 0%, #7c3aed 50%, #6366f1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-subtle {
+    background: linear-gradient(135deg, #049af2 0%, #6366f1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+}
+
+.hero-tagline {
+    font-size: 1.1875rem;
+    color: var(--text-muted);
+    margin-bottom: 2.5rem;
+    font-weight: 400;
+    line-height: 1.6;
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.hero-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+// Hero-specific primary button — gradient with glow
+.btn-hero-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.8rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    color: white;
+    background: linear-gradient(135deg, #049af2, #6366f1);
+    box-shadow: 0 4px 16px rgba(4, 154, 242, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(4, 154, 242, 0.4);
+        color: white;
+    }
+}
+
+.install-pill {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+
+    &:hover {
+        border-color: rgba(4, 154, 242, 0.5);
+        box-shadow: 0 0 0 3px rgba(4, 154, 242, 0.1);
+    }
+
+    code {
+        background: none;
+        border: none;
+        padding: 0.8rem 1.25rem;
+        font-size: 0.875rem;
+        color: #7dd3fc;
+        white-space: nowrap;
+        text-shadow: 0 0 12px rgba(4, 154, 242, 0.4), 0 0 4px rgba(4, 154, 242, 0.2);
+
+        &::before {
+            content: '$ ';
+            color: #6b7280;
+            text-shadow: none;
+        }
+    }
+}
+
+.install-copy {
+    background: rgba(255, 255, 255, 0.06);
+    color: #94a3b8;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.8rem 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    font-family: inherit;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #e5e7eb;
+    }
+}
+
+.hero-code-preview {
+    max-width: 680px;
+    margin: 3.5rem auto 0;
+    position: relative;
+    z-index: 2;
+}
+
+.code-block {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: left;
+
+    pre {
+        margin: 0;
+        border-radius: 0;
+        padding: 1.25rem 1.5rem;
+        font-size: 0.8125rem;
+        line-height: 1.7;
+    }
+}
+
+.code-dots {
+    display: flex;
+    gap: 6px;
+    padding: 0.75rem 1rem 0.25rem;
+    background: #1e293b;
+
+    span {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.15);
+
+        &:first-child { background: #ef4444; }
+        &:nth-child(2) { background: #f59e0b; }
+        &:nth-child(3) { background: #22c55e; }
+    }
+}
+
+.code-showcase {
     position: relative;
 
     &::before {
         content: '';
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 600px;
-        background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23049af2' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        inset: -40px;
+        background: radial-gradient(600px circle at 50% 50%, rgba(4, 154, 242, 0.08), transparent 70%);
         pointer-events: none;
-        z-index: 0;
-    }
-}
-
-.hero-container {
-    max-width: 800px;
-    margin: 0 auto;
-    position: relative;
-    z-index: 1;
-}
-
-.hero h1 {
-    font-size: 3rem;
-    font-weight: 800;
-    margin-bottom: 1rem;
-    color: var(--text);
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-}
-
-.hero-tagline {
-    font-size: 1.25rem;
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-    font-weight: 400;
-    line-height: 1.6;
-}
-
-.hero-buttons {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-}
-
-.hero-demo {
-    margin-top: 3rem;
-    display: flex;
-    justify-content: center;
-}
-
-.hero-demo-gif {
-    max-width: 100%;
-    width: 900px;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-    border: 1px solid var(--border);
-}
-
-.hero-showcase {
-    max-width: 1200px;
-    margin: 4rem auto 0;
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 2rem;
-    align-items: start;
-    text-align: left;
-    position: relative;
-    z-index: 1;
-
-    @media (max-width: 900px) {
-        grid-template-columns: 1fr;
-    }
-}
-
-.hero-features {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-
-    @media (max-width: 900px) {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    @media (max-width: 500px) {
-        grid-template-columns: 1fr;
-    }
-}
-
-.hero-feature-card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    transition: border-color 0.2s;
-
-    &:hover {
-        border-color: var(--primary);
-    }
-
-    h4 {
-        font-size: 0.9375rem;
-        font-weight: 600;
-        margin: 0 0 0.25rem 0;
-        color: var(--text);
-    }
-
-    p {
-        font-size: 0.8125rem;
-        color: var(--text-muted);
-        margin: 0;
-        line-height: 1.5;
-    }
-
-    code {
-        font-size: 0.75rem;
-        padding: 0.125rem 0.25rem;
-    }
-}
-
-.hero-code {
-    pre {
-        margin: 0;
-        border-radius: 12px;
-        font-size: 0.8125rem;
-        line-height: 1.6;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+        z-index: -1;
     }
 }
 
@@ -482,6 +572,23 @@ pre {
         border-color: var(--primary);
         color: var(--primary);
     }
+}
+
+.btn-lg {
+    padding: 0.75rem 1.75rem;
+    font-size: 1rem;
+    border-radius: 8px;
+
+    &:hover {
+        transform: scale(1.03);
+        transition: all 0.2s cubic-bezier(0.68, -0.6, 0.32, 1.6);
+    }
+}
+
+.btn-secondary.btn-lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 // =============================================================================
@@ -1527,14 +1634,298 @@ pre {
   }
 
   // HERO
-  .hero h1 {
-    font-size: 2rem;
+  .hero {
+    padding: 3.5rem 1rem 2.5rem;
+  }
+
+  .hero-eyebrow {
+    font-size: 0.75rem;
+  }
+
+  .hero h1,
+  .hero-title {
+    font-size: 2.25rem;
   }
 
   .hero-tagline {
-    font-size: 1.125rem;
+    font-size: 1rem;
+    margin-bottom: 1.75rem;
   }
 
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0 0.5rem;
+  }
+
+  .btn-hero-primary {
+    width: 100%;
+    text-align: center;
+  }
+
+  .install-pill {
+    width: 100%;
+
+    code {
+      font-size: 0.75rem;
+      overflow-x: auto;
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  .hero-code-preview {
+    margin-top: 2rem;
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+  }
+
+  .code-block pre {
+    padding: 1rem;
+    font-size: 0.75rem;
+    line-height: 1.6;
+  }
+
+  // PRINCIPLES — strip card chrome, compact list
+  .principles {
+    padding: 2.5rem 1.25rem;
+    overflow: hidden;
+  }
+
+  .principles-container {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .principle-card {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 1rem;
+
+    &:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    &:first-child {
+      padding-top: 0;
+    }
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: var(--border);
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    p {
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+  }
+
+  .principle-icon {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border-radius: 8px;
+    margin-bottom: 0;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  // SHOWCASE — tighter, code-first feel
+  .showcase {
+    overflow: hidden;
+  }
+
+  .showcase-section {
+    padding: 2.5rem 1.25rem;
+  }
+
+  .showcase-container {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .showcase-reverse .showcase-container {
+    grid-template-columns: 1fr;
+  }
+
+  .showcase-reverse .showcase-text { order: 1; }
+  .showcase-reverse .showcase-code { order: 2; }
+
+  .showcase-text {
+    h2 {
+      font-size: 1.375rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+  }
+
+  .showcase-code {
+    max-width: 100%;
+    overflow: hidden;
+
+    pre {
+      font-size: 0.75rem;
+      line-height: 1.5;
+      padding: 1rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    }
+  }
+
+  .code-showcase {
+    overflow: hidden;
+
+    &::before {
+      display: none;
+    }
+  }
+
+  // BATTERIES — tighter grid
+  .batteries {
+    padding: 2.5rem 1.25rem;
+    overflow: hidden;
+  }
+
+  .batteries-container h2 {
+    font-size: 1.5rem;
+  }
+
+  .batteries-subtitle {
+    font-size: 0.9375rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .batteries-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.625rem;
+  }
+
+  .battery-card {
+    padding: 1rem 0.75rem;
+    gap: 0.5rem;
+    border-radius: 8px;
+
+    &:hover {
+      transform: none;
+    }
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    span {
+      font-size: 0.8125rem;
+    }
+  }
+
+  // WHY RUST — strip card chrome like principles
+  .why-rust {
+    padding: 2.5rem 1.25rem;
+    overflow: hidden;
+  }
+
+  .why-rust-eyebrow {
+    font-size: 0.6875rem;
+  }
+
+  .why-rust-container h2 {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .why-rust-subtitle {
+    font-size: 0.9375rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .why-rust-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .why-rust-card {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--border);
+
+    &:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    &:first-child {
+      padding-top: 0;
+    }
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: var(--border);
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 0.375rem;
+    }
+
+    p {
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+  }
+
+  .why-rust-stat {
+    font-size: 1.25rem;
+    margin-bottom: 0.125rem;
+  }
+
+  // FAQ
+  .faq-section {
+    padding: 2.5rem 1.25rem;
+  }
+
+  .faq-container h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .faq-question {
+    font-size: 0.9375rem;
+    padding: 1rem 0;
+  }
+
+  .faq-answer p {
+    font-size: 0.875rem;
+  }
+
+  // OLD SECTIONS (keep for other pages)
   .hero-buttons {
     flex-direction: column;
   }
@@ -1550,6 +1941,59 @@ pre {
     flex-direction: column;
   }
 
+}
+
+// Extra small screens (375px and below)
+@media (max-width: 400px) {
+  .hero h1,
+  .hero-title {
+    font-size: 1.875rem;
+  }
+
+  .install-pill code {
+    font-size: 0.6875rem;
+  }
+
+  .principle-card h3 {
+    font-size: 0.9375rem;
+  }
+
+  .principle-card p {
+    font-size: 0.8125rem;
+  }
+
+  .showcase-text h2 {
+    font-size: 1.25rem;
+  }
+
+  .showcase-code pre {
+    font-size: 0.6875rem;
+    padding: 0.75rem;
+  }
+
+  .batteries-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .battery-card {
+    padding: 0.875rem 0.5rem;
+  }
+
+  .why-rust-container h2 {
+    font-size: 1.375rem;
+  }
+
+  .why-rust-stat {
+    font-size: 1.125rem;
+  }
+
+  .cta-banner-container h2 {
+    font-size: 1.375rem;
+  }
+}
+
+@media (max-width: 768px) {
   // DOCS LAYOUT
   .docs-layout,
   .docs-layout.has-toc {
@@ -2107,4 +2551,759 @@ pre {
     font-weight: 500;
     color: var(--text-muted);
     transition: color 0.2s;
+}
+
+// =============================================================================
+// LANDING PAGE — NEW SECTIONS
+// =============================================================================
+
+// Principles Section
+.principles {
+    padding: 5rem 1.5rem;
+    background: var(--bg-secondary);
+}
+
+.principles-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+
+.principle-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+
+    &:hover {
+        border-color: var(--primary);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(4, 154, 242, 0.12);
+    }
+
+    h3 {
+        font-size: 1.125rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem 0;
+        color: var(--text);
+    }
+
+    p {
+        font-size: 0.9375rem;
+        color: var(--text-muted);
+        margin: 0;
+        line-height: 1.6;
+    }
+
+    code {
+        font-size: 0.8125rem;
+        padding: 0.125rem 0.375rem;
+    }
+}
+
+.principle-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4, 154, 242, 0.08);
+    border-radius: 10px;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+// Code Showcase Sections
+.showcase {
+    padding: 0;
+    background: var(--bg);
+}
+
+.showcase-section {
+    padding: 5rem 1.5rem;
+
+    &:nth-child(even) {
+        background: var(--bg-secondary);
+    }
+
+    // Grid background for technical sections
+    &:nth-child(odd) {
+        background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 40L40 0M20 40L40 20M0 20L20 0' stroke='%23049af2' stroke-opacity='0.03' stroke-width='0.5' fill='none'/%3E%3C/svg%3E");
+    }
+}
+
+.showcase-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.showcase-reverse .showcase-container {
+    grid-template-columns: 1.2fr 1fr;
+}
+
+.showcase-reverse .showcase-text {
+    order: 2;
+}
+
+.showcase-reverse .showcase-code {
+    order: 1;
+}
+
+.showcase-text {
+    h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0 0 1rem 0;
+        letter-spacing: -0.025em;
+        line-height: 1.2;
+    }
+
+    p {
+        font-size: 1.0625rem;
+        line-height: 1.7;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    code {
+        font-size: 0.8125rem;
+    }
+}
+
+.showcase-code {
+    pre {
+        margin: 0;
+        border-radius: 12px;
+        font-size: 0.8125rem;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+    }
+}
+
+// Batteries Included Section
+.batteries {
+    padding: 5rem 1.5rem;
+    background: var(--bg-secondary);
+}
+
+.batteries-container {
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+
+    h2 {
+        font-size: 2.25rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem 0;
+        letter-spacing: -0.025em;
+    }
+}
+
+.batteries-subtitle {
+    color: var(--text-muted);
+    font-size: 1.125rem;
+    margin: 0 0 2.5rem 0;
+}
+
+.batteries-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+
+.battery-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+
+    &:hover {
+        border-color: var(--primary);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(4, 154, 242, 0.12);
+        color: var(--text);
+    }
+
+    svg {
+        color: var(--primary);
+    }
+
+    span {
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+}
+
+// Why Rust Section
+.why-rust {
+    padding: 5rem 1.5rem;
+    background: var(--bg);
+}
+
+.why-rust-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    text-align: center;
+
+    h2 {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin: 0 0 1rem 0;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+    }
+}
+
+.why-rust-eyebrow {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+.why-rust-subtitle {
+    font-size: 1.125rem;
+    color: var(--text-muted);
+    margin: 0 auto 3rem;
+    max-width: 540px;
+    line-height: 1.6;
+}
+
+.why-rust-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    text-align: left;
+}
+
+.why-rust-card {
+    padding: 2rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+
+    &:hover {
+        border-color: var(--primary);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(4, 154, 242, 0.12);
+    }
+
+    h3 {
+        font-size: 1.125rem;
+        font-weight: 700;
+        margin: 0 0 0.75rem 0;
+        color: var(--text);
+    }
+
+    p {
+        font-size: 0.9375rem;
+        color: var(--text-muted);
+        margin: 0;
+        line-height: 1.6;
+    }
+}
+
+.why-rust-stat {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--primary);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+// CTA Banner — Brand Summary Card
+.cta-banner {
+    padding: 4rem 1.5rem;
+    display: flex;
+    justify-content: center;
+}
+
+.cta-card {
+    position: relative;
+    max-width: 780px;
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 2rem;
+    padding: 2.5rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.cta-card-circles {
+    position: absolute;
+    top: 50%;
+    left: -80px;
+    transform: translateY(-50%);
+    pointer-events: none;
+
+    div {
+        position: absolute;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        opacity: 0.5;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+
+        &:nth-child(1) { width: 200px; height: 200px; }
+        &:nth-child(2) { width: 320px; height: 320px; }
+        &:nth-child(3) { width: 440px; height: 440px; }
+    }
+}
+
+.cta-card-brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.cta-logo {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: 10px;
+}
+
+.cta-card-name {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin: 0;
+    line-height: 1.1;
+}
+
+.cta-card-tagline {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0 0;
+}
+
+.cta-card-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.875rem 2.5rem;
+    position: relative;
+    z-index: 1;
+    padding: 1.25rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.cta-stat {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+
+    svg {
+        color: var(--primary);
+        flex-shrink: 0;
+        opacity: 0.7;
+    }
+
+    div {
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+.cta-stat-label {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+}
+
+.cta-stat-value {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+}
+
+.cta-card-action {
+    position: relative;
+    z-index: 1;
+
+    .btn {
+        gap: 0.25rem;
+    }
+}
+
+.cta-card-links {
+    display: flex;
+    gap: 1.5rem;
+    position: relative;
+    z-index: 1;
+
+    a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        font-weight: 500;
+
+        &:hover {
+            color: var(--text);
+        }
+    }
+}
+
+// Scroll Reveal Animations
+.reveal {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+
+    &.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+// Staggered delays for child reveals
+.principles-container .reveal:nth-child(2) { transition-delay: 0.1s; }
+.principles-container .reveal:nth-child(3) { transition-delay: 0.2s; }
+
+.batteries-grid .reveal:nth-child(2) { transition-delay: 0.05s; }
+.batteries-grid .reveal:nth-child(3) { transition-delay: 0.1s; }
+.batteries-grid .reveal:nth-child(4) { transition-delay: 0.15s; }
+.batteries-grid .reveal:nth-child(5) { transition-delay: 0.2s; }
+.batteries-grid .reveal:nth-child(6) { transition-delay: 0.25s; }
+.batteries-grid .reveal:nth-child(7) { transition-delay: 0.3s; }
+.batteries-grid .reveal:nth-child(8) { transition-delay: 0.35s; }
+
+.why-rust-grid .reveal:nth-child(2) { transition-delay: 0.1s; }
+.why-rust-grid .reveal:nth-child(3) { transition-delay: 0.2s; }
+
+// Reduced motion preference
+@media (prefers-reduced-motion: reduce) {
+    .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+
+    .hero-bg {
+        animation: none;
+    }
+}
+
+// =============================================================================
+// LANDING PAGE MOBILE — must come AFTER section definitions to win cascade
+// =============================================================================
+
+@media (max-width: 768px) {
+    // PRINCIPLES — flat list, no cards
+    .principles {
+        padding: 2.5rem 1.25rem;
+        overflow: hidden;
+    }
+
+    .principles-container {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    .principle-card {
+        background: none;
+        border: none;
+        border-radius: 0;
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 1rem;
+        min-width: 0;
+
+        &:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        &:first-child {
+            padding-top: 0;
+        }
+
+        &:hover {
+            transform: none;
+            box-shadow: none;
+            border-color: var(--border);
+        }
+
+        .principle-content {
+            min-width: 0;
+            flex: 1;
+        }
+
+        h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        p {
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+    }
+
+    .principle-icon {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        flex-shrink: 0;
+        border-radius: 8px;
+        margin-bottom: 0;
+
+        svg {
+            width: 18px;
+            height: 18px;
+        }
+    }
+
+    // SHOWCASE — single column, tight
+    .showcase {
+        overflow: hidden;
+    }
+
+    .showcase-section {
+        padding: 2.5rem 1.25rem;
+    }
+
+    .showcase-container {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+
+    .showcase-reverse .showcase-container {
+        grid-template-columns: 1fr;
+    }
+
+    .showcase-reverse .showcase-text { order: 1; }
+    .showcase-reverse .showcase-code { order: 2; }
+
+    .showcase-text {
+        h2 {
+            font-size: 1.375rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+    }
+
+    .showcase-code {
+        max-width: 100%;
+        overflow: hidden;
+
+        pre {
+            font-size: 0.75rem;
+            line-height: 1.5;
+            padding: 1rem;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+    }
+
+    .code-showcase {
+        overflow: hidden;
+
+        &::before {
+            display: none;
+        }
+    }
+
+    // BATTERIES — 2-col tight grid
+    .batteries {
+        padding: 2.5rem 1.25rem;
+        overflow: hidden;
+    }
+
+    .batteries-container h2 {
+        font-size: 1.5rem;
+    }
+
+    .batteries-subtitle {
+        font-size: 0.9375rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .batteries-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.625rem;
+    }
+
+    .battery-card {
+        padding: 1rem 0.75rem;
+        gap: 0.5rem;
+        border-radius: 8px;
+
+        &:hover {
+            transform: none;
+        }
+
+        svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        span {
+            font-size: 0.8125rem;
+        }
+    }
+
+    // WHY RUST — flat list, no cards
+    .why-rust {
+        padding: 2.5rem 1.25rem;
+        overflow: hidden;
+    }
+
+    .why-rust-eyebrow {
+        font-size: 0.6875rem;
+    }
+
+    .why-rust-container h2 {
+        font-size: 1.5rem;
+        line-height: 1.2;
+    }
+
+    .why-rust-subtitle {
+        font-size: 0.9375rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .why-rust-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    .why-rust-card {
+        background: none;
+        border: none;
+        border-radius: 0;
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--border);
+
+        &:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        &:first-child {
+            padding-top: 0;
+        }
+
+        &:hover {
+            transform: none;
+            box-shadow: none;
+            border-color: var(--border);
+        }
+
+        h3 {
+            font-size: 1rem;
+            margin-bottom: 0.375rem;
+        }
+
+        p {
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+    }
+
+    .why-rust-stat {
+        font-size: 1.25rem;
+        margin-bottom: 0.125rem;
+    }
+
+    // CTA BANNER — card layout on mobile
+    .cta-banner {
+        padding: 2rem 1rem;
+    }
+
+    .cta-card {
+        padding: 1.75rem;
+        border-radius: 1.25rem;
+        gap: 1.5rem;
+    }
+
+    .cta-card-circles {
+        display: none;
+    }
+
+    .cta-card-brand {
+        gap: 0.75rem;
+    }
+
+    .cta-logo {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+    }
+
+    .cta-card-name {
+        font-size: 1.5rem;
+    }
+
+    .cta-card-tagline {
+        font-size: 0.8125rem;
+    }
+
+    .cta-card-stats {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .cta-stat-value {
+        font-size: 0.875rem;
+    }
+
+    .cta-card-action .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .cta-card-links {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 400px) {
+    .principle-card h3 { font-size: 0.9375rem; }
+    .principle-card p { font-size: 0.8125rem; }
+    .showcase-text h2 { font-size: 1.25rem; }
+    .showcase-code pre { font-size: 0.6875rem; padding: 0.75rem; }
+    .batteries-grid { gap: 0.5rem; }
+    .battery-card { padding: 0.875rem 0.5rem; }
+    .why-rust-container h2 { font-size: 1.375rem; }
+    .why-rust-stat { font-size: 1.125rem; }
+    .cta-card-name { font-size: 1.25rem; }
 }
