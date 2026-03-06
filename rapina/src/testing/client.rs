@@ -21,7 +21,6 @@ use crate::middleware::MiddlewareStack;
 use crate::response::{APPLICATION_JSON, FORM_CONTENT_TYPE};
 use crate::router::Router;
 use crate::state::AppState;
-use http::header::CONTENT_TYPE;
 
 /// A test client for making HTTP requests to a Rapina application.
 ///
@@ -369,7 +368,7 @@ mod tests {
                 Router::new().route(http::Method::GET, "/json", |_, _, _| async {
                     http::Response::builder()
                         .status(StatusCode::OK)
-                        .header(CONTENT_TYPE, APPLICATION_JSON)
+                        .header(http::header::CONTENT_TYPE, APPLICATION_JSON)
                         .body(http_body_util::Full::new(bytes::Bytes::from(
                             r#"{"id":1,"name":"test"}"#,
                         )))
