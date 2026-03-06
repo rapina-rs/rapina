@@ -18,20 +18,6 @@ block content %}
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
-                    <h4>WebSocket Support</h4>
-                    <p>Real-time communication with typed message handlers.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Background Jobs</h4>
-                    <p>Async task queue with Redis backend.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
                     <h4>GraphQL Support</h4>
                     <p>
                         Optional GraphQL layer with async-graphql integration.
@@ -41,8 +27,50 @@ block content %}
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Caching Layer</h4>
-                    <p>Built-in caching with Redis and in-memory backends.</p>
+                    <h4>Background Jobs</h4>
+                    <p>Async task queue with Redis backend and <code>rapina seed</code> for database seeding.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>OpenTelemetry Tracing</h4>
+                    <p>Export traces and metrics to OpenTelemetry-compatible backends.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Pluggable Authorization</h4>
+                    <p>Role-based and policy-based access control for endpoints beyond JWT authentication.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>JWKS URL Verification</h4>
+                    <p>Verify JWTs against a remote JWKS endpoint for integration with external identity providers.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Snapshot Testing</h4>
+                    <p><code>rapina test --bless</code> for snapshot-based API response testing.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">CLI</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Schema Improvements</h4>
+                    <p>UUID primary keys, relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>RFC 7807 Problem Details</h4>
+                    <p>Standard error format for HTTP APIs.</p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
@@ -57,23 +85,40 @@ block content %}
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
-                    <h4>Seed Command</h4>
+                    <h4>Feature Flags for Middleware</h4>
                     <p>
-                        Database seeding with <code>rapina seed</code> for
-                        development.
+                        Gate rate limiting and compression behind feature flags
+                        to keep the default build lean.
                     </p>
                     <div class="card-tags">
-                        <span class="card-tag">CLI</span>
+                        <span class="card-tag">Chore</span>
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Route Auto-Discovery</h4>
+                    <h4>Redis TLS Support</h4>
                     <p>
-                        Automatic route registration via
-                        <code>.discover()</code> method.
+                        TLS and client certificates for Redis cache backend.
                     </p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Deployment Guide</h4>
+                    <p>
+                        Documentation for deploying Rapina apps to production.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Docs</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Import CLI Improvements</h4>
+                    <p>
+                        Auto-wire mod declarations after import, <code>--force</code> flag for re-importing, and fix broken JsonSchema derives in generated DTOs.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">CLI</span>
                     </div>
                 </div>
             </div>
@@ -86,6 +131,72 @@ block content %}
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
+                    <h4>WebSocket &amp; Relay</h4>
+                    <p>
+                        Real-time communication with raw WebSocket support,
+                        pub/sub Relay system, channel handlers, and presence tracking.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.9.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Endpoint Groups</h4>
+                    <p>
+                        Group parameter in route macros for auto-discovery:
+                        <code>#[get("/users", group = "/api")]</code>.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.9.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Starter Templates</h4>
+                    <p>
+                        <code>rapina new --template crud</code> and
+                        <code>--template auth</code> for faster project setup.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.9.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Response Caching</h4>
+                    <p>Built-in caching with in-memory and Redis backends.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.8.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Built-in Pagination</h4>
+                    <p>
+                        <code>Paginate</code> extractor for cursor and offset pagination.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.8.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Database Import</h4>
+                    <p>
+                        Reverse-engineer a live database into feature modules
+                        with <code>rapina import database</code>.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.7.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Route Auto-Discovery</h4>
+                    <p>
+                        Automatic route registration via
+                        <code>.discover()</code> method.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.6.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
                     <h4>CRUD Scaffolding</h4>
                     <p>
                         Generate complete CRUD resources with
@@ -96,71 +207,17 @@ block content %}
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Metrics Endpoint</h4>
-                    <p>
-                        Prometheus metrics at <code>/metrics</code> with request
-                        tracking.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Migrations CLI</h4>
-                    <p>
-                        Database migrations with
-                        <code>rapina migrate</code> commands.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.5.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Schema Macro</h4>
-                    <p>
-                        Prisma-like schema definition with
-                        <code>rapina::schema!</code> macro.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.5</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
                     <h4>Database Integration</h4>
-                    <p>SeaORM integration with connection pooling.</p>
+                    <p>SeaORM integration with <code>schema!</code> macro and connection pooling.</p>
                     <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.4</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Request Validation</h4>
-                    <p>
-                        <code>Validated&lt;T&gt;</code> extractor with validator
-                        crate.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.4</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>JWT Authentication</h4>
-                    <p>Built-in JWT support with protected routes.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.3</span>
+                        <span class="card-tag">v0.4.0</span>
                     </div>
                 </div>
                 <div class="roadmap-card">
                     <h4>OpenAPI Generation</h4>
-                    <p>Automatic OpenAPI spec from route definitions.</p>
+                    <p>Automatic OpenAPI spec from route definitions with breaking change detection.</p>
                     <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.3</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Rapina CLI</h4>
-                    <p>Project scaffolding and development tools.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.1.0-alpha.2</span>
+                        <span class="card-tag">v0.2.0</span>
                     </div>
                 </div>
             </div>
