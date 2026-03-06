@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use http::{Request, Response, StatusCode};
+use http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 use hyper::body::Incoming;
 
 use crate::extract::PathParams;
 use crate::introspection::RouteInfo;
-use crate::response::{BoxBody, IntoResponse};
+use crate::response::{APPLICATION_JSON, BoxBody, IntoResponse};
 use crate::state::AppState;
 
 /// Registry of route information stored in application state.
@@ -51,7 +51,7 @@ pub async fn list_routes(
             let json = serde_json::to_vec(registry.routes()).unwrap_or_default();
             Response::builder()
                 .status(StatusCode::OK)
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE, APPLICATION_JSON)
                 .body(http_body_util::Full::new(bytes::Bytes::from(json)))
                 .unwrap()
         }

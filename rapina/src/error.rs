@@ -28,8 +28,9 @@
 use serde::Serialize;
 use std::fmt;
 
-use crate::response::{BoxBody, IntoResponse};
+use crate::response::{APPLICATION_JSON, BoxBody, IntoResponse};
 use bytes::Bytes;
+use http::header::CONTENT_TYPE;
 use http_body_util::Full;
 
 /// The JSON structure returned for error responses.
@@ -286,7 +287,7 @@ impl IntoResponse for Error {
 
         http::Response::builder()
             .status(self.status)
-            .header("content-type", "application/json")
+            .header(CONTENT_TYPE, APPLICATION_JSON)
             .body(Full::new(Bytes::from(body)))
             .unwrap()
     }
