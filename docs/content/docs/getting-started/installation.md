@@ -5,13 +5,61 @@ weight = 1
 date = 2025-02-13
 +++
 
+## Start Here
+
+Four commands from zero to running API:
+
+```bash
+cargo install rapina-cli
+rapina new my-app
+cd my-app
+rapina dev
+```
+
+Your API is now running at `http://127.0.0.1:3000`.
+
+## Try It
+
+Hit the default endpoints:
+
+```bash
+curl http://127.0.0.1:3000/
+```
+
+```json
+{"message": "Hello from Rapina!"}
+```
+
+```bash
+curl http://127.0.0.1:3000/health
+```
+
+```json
+{"status": "ok"}
+```
+
+Check what routes are available:
+
+```bash
+rapina routes
+```
+
+```
+GET    /         [public]
+GET    /health   [public]
+```
+
+## What the CLI Created
+
+The `rapina new` command scaffolded a complete project for you. See [Project Structure](@/docs/getting-started/project-structure.md) for a full walkthrough of what each file does.
+
 ## Prerequisites
 
-Rapina is a Rust framework, so you'll need Rust installed on your system. If you're new to Rust, don't worry — installation takes about a minute.
+Rapina is a Rust framework. If you don't have Rust installed yet, it takes about a minute.
 
 ### Installing Rust
 
-The recommended way to install Rust is through [rustup](https://rustup.rs/), the official Rust toolchain installer.
+Install through [rustup](https://rustup.rs/), the official Rust toolchain installer:
 
 **macOS / Linux:**
 
@@ -27,17 +75,13 @@ source $HOME/.cargo/env
 
 **Windows:**
 
-Download and run [rustup-init.exe](https://win.rustup.rs/x86_64) from the official website. Follow the on-screen instructions.
-
-Alternatively, if you use [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/):
+Download and run [rustup-init.exe](https://win.rustup.rs/x86_64) from the official website, or use [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/):
 
 ```powershell
 winget install Rustlang.Rustup
 ```
 
 ### Verify Installation
-
-Confirm Rust is installed correctly:
 
 ```bash
 rustc --version
@@ -50,7 +94,7 @@ You should see version numbers for both. Rapina requires Rust 1.75 or later.
 
 **macOS:** Works out of the box. Xcode Command Line Tools will be installed automatically if needed.
 
-**Linux:** You may need to install build essentials. On Ubuntu/Debian:
+**Linux:** You may need build essentials. On Ubuntu/Debian:
 
 ```bash
 sudo apt install build-essential pkg-config libssl-dev
@@ -62,65 +106,41 @@ On Fedora:
 sudo dnf install gcc pkg-config openssl-devel
 ```
 
-**Windows:** Visual Studio Build Tools are required. The rustup installer will guide you through this. Make sure to select "Desktop development with C++" workload.
-
-## Using the CLI (Recommended)
-
-The fastest way to get started is with the Rapina CLI:
-
-```bash
-# Install the CLI
-cargo install rapina-cli
-
-# Create a new project
-rapina new my-app
-cd my-app
-
-# Start the development server
-rapina dev
-```
-
-Your API is now running at `http://127.0.0.1:3000`.
+**Windows:** Visual Studio Build Tools are required. The rustup installer will guide you through this — select the "Desktop development with C++" workload.
 
 ## Manual Setup
 
-Add Rapina to your `Cargo.toml`:
+If you prefer not to use the CLI, add Rapina to an existing project:
 
 ```toml
 [dependencies]
-rapina = "0.6.0"
+rapina = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
 
-## Your First API
-
-Create a simple API with a few endpoints:
+Then write your entry point:
 
 ```rust
 use rapina::prelude::*;
 
-#[get("/")]
-async fn hello() -> &'static str {
-    "Hello, Rapina!"
+#[derive(Serialize, JsonSchema)]
+struct MessageResponse {
+    message: String,
 }
 
-#[get("/users/:id")]
-async fn get_user(id: Path<u64>) -> Result<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({
-        "id": id.into_inner(),
-        "name": "Alice"
-    })))
+#[public]
+#[get("/")]
+async fn hello() -> Json<MessageResponse> {
+    Json(MessageResponse {
+        message: "Hello from Rapina!".into(),
+    })
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let router = Router::new()
-        .get("/", hello)
-        .get("/users/:id", get_user);
-
     Rapina::new()
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }

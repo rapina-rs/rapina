@@ -45,6 +45,10 @@ url = "https://docs.rs/rapina"
 external = true
 
 [[extra.nav]]
+name = "Tutorial"
+url = "/tutorial/01-your-first-route/"
+
+[[extra.nav]]
 name = "Docs"
 url = "/docs/introduction/what-is-rapina/"
 

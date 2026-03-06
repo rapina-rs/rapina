@@ -3,207 +3,260 @@
 {% block title %}Rapina - The Opinionated Rust Web Framework{% endblock %}
 
 {% block content %}
+<!-- ===== HERO ===== -->
 <section class="hero">
+    <div class="hero-bg"></div>
     <div class="hero-container">
-        <h1>The opinionated Rust web framework</h1>
-        <p class="hero-tagline">Type-safe APIs with predictable patterns. Protected by default.<br>Built for developers who ship.</p>
-        <div class="hero-buttons">
-            <a href="{{ get_url(path='docs/getting-started/') }}" class="btn btn-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                Get Started
-            </a>
-            <a href="{{ get_url(path='docs/introduction/what-is-rapina/') }}" class="btn btn-secondary">
-                Explore Docs
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-            </a>
-        </div>
-        <div class="hero-demo">
-            <img src="{{ get_url(path='images/rapina-demo.gif') }}" alt="Rapina CLI Demo" class="hero-demo-gif">
+        <p class="hero-eyebrow">Rust web framework for APIs</p>
+        <h1 class="hero-title">So simple it feels like <span class="gradient-text">cheating.</span></h1>
+        <p class="hero-tagline">Auth, validation, error handling, OpenAPI &mdash; all built in with sane defaults. You write handlers, Rapina handles the rest.</p>
+        <div class="hero-actions">
+            <a href="{{ get_url(path='docs/getting-started/') }}" class="btn btn-hero-primary">Get Started</a>
+            <div class="install-pill">
+                <code>cargo install rapina-cli</code>
+                <button class="install-copy" onclick="copyInstall(this)" aria-label="Copy install command">Copy</button>
+            </div>
         </div>
     </div>
-    <div class="hero-showcase">
-        <div class="hero-features">
-            <div class="hero-feature-card">
-                <h4>Type-Safe</h4>
-                <p>If it compiles, it works. Extractors, errors, routes — all checked at compile time.</p>
+    <div class="hero-code-preview reveal">
+        <div class="code-block">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <pre><code class="language-rust">use rapina::prelude::*;
+
+#[public]
+#[post("/login")]
+async fn login(
+    body: Validated&lt;Json&lt;LoginRequest&gt;&gt;,
+) -&gt; Result&lt;Json&lt;TokenResponse&gt;&gt; {
+    let user = authenticate(body.into_inner()).await?;
+    Ok(Json(issue_token(&amp;user)?))
+}
+
+// Protected by default — no #[public] means JWT required
+#[get("/users/:id")]
+async fn get_user(
+    id: Path&lt;UserId&gt;,
+    db: State&lt;Database&gt;,
+) -&gt; Result&lt;Json&lt;UserResponse&gt;&gt; {
+    let user = db.find_by_id(*id).await?;
+    Ok(Json(user.into()))
+}</code></pre>
+        </div>
+    </div>
+</section>
+
+<!-- ===== PRINCIPLES ===== -->
+<section class="principles">
+    <div class="principles-container">
+        <div class="principle-card reveal">
+            <div class="principle-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
-            <div class="hero-feature-card">
-                <h4>Protected by Default</h4>
-                <p>All routes require auth unless marked <code>#[public]</code>. Security isn't optional.</p>
-            </div>
-            <div class="hero-feature-card">
-                <h4>Convention over Config</h4>
-                <p>90% of apps need 10% of decisions. We made them for you.</p>
-            </div>
-            <div class="hero-feature-card">
-                <h4>AI-Friendly</h4>
-                <p>Predictable patterns that LLMs understand. Better completions, safer refactoring.</p>
+            <div class="principle-content">
+                <h3>Secure Unless You Say Otherwise</h3>
+                <p>Routes require auth by default. Want a public endpoint? Add <code>#[public]</code>. That's it. You opt out of security, never opt in.</p>
             </div>
         </div>
-        <div class="hero-code">
-            <pre><code class="rust">use rapina::prelude::*;
+        <div class="principle-card reveal">
+            <div class="principle-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <div class="principle-content">
+                <h3>Decisions Already Made</h3>
+                <p>Error format, validation responses, project structure, trace IDs &mdash; all decided for you. Override when you need to. You won't need to often.</p>
+            </div>
+        </div>
+        <div class="principle-card reveal">
+            <div class="principle-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4c0 2 1 3 2 4l-2 2h8l-2-2c1-1 2-2 2-4a4 4 0 0 0-4-4z"/><path d="M8 16v2a4 4 0 0 0 8 0v-2"/></svg>
+            </div>
+            <div class="principle-content">
+                <h3>LLMs Get It</h3>
+                <p>Predictable conventions mean AI tools generate correct Rapina code on the first try. Consistent patterns, reliable completions.</p>
+            </div>
+        </div>
+    </div>
+</section>
 
-#[get("/users")]
-async fn list_users(
-    db: State&lt;Database&gt;,
-    query: Query&lt;Pagination&gt;,
-) -> Result&lt;Json&lt;Vec&lt;User&gt;&gt;&gt; {
-    let users = db.find_all(&amp;query).await?;
-    Ok(Json(users))
+<!-- ===== CODE SHOWCASE ===== -->
+<section class="showcase">
+    <div class="showcase-section reveal">
+        <div class="showcase-container">
+            <div class="showcase-text">
+                <h2 class="gradient-text-subtle">Just Add #[public]</h2>
+                <p>Every route is authenticated. Write your handler, access the user's claims directly from the function signature. Need a public endpoint? One attribute. No middleware chains, no guard configs, no forgetting to protect a route.</p>
+            </div>
+            <div class="showcase-code code-showcase">
+                <pre><code class="language-rust">#[get("/me")]
+async fn me(claims: Claims) -&gt; Result&lt;Json&lt;User&gt;&gt; {
+    // claims.sub is the authenticated user
+    Ok(Json(find_user(claims.sub).await?))
 }
 
 #[public]
 #[get("/health")]
-async fn health() -> &amp;'static str {
+async fn health() -&gt; &amp;'static str {
     "ok"
 }</code></pre>
-        </div>
-    </div>
-</section>
-
-<section class="content-section">
-    <div class="content-container">
-        <div class="content-text">
-            <h2>Built for Developers, Not Committees</h2>
-            <h3>An API framework, not a platform</h3>
-            <p>
-                Rapina is an open-source challenger to frameworks that try to do everything.
-                <span class="text-highlight">A web framework should be fast, predictable, and get out of your way.</span>
-                We're bringing sanity back to Rust web development — strong opinions, minimal ceremony, maximum productivity.
-            </p>
-        </div>
-        <div class="content-visual">
-            <div class="visual-card">
-                <pre><code class="shell"># Install the CLI
-cargo install rapina-cli
-
-# Create a new project
-rapina new my-app
-cd my-app
-
-# Start development server
-rapina dev
-
-# Check your setup
-rapina doctor</code></pre>
             </div>
         </div>
     </div>
-</section>
 
-<section class="content-section reverse">
-    <div class="content-container">
-        <div class="content-text">
-            <h2>Contracts Over Chaos</h2>
-            <h3>OpenAPI generation that actually works</h3>
-            <p>
-                <span class="text-highlight">Every handler generates OpenAPI specs automatically.</span>
-                Your types become your documentation. Breaking changes are detected before they ship.
-                Clients get generated SDKs. No more "the docs say one thing but the API does another."
-            </p>
-        </div>
-        <div class="content-visual">
-            <div class="visual-card">
-                <pre><code class="rust">use rapina::prelude::*;
-
-#[derive(Deserialize, Validate, JsonSchema)]
-pub struct CreateUser {
+    <div class="showcase-section showcase-reverse reveal">
+        <div class="showcase-container">
+            <div class="showcase-text">
+                <h2 class="gradient-text-subtle">Validate, Don't Pray</h2>
+                <p>Derive your validation rules on the struct. Rapina rejects bad requests with a structured 422 before your handler even runs. Every error comes with a <code>trace_id</code> so you can find it in production in seconds.</p>
+            </div>
+            <div class="showcase-code code-showcase">
+                <pre><code class="language-rust">#[derive(Deserialize, Validate, JsonSchema)]
+struct CreateUser {
     #[validate(email)]
-    pub email: String,
+    email: String,
     #[validate(length(min = 8))]
-    pub password: String,
+    password: String,
 }
 
 #[post("/users")]
-async fn create_user(
+async fn create(
     body: Validated&lt;Json&lt;CreateUser&gt;&gt;,
-) -> Result&lt;Json&lt;User&gt;&gt; {
-    let user = save_user(body.into_inner()).await?;
-    Ok(Json(user))
+) -&gt; Result&lt;Json&lt;User&gt;&gt; {
+    // body is already validated here
+    Ok(Json(save(body.into_inner()).await?))
 }</code></pre>
             </div>
         </div>
     </div>
-</section>
 
-<section class="content-section">
-    <div class="content-container">
-        <div class="content-text">
-            <h2>Errors That Make Sense</h2>
-            <h3>Standardized responses with trace IDs</h3>
-            <p>
-                Every error response follows the same structure. Every request gets a trace ID.
-                <span class="text-highlight">When something breaks in production, you know exactly where to look.</span>
-                No more "500 Internal Server Error" with no context. Your ops team will thank you.
-            </p>
+    <div class="showcase-section reveal">
+        <div class="showcase-container">
+            <div class="showcase-text">
+                <h2 class="gradient-text-subtle">One Command Away</h2>
+                <p>Scaffold, run, diagnose, inspect. The CLI does the boring parts so you write code from minute one. <code>rapina doctor</code> catches misconfigurations before they become production incidents.</p>
+            </div>
+            <div class="showcase-code code-showcase">
+                <pre><code class="language-shell">$ rapina new my-app
+  Done! cd my-app &amp;&amp; rapina dev
+
+$ rapina dev
+  Listening on http://localhost:3000
+
+$ rapina doctor
+  [ok] Database connection
+  [ok] JWT secret configured
+  [ok] Migrations up to date
+
+$ rapina routes
+  GET  /v1/users      list_users
+  POST /v1/users      create_user
+  GET  /health        health (public)</code></pre>
+            </div>
         </div>
-        <div class="content-visual">
-            <div class="visual-card">
-                <pre><code class="json">{
+    </div>
+
+    <div class="showcase-section showcase-reverse reveal">
+        <div class="showcase-container">
+            <div class="showcase-text">
+                <h2 class="gradient-text-subtle">Errors You Can Actually Debug</h2>
+                <p>Every response follows one envelope. Every request gets a <code>trace_id</code>. When your on-call gets paged at 3am, they grep one ID and find the exact request. No more guessing.</p>
+            </div>
+            <div class="showcase-code code-showcase">
+                <pre><code class="language-json">{
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "email: must be a valid email"
+    "message": "Request validation failed",
+    "details": [
+      { "field": "email", "message": "invalid email" },
+      { "field": "password", "message": "min 8 chars" }
+    ]
   },
-  "trace_id": "550e8400-e29b-41d4-a716-446655440000"
+  "trace_id": "550e8400-e29b-41d4-a716"
 }</code></pre>
             </div>
         </div>
     </div>
 </section>
 
-<section class="content-section reverse">
-    <div class="content-container">
-        <div class="content-text">
-            <h2>Batteries Included</h2>
-            <h3>Everything you need, nothing you don't</h3>
-            <p>
-                JWT authentication, request validation, rate limiting, compression, cookie handling —
-                <span class="text-highlight">all built-in and configured with sane defaults.</span>
-                When you need to customize, escape hatches exist. But most of the time, you won't need them.
-            </p>
+<!-- ===== BATTERIES INCLUDED ===== -->
+<section class="batteries">
+    <div class="batteries-container">
+        <h2 class="reveal">Batteries Included</h2>
+        <p class="batteries-subtitle reveal">Everything you need to ship an API. Nothing you don't.</p>
+        <div class="batteries-grid">
+            <a href="{{ get_url(path='docs/core-concepts/authentication/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>JWT Auth</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/validation/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span>Validation</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/rate-limiting/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Rate Limiting</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <span>Compression</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/openapi/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>OpenAPI</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span>Cookies</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+                <span>WebSockets</span>
+            </a>
+            <a href="{{ get_url(path='docs/core-concepts/caching/') }}" class="battery-card reveal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+                <span>Caching</span>
+            </a>
         </div>
-        <div class="content-visual">
-            <div class="visual-card features-grid">
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    <span>JWT Auth</span>
-                </div>
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    <span>Validation</span>
-                </div>
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span>Rate Limiting</span>
-                </div>
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                    <span>Compression</span>
-                </div>
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span>OpenAPI</span>
-                </div>
-                <div class="feature-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    <span>Cookies</span>
-                </div>
+    </div>
+</section>
+
+<!-- ===== WHY RUST ===== -->
+<section class="why-rust">
+    <div class="why-rust-container">
+        <p class="why-rust-eyebrow reveal">Built on the most admired language in the world</p>
+        <h2 class="reveal">Rust's performance. <span class="gradient-text">None of the complexity.</span></h2>
+        <p class="why-rust-subtitle reveal">Rapina gives you what Rust is known for &mdash; without making you fight the language to build a web app.</p>
+        <div class="why-rust-grid">
+            <div class="why-rust-card reveal">
+                <div class="why-rust-stat">Zero-cost</div>
+                <h3>Abstractions</h3>
+                <p>Extractors, middleware, validation &mdash; all resolved at compile time. No runtime reflection, no hidden allocations.</p>
+            </div>
+            <div class="why-rust-card reveal">
+                <div class="why-rust-stat">Memory safe</div>
+                <h3>By default</h3>
+                <p>No garbage collector, no null pointer exceptions, no data races. The compiler catches what other languages find in production.</p>
+            </div>
+            <div class="why-rust-card reveal">
+                <div class="why-rust-stat">Tiny</div>
+                <h3>Footprint</h3>
+                <p>Single binary, no runtime dependencies. Deploy a 10MB container that starts in milliseconds and handles thousands of concurrent connections.</p>
             </div>
         </div>
     </div>
 </section>
 
+<!-- ===== FAQ ===== -->
 <section class="faq-section">
     <div class="faq-container">
-        <h2>Frequently Asked Questions</h2>
-        <div class="faq-list">
+        <h2 class="reveal">Frequently Asked Questions</h2>
+        <div class="faq-list reveal">
             <div class="faq-item">
                 <button class="faq-question" onclick="toggleFaq(this)">
                     <span>How does Rapina compare to Axum or Actix?</span>
                     <span class="faq-icon">+</span>
                 </button>
                 <div class="faq-answer">
-                    <p>Rapina is built directly on Hyper for maximum control and performance. Unlike Axum or Actix, Rapina is opinionated by design: authentication, error handling, validation, and project structure are built-in with sane defaults. Think of it as Rails-style conventions for Rust APIs.</p>
+                    <p>Axum and Actix are great low-level building blocks. Rapina is a framework. Auth, validation, error envelopes, OpenAPI, project structure &mdash; you get all of that out of the box instead of wiring it together yourself for every project. Built directly on Hyper for the same performance, with opinions that let you ship instead of configure.</p>
                 </div>
             </div>
             <div class="faq-item">
@@ -212,7 +265,7 @@ async fn create_user(
                     <span class="faq-icon">+</span>
                 </button>
                 <div class="faq-answer">
-                    <p>Rapina is currently in alpha. We're committed to minimizing breaking changes, but until 1.0, major architectural changes may happen if necessary for long-term stability. Check the changelog and roadmap for current status.</p>
+                    <p>The core is stable and well-tested. We're actively shipping features and growing the contributor base toward 1.0. Breaking changes are taken seriously and communicated clearly &mdash; check the <a href="{{ get_url(path='changelog/') }}">changelog</a> for current status.</p>
                 </div>
             </div>
             <div class="faq-item">
@@ -221,18 +274,83 @@ async fn create_user(
                     <span class="faq-icon">+</span>
                 </button>
                 <div class="faq-answer">
-                    <p>Rapina is opinionated, not restrictive. Every default can be overridden. Need custom error formats? Custom auth? Different validation rules? Escape hatches exist for everything. The opinions are there to help you move fast when you don't need customization.</p>
+                    <p>Everything is overridable. Custom error formats, custom auth providers, different validation rules &mdash; escape hatches exist for all of it. The defaults are there so you move fast when you don't need customization, which is most of the time.</p>
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-question" onclick="toggleFaq(this)">
-                    <span>How do I get help?</span>
+                    <span>Do I need to be a Rust expert?</span>
                     <span class="faq-icon">+</span>
                 </button>
                 <div class="faq-answer">
-                    <p>Join our <a href="{{ config.extra.discord }}" target="_blank">Discord server</a> for community support, or open an issue on <a href="{{ config.extra.github }}" target="_blank">GitHub</a>. We also have comprehensive documentation covering all features and common patterns.</p>
+                    <p>No. If you can write a function that takes arguments and returns a value, you can build an API with Rapina. The framework handles the Rust-specific complexity &mdash; lifetimes, async wiring, type gymnastics &mdash; so you focus on your domain logic.</p>
                 </div>
             </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== CTA BANNER ===== -->
+<section class="cta-banner">
+    <div class="cta-card reveal">
+        <div class="cta-card-circles">
+            <div></div><div></div><div></div>
+        </div>
+        <div class="cta-card-brand">
+            <img src="{{ get_url(path='images/rapina-icon.png') }}" alt="Rapina" class="cta-logo">
+            <div>
+                <h3 class="cta-card-name">Rapina</h3>
+                <p class="cta-card-tagline">The framework that makes you want to ship every day</p>
+            </div>
+        </div>
+        <div class="cta-card-stats">
+            <div class="cta-stat">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <div>
+                    <span class="cta-stat-label">Auth</span>
+                    <span class="cta-stat-value">Protected by default</span>
+                </div>
+            </div>
+            <div class="cta-stat">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <div>
+                    <span class="cta-stat-label">Validation</span>
+                    <span class="cta-stat-value">Type-safe & structured</span>
+                </div>
+            </div>
+            <div class="cta-stat">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <div>
+                    <span class="cta-stat-label">OpenAPI</span>
+                    <span class="cta-stat-value">Auto-generated</span>
+                </div>
+            </div>
+            <div class="cta-stat">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <div>
+                    <span class="cta-stat-label">Deploy</span>
+                    <span class="cta-stat-value">Single binary</span>
+                </div>
+            </div>
+        </div>
+        <div class="cta-card-action">
+            <a href="{{ get_url(path='docs/getting-started/') }}" class="btn btn-hero-primary">
+                Get Started
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+        </div>
+        <div class="cta-card-links">
+            <a href="{{ config.extra.github }}" target="_blank" rel="noopener">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
+            <a href="{{ config.extra.discord }}" target="_blank" rel="noopener">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+                Discord
+            </a>
+            <a href="{{ config.extra.crates_io }}" target="_blank" rel="noopener">
+                crates.io
+            </a>
         </div>
     </div>
 </section>
@@ -241,14 +359,25 @@ async fn create_user(
 function toggleFaq(button) {
     const item = button.parentElement;
     const isOpen = item.classList.contains('open');
-
-    // Close all other items
     document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-
-    // Toggle current item
-    if (!isOpen) {
-        item.classList.add('open');
-    }
+    if (!isOpen) item.classList.add('open');
 }
+
+function copyInstall(btn) {
+    navigator.clipboard.writeText('cargo install rapina-cli');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+}
+
+// Scroll-triggered reveal animations
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 </script>
 {% endblock %}
