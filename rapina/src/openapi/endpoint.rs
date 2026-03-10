@@ -71,10 +71,13 @@ pub async fn scalar_docs(
 <html>
   <head>
     <title>API Reference Rapina</title>
+
     <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1" />
+       <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://userapina.com/images/rapina-icon.png" />
   </head>
   <body>
     <!-- Need a theme? See https://github.com/scalar/scalar/?tab=readme-ov-file#themes -->
@@ -150,7 +153,10 @@ mod tests {
     #[tokio::test]
     async fn test_scalar_docs_returns_200_with_html_content_type() {
         let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
-        let app = Rapina::new().router(router).openapi("openapi-test", "1.0").with_scalar("/docs");
+        let app = Rapina::new()
+            .router(router)
+            .openapi("openapi-test", "1.0")
+            .with_scalar("/docs");
         let client = TestClient::new(app).await;
         let response = client.get("/docs").send().await;
 
