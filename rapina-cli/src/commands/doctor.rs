@@ -148,10 +148,7 @@ fn check_duplicate_routes(routes: &Value, result: &mut DiagnosticResult) {
             .unwrap_or("?")
             .to_string();
 
-        by_key
-            .entry((method, path))
-            .or_default()
-            .push(handler_name);
+        by_key.entry((method, path)).or_default().push(handler_name);
     }
 
     for ((method, path), handlers) in &by_key {
@@ -166,9 +163,7 @@ fn check_duplicate_routes(routes: &Value, result: &mut DiagnosticResult) {
     }
 
     if !by_key.is_empty() && by_key.values().all(|v| v.len() <= 1) {
-        result
-            .passed
-            .push("No duplicate handler paths".to_string());
+        result.passed.push("No duplicate handler paths".to_string());
     }
 }
 
