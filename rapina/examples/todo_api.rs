@@ -223,7 +223,9 @@ async fn main() -> std::io::Result<()> {
     println!("  Server: http://{}", addr);
     println!();
     println!("  Public:");
-    println!("    POST /login  — get JWT");
+    println!("    POST /login                 — get JWT");
+    println!("    GET  /__rapina/openapi.json — OpenAPI spec");
+    println!("    GET  /docs                  — Scalar documentation");
     println!("      Body: {{\"username\":\"admin\",\"password\":\"password\"}}");
     println!();
     println!("  Protected (Authorization: Bearer <token>):");
@@ -238,6 +240,8 @@ async fn main() -> std::io::Result<()> {
     println!();
 
     Rapina::new()
+        .openapi("Todo API", "1.0.0")
+        .with_scalar("/docs")
         .with_auth(auth_config.clone())
         .state(auth_config)
         .state(todo_store)
