@@ -70,7 +70,7 @@ pub async fn scalar_docs(
 <!doctype html>
 <html>
   <head>
-    <title>API Reference</title>
+    <title>API Reference Rapina</title>
     <meta charset="utf-8" />
     <meta
       name="viewport"
