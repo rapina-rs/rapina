@@ -115,18 +115,18 @@ impl TodoStore {
 // DTOs
 // =============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct LoginRequest {
     username: String,
     password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct CreateTodoRequest {
     title: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct UpdateTodoRequest {
     title: Option<String>,
     completed: Option<bool>,
