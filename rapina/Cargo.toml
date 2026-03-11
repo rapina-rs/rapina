@@ -83,8 +83,14 @@ tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+matchit = "0.8"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
+
+[[bench]]
+name = "router"
+harness = false
 
 # Windows specific import for graceful shutdown tests
 [target.'cfg(windows)'.dev-dependencies]

@@ -317,6 +317,45 @@ impl Router {
         self
     }
 
+    /// Resolves a route without calling the handler.
+    ///
+    /// Returns the matched route index and extracted path parameters,
+    /// or `None` if no route matches. This is the pure routing decision
+    /// isolated from the async handler call and HTTP plumbing.
+    #[doc(hidden)]
+    pub fn resolve(&self, method: &Method, path: &str) -> Option<(usize, PathParams)> {
+        if let Some(ref static_map) = self.static_map {
+            if let Some(idx) = static_map.lookup(method, path) {
+                return Some((idx, PathParams::new()));
+            }
+        }
+        if let Some(ref trie) = self.trie {
+            let mut params = PathParams::new();
+            if let Some(idx) = trie.lookup(method, path, &mut params) {
+                return Some((idx, params));
+            }
+        }
+        None
+    }
+
+    /// Resolves a route using the old linear scan (pre-trie) algorithm.
+    ///
+    /// Iterates over all registered routes checking each pattern against the
+    /// request path. This is the O(n) baseline that the static map and trie
+    /// replaced. Exposed only for benchmark comparison.
+    #[doc(hidden)]
+    pub fn resolve_linear(&self, method: &Method, path: &str) -> Option<(usize, PathParams)> {
+        for (idx, (route_method, route)) in self.routes.iter().enumerate() {
+            if *route_method != *method {
+                continue;
+            }
+            if let Some(params) = crate::extract::extract_path_params(&route.pattern, path) {
+                return Some((idx, params));
+            }
+        }
+        None
+    }
+
     /// Handles an incoming request by matching it to a route.
     pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
         // Layer 1: O(1) static map — no allocation, no cloning.
@@ -337,6 +376,16 @@ impl Router {
         }
 
         StatusCode::NOT_FOUND.into_response()
+    }
+
+    /// Sorts routes and builds lookup structures for benchmarking.
+    ///
+    /// Combines `sort_routes()` and `freeze()` into a single call accessible
+    /// from benchmarks. Not part of the public API.
+    #[doc(hidden)]
+    pub fn prepare_bench(&mut self) {
+        self.sort_routes();
+        self.freeze();
     }
 
     /// Sorts routes so static segments come before parameterized ones.
