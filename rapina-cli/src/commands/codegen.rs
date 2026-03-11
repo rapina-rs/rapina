@@ -7,6 +7,7 @@ pub(crate) struct FieldInfo {
     pub rust_type: String,
     pub schema_type: String,
     pub column_method: String,
+    pub nullable: bool,
 }
 
 pub(crate) fn to_pascal_case(s: &str) -> String {
@@ -26,6 +27,24 @@ pub(crate) fn to_pascal_case(s: &str) -> String {
 }
 
 pub(crate) fn pluralize(s: &str) -> String {
+    let cases = [
+        ("ss", "sses"), //address -> addresses
+        ("sh", "shes"), //bush -> bushes
+        ("ch", "ches"), //watch -> watches
+        ("x", "xes"),   //box -> boxes
+        ("z", "zes"),   //gas -> gases
+        ("s", "ses"),   //bus -> buses
+        ("ay", "ays"),  //day -> days
+        ("uy", "uys"),  //buy -> buys
+        ("ey", "eys"),  //key -> keys
+        ("oy", "oys"),  //boy -> boys
+        ("y", "ies"),   //category -> categories
+    ];
+    for (suffix, replacement) in cases {
+        if let Some(stem) = s.strip_suffix(suffix) {
+            return format!("{}{}", stem, replacement);
+        }
+    }
     format!("{}s", s)
 }
 
@@ -178,7 +197,13 @@ pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json:
 pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
     let create_fields: Vec<String> = fields
         .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.rust_type))
+        .map(|f| {
+            if f.nullable {
+                format!("    pub {}: Option<{}>,", f.name, f.rust_type)
+            } else {
+                format!("    pub {}: {},", f.name, f.rust_type)
+            }
+        })
         .collect();
 
     let update_fields: Vec<String> = fields
@@ -520,12 +545,29 @@ mod tests {
     }
 
     #[test]
+    fn test_pluralize() {
+        assert_eq!(pluralize("user"), "users");
+        assert_eq!(pluralize("post"), "posts");
+        assert_eq!(pluralize("category"), "categories");
+        assert_eq!(pluralize("address"), "addresses");
+        assert_eq!(pluralize("box"), "boxes");
+        assert_eq!(pluralize("buzz"), "buzzes");
+        assert_eq!(pluralize("boss"), "bosses");
+        assert_eq!(pluralize("status"), "statuses"); // naive, acceptable
+        assert_eq!(pluralize("monkey"), "monkeys");
+        assert_eq!(pluralize("boy"), "boys");
+        assert_eq!(pluralize("day"), "days");
+        assert_eq!(pluralize("guy"), "guys")
+    }
+
+    #[test]
     fn test_generate_schema_block_with_timestamps() {
         let fields = vec![FieldInfo {
             name: "title".to_string(),
             rust_type: "String".to_string(),
             schema_type: "String".to_string(),
             column_method: String::new(),
+            nullable: false,
         }];
 
         let block = generate_schema_block("Post", &fields, None, None);
@@ -549,12 +591,14 @@ mod tests {
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "role_id".to_string(),
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
         ];
 

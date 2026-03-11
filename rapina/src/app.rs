@@ -542,6 +542,9 @@ impl Rapina {
         // This prevents `/users/:id` from shadowing `/users/current`.
         self.router.sort_routes();
 
+        // Build the static route map for O(1) lookup of parameterless routes.
+        self.router.freeze();
+
         self
     }
 

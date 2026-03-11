@@ -162,6 +162,7 @@ fn normalized_to_field_info(
         rust_type: rust_type.to_string(),
         schema_type: schema_type.to_string(),
         column_method: format!("{}{}", column_base, null_suffix),
+        nullable: is_nullable,
     })
 }
 
