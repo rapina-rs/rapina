@@ -26,6 +26,24 @@ pub(crate) fn to_pascal_case(s: &str) -> String {
 }
 
 pub(crate) fn pluralize(s: &str) -> String {
+    let cases = [
+        ("ss", "sses"), //address -> addresses
+        ("sh", "shes"), //bush -> bushes
+        ("ch", "ches"), //watch -> watches
+        ("x", "xes"),   //box -> boxes
+        ("z", "zes"),   //gas -> gases
+        ("s", "ses"),   //bus -> buses
+        ("ay", "ays"),  //day -> days
+        ("uy", "uys"),  //buy -> buys
+        ("ey", "eys"),  //key -> keys
+        ("oy", "oys"),  //boy -> boys
+        ("y", "ies"),   //category -> categories
+    ];
+    for (suffix, replacement) in cases {
+        if let Some(stem) = s.strip_suffix(suffix) {
+            return format!("{}{}", stem, replacement);
+        }
+    }
     format!("{}s", s)
 }
 
@@ -517,6 +535,22 @@ mod tests {
         assert_eq!(singularize("buzzes"), "buzz");
         assert_eq!(singularize("boss"), "boss");
         assert_eq!(singularize("status"), "statu"); // naive, acceptable
+    }
+
+    #[test]
+    fn test_pluralize() {
+        assert_eq!(pluralize("user"), "users");
+        assert_eq!(pluralize("post"), "posts");
+        assert_eq!(pluralize("category"), "categories");
+        assert_eq!(pluralize("address"), "addresses");
+        assert_eq!(pluralize("box"), "boxes");
+        assert_eq!(pluralize("buzz"), "buzzes");
+        assert_eq!(pluralize("boss"), "bosses");
+        assert_eq!(pluralize("status"), "statuses"); // naive, acceptable
+        assert_eq!(pluralize("monkey"), "monkeys");
+        assert_eq!(pluralize("boy"), "boys");
+        assert_eq!(pluralize("day"), "days");
+        assert_eq!(pluralize("guy"), "guys")
     }
 
     #[test]
