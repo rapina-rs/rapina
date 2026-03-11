@@ -334,3 +334,43 @@ async fn test_param_at_different_positions() {
     let response = client.get("/api/v2/users").send().await;
     assert_eq!(response.text(), "version param");
 }
+
+#[tokio::test]
+async fn test_static_map_and_dynamic_fallback() {
+    // Verifies that the two-layer dispatch (static map + linear scan)
+    // resolves both kinds of routes correctly after prepare().
+    let app = Rapina::new().with_introspection(false).router(
+        Router::new()
+            .route(http::Method::GET, "/health", |_, _, _| async { "ok" })
+            .route(http::Method::GET, "/users", |_, _, _| async { "list" })
+            .route(http::Method::POST, "/users", |_, _, _| async {
+                StatusCode::CREATED
+            })
+            .route(http::Method::GET, "/users/:id", |_, params, _| async move {
+                format!("user:{}", params.get("id").unwrap())
+            }),
+    );
+
+    let client = TestClient::new(app).await;
+
+    // Static routes — resolved via O(1) HashMap
+    assert_eq!(client.get("/health").send().await.text(), "ok");
+    assert_eq!(client.get("/users").send().await.text(), "list");
+    assert_eq!(
+        client.post("/users").send().await.status(),
+        StatusCode::CREATED
+    );
+
+    // Dynamic route — resolved via linear scan fallback
+    assert_eq!(client.get("/users/42").send().await.text(), "user:42");
+
+    // 404 — neither layer matches
+    assert_eq!(
+        client.get("/nope").send().await.status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        client.delete("/users").send().await.status(),
+        StatusCode::NOT_FOUND
+    );
+}

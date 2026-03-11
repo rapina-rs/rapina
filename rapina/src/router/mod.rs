@@ -3,6 +3,8 @@
 //! The [`Router`] type collects route definitions and matches incoming
 //! requests to the appropriate handlers.
 
+mod static_map;
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -31,8 +33,9 @@ pub(crate) struct Route {
 
 /// The HTTP router for matching requests to handlers.
 ///
-/// Routes are matched in the order they are added. Use path parameters
-/// with the `:param` syntax.
+/// Static routes (no `:param` segments) are resolved via O(1) HashMap
+/// lookup. Dynamic routes fall back to a linear scan sorted by
+/// specificity so `/users/current` always wins over `/users/:id`.
 ///
 /// # Examples
 ///
@@ -55,12 +58,16 @@ pub(crate) struct Route {
 /// ```
 pub struct Router {
     pub(crate) routes: Vec<(Method, Route)>,
+    static_map: Option<static_map::StaticMap>,
 }
 
 impl Router {
     /// Creates a new empty router.
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            static_map: None,
+        }
     }
 
     /// Adds a route with the given HTTP method, pattern, and handler name.
@@ -275,11 +282,25 @@ impl Router {
 
     /// Handles an incoming request by matching it to a route.
     pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
+        // Layer 1: O(1) static map — no allocation, no cloning.
+        if let Some(ref static_map) = self.static_map {
+            if let Some(idx) = static_map.lookup(req.method(), req.uri().path()) {
+                let route = &self.routes[idx].1;
+                return (route.handler)(req, PathParams::new(), state.clone()).await;
+            }
+        }
+
+        // Allocate only when we need the fallback path.
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
+        // Fallback: linear scan, skipping static routes already covered above.
         for (route_method, route) in &self.routes {
             if *route_method != method {
+                continue;
+            }
+
+            if self.static_map.is_some() && !is_dynamic(&route.pattern) {
                 continue;
             }
 
@@ -302,6 +323,14 @@ impl Router {
         });
     }
 
+    /// Builds the static route map for O(1) lookup of parameterless routes.
+    ///
+    /// Called by `prepare()` after `sort_routes()`. After this, the router
+    /// is frozen — no more routes can be added.
+    pub(crate) fn freeze(&mut self) {
+        self.static_map = Some(static_map::StaticMap::build(&self.routes));
+    }
+
     fn join_group_route_pattern(prefix: &str, route_path: &str) -> String {
         let prefix = prefix.trim_end_matches('/');
         let route_path = route_path.trim_start_matches('/');
@@ -314,6 +343,11 @@ impl Router {
             format!("{}/{}", prefix, route_path)
         }
     }
+}
+
+/// Returns `true` if the pattern contains any `:param` segments.
+pub(super) fn is_dynamic(pattern: &str) -> bool {
+    pattern.split('/').any(|seg| seg.starts_with(':'))
 }
 
 /// Returns a specificity key for a route pattern.
@@ -553,6 +587,15 @@ mod tests {
     #[should_panic(expected = "A group's prefix pattern must start with /")]
     fn test_invalid_router_group_prefix_pattern() {
         Router::new().group("api/users", Router::new());
+    }
+
+    #[test]
+    fn test_is_dynamic() {
+        assert!(!super::is_dynamic("/health"));
+        assert!(!super::is_dynamic("/api/users"));
+        assert!(!super::is_dynamic("/api/v1:latest"));
+        assert!(super::is_dynamic("/users/:id"));
+        assert!(super::is_dynamic("/users/:id/posts/:pid"));
     }
 
     #[test]
