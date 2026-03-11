@@ -1,6 +1,6 @@
 use rapina::prelude::*;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct CreateUser {
     name: String,
     email: String,

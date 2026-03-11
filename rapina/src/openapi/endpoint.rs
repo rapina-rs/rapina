@@ -57,6 +57,53 @@ pub async fn openapi_spec(
     }
 }
 
+pub async fn scalar_docs(
+    _req: Request<Incoming>,
+    _params: PathParams,
+    state: Arc<AppState>,
+) -> Response<BoxBody> {
+    let registry = state.get::<OpenApiRegistry>();
+
+    match registry {
+        Some(_) => {
+            let html = r#"
+<!doctype html>
+<html>
+  <head>
+    <title>API Reference Rapina</title>
+
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+       <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://userapina.com/images/rapina-icon.png" />
+  </head>
+  <body>
+    <!-- Need a theme? See https://github.com/scalar/scalar/?tab=readme-ov-file#themes -->
+    <script
+      id="api-reference"
+      data-url="/__rapina/openapi.json"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>
+            "#;
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                .body(http_body_util::Full::new(bytes::Bytes::from(html)))
+                .unwrap()
+        }
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(CONTENT_TYPE, APPLICATION_JSON)
+            .body(http_body_util::Full::new(bytes::Bytes::from(
+                r#"{"error": "OpenAPI spec not configured"}"#,
+            )))
+            .unwrap(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use http::{HeaderValue, Method, StatusCode};
@@ -101,5 +148,35 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert!(response.text().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_scalar_docs_returns_200_with_html_content_type() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new()
+            .router(router)
+            .openapi("openapi-test", "1.0")
+            .with_scalar("/docs");
+        let client = TestClient::new(app).await;
+        let response = client.get("/docs").send().await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/html; charset=utf-8"))
+        );
+        let text = response.text();
+        assert!(text.contains("data-url=\"/__rapina/openapi.json\""));
+        assert!(text.contains("@scalar/api-reference"));
+    }
+
+    #[tokio::test]
+    async fn test_scalar_docs_returns_404_when_openapi_is_disabled() {
+        let router = Router::new().route(Method::GET, "/hello", |_, _, _| async { "hello" });
+        let app = Rapina::new().router(router).with_scalar("/docs");
+        let client = TestClient::new(app).await;
+        let response = client.get("/docs").send().await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

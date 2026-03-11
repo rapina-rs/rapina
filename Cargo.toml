@@ -1,5 +1,5 @@
 [workspace]
 members = ["rapina", "rapina-macros", "rapina-cli"]
-exclude = ["rapina/examples/todo-app"]
+exclude = ["rapina/examples/todo-app", "rapina/examples/demo_api"]
 
 resolver = "2"

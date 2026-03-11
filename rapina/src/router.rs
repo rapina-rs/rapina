@@ -24,6 +24,7 @@ type HandlerFn =
 pub(crate) struct Route {
     pub(crate) pattern: String,
     pub(crate) handler_name: String,
+    pub(crate) request_schema: Option<serde_json::Value>,
     pub(crate) response_schema: Option<serde_json::Value>,
     pub(crate) error_responses: Vec<ErrorVariant>,
     handler: HandlerFn,
@@ -71,6 +72,7 @@ impl Router {
         method: Method,
         pattern: &str,
         handler_name: &str,
+        request_schema: Option<serde_json::Value>,
         response_schema: Option<serde_json::Value>,
         error_responses: Vec<ErrorVariant>,
         handler: F,
@@ -93,6 +95,7 @@ impl Router {
         let route = Route {
             pattern: pattern.to_string(),
             handler_name: handler_name.to_string(),
+            request_schema,
             response_schema,
             error_responses,
             handler,
@@ -112,7 +115,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", None, Vec::new(), handler)
+        self.route_named(method, pattern, "handler", None, None, Vec::new(), handler)
     }
 
     /// Adds a GET route with a handler name.
@@ -126,6 +129,7 @@ impl Router {
             Method::GET,
             pattern,
             handler_name,
+            None,
             None,
             Vec::new(),
             handler,
@@ -144,6 +148,7 @@ impl Router {
             pattern,
             handler_name,
             None,
+            None,
             Vec::new(),
             handler,
         )
@@ -155,6 +160,7 @@ impl Router {
             Method::GET,
             pattern,
             H::NAME,
+            H::request_schema(),
             H::response_schema(),
             H::error_responses(),
             move |req, params, state| {
@@ -170,6 +176,7 @@ impl Router {
             Method::POST,
             pattern,
             H::NAME,
+            H::request_schema(),
             H::response_schema(),
             H::error_responses(),
             move |req, params, state| {
@@ -185,6 +192,7 @@ impl Router {
             Method::PUT,
             pattern,
             H::NAME,
+            H::request_schema(),
             H::response_schema(),
             H::error_responses(),
             move |req, params, state| {
@@ -200,6 +208,7 @@ impl Router {
             Method::DELETE,
             pattern,
             H::NAME,
+            H::request_schema(),
             H::response_schema(),
             H::error_responses(),
             move |req, params, state| {
@@ -237,6 +246,7 @@ impl Router {
                     method.as_str(),
                     &route.pattern,
                     &route.handler_name,
+                    route.request_schema.clone(),
                     route.response_schema.clone(),
                     route.error_responses.clone(),
                 )
@@ -470,6 +480,7 @@ mod tests {
             Method::PUT,
             "/users/:id",
             "update_user",
+            None,
             None,
             Vec::new(),
             |_req, _params, _state| async { StatusCode::OK },
