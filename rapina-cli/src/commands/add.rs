@@ -60,6 +60,7 @@ fn parse_field(input: &str) -> Result<FieldInfo, String> {
         rust_type: rust_type.to_string(),
         schema_type: schema_type.to_string(),
         column_method: column_method.to_string(),
+        nullable: false,
     })
 }
 
@@ -282,13 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn test_pluralize() {
-        assert_eq!(codegen::pluralize("user"), "users");
-        assert_eq!(codegen::pluralize("post"), "posts");
-        assert_eq!(codegen::pluralize("blog_post"), "blog_posts");
-    }
-
-    #[test]
     fn test_generate_mod_rs() {
         let content = codegen::generate_mod_rs();
         assert!(content.contains("pub mod dto;"));
@@ -304,12 +298,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: ".string().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "active".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: ".boolean().not_null()".to_string(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_handlers("post", "posts", "Post", &fields);
@@ -339,12 +335,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
             FieldInfo {
                 name: "age".to_string(),
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_dto("User", &fields);
@@ -355,6 +353,34 @@ mod tests {
         assert!(content.contains("pub age: i32,"));
         assert!(content.contains("pub name: Option<String>,"));
         assert!(content.contains("pub age: Option<i32>,"));
+    }
+
+    #[test]
+    fn test_generate_dto_nullable_fields() {
+        let fields = vec![
+            FieldInfo {
+                name: "title".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "bio".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "Text".to_string(),
+                column_method: String::new(),
+                nullable: true,
+            },
+        ];
+        let content = codegen::generate_dto("User", &fields);
+
+        // Non-nullable field: required in CreateDTO
+        assert!(content.contains("pub title: String,"));
+        // Nullable field: Option in CreateDTO
+        assert!(content.contains("pub bio: Option<String>,"));
+        // Both are Option in UpdateDTO
+        assert!(content.contains("pub title: Option<String>,"));
     }
 
     #[test]
@@ -376,12 +402,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
             FieldInfo {
                 name: "done".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_schema_block("Todo", &fields, None, None);
@@ -400,12 +428,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: ".string().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "published".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: ".boolean().not_null()".to_string(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_migration("posts", "Posts", &fields);
