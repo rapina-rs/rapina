@@ -196,19 +196,27 @@ Checks:
 - Response schemas defined for all routes
 - Error documentation present
 - OpenAPI metadata (descriptions)
+- No duplicate handler paths (same method + path registered more than once; only the first match is used, others are shadowed)
 
 Output:
 
 ```
-  Running API health checks...
+  → Running API health checks on http://127.0.0.1:3000...
 
-  All routes have response schemas
-  Missing documentation: GET /users/:id
-  No documented errors: POST /users
+  ✓ All routes have response schemas
+  ✓ No duplicate handler paths
+  ⚠ Missing documentation: GET /users/:id
+  ⚠ No documented errors: POST /users
 
-  Summary: 1 passed, 2 warnings, 0 errors
+  Summary: 2 passed, 2 warnings, 0 errors
 
   Consider addressing the warnings above.
+```
+
+If duplicate routes are detected, you'll see a warning like:
+
+```
+  ⚠ Duplicate route GET /users: handlers [list_users, other_list] — only the first match is used, others are shadowed
 ```
 
 ## rapina migrate new
