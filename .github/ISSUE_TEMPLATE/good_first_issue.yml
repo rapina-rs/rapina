@@ -1,0 +1,81 @@
+name: Good First Issue
+description: Template for maintainers to create beginner-friendly issues for external contributors
+title: "[Good First Issue]: "
+labels: ["good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is marked as a **good first issue** — it's a great starting point if you're new to contributing to Rapina.
+
+        Before picking this up, please read the [Contributing Guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md).
+        Comment `/take` to claim this issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear and concise description of what needs to be done.
+      placeholder: What needs to be done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why This Matters
+      description: Explain the context and why this change is valuable to the project.
+    validations:
+      required: true
+
+  - type: textarea
+    id: relevant_files
+    attributes:
+      label: Relevant Files
+      description: Point contributors to the files they'll likely need to read or modify.
+      value: |
+        - `rapina/src/...` —
+        - `rapina-macros/src/...` —
+        - `docs/content/...` —
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      value: |
+        - [ ] Feature/fix is implemented
+        - [ ] Tests are added or updated
+        - [ ] Documentation is updated if needed
+        - [ ] `cargo fmt` and `cargo clippy` pass
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Estimated Effort
+      description: "XS (< 30min) / S (~1h) / M (~2h) / L (half a day)"
+      options:
+        - "XS — < 30 minutes"
+        - "S — ~1 hour"
+        - "M — ~2 hours"
+        - "L — half a day"
+    validations:
+      required: true
+
+  - type: textarea
+    id: hints
+    attributes:
+      label: Hints & Resources
+      description: Tips, patterns to follow, or links to help the contributor get started faster.
+      value: |
+        - Look at how similar functionality is implemented as a reference
+        - Follow existing patterns in the codebase
+
+  - type: textarea
+    id: maintainer_checklist
+    attributes:
+      label: Maintainer Checklist
+      description: Fill before publishing.
+      value: |
+        - [ ] Issue is self-contained and scoped for a first-time contributor
+        - [ ] Relevant files and context are provided above
+        - [ ] Acceptance criteria are clear and verifiable
