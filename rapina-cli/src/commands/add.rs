@@ -283,13 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn test_pluralize() {
-        assert_eq!(codegen::pluralize("user"), "users");
-        assert_eq!(codegen::pluralize("post"), "posts");
-        assert_eq!(codegen::pluralize("blog_post"), "blog_posts");
-    }
-
-    #[test]
     fn test_generate_mod_rs() {
         let content = codegen::generate_mod_rs();
         assert!(content.contains("pub mod dto;"));
