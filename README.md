@@ -158,11 +158,11 @@ See the [roadmap](https://userapina.com/roadmap/) for what's coming next.
 
 Full documentation at [userapina.com](https://userapina.com/)
 
-- [Getting Started](https://userapina.com/guide/getting-started/)
-- [Database](https://userapina.com/guide/database/)
-- [Authentication](https://userapina.com/guide/authentication/)
-- [CLI Reference](https://userapina.com/cli/)
-
+- [Getting Started](https://userapina.com/docs/getting-started/)
+- [Database](https://userapina.com/docs/core-concepts/database/)
+- [Authentication](https://userapina.com/docs/core-concepts/authentication/)
+- [CLI Reference](https://userapina.com/docs/cli/)
+  
 ## Contributing
 
 Contributions are welcome. Check out the [open issues](https://github.com/rapina-rs/rapina/issues) or join us on [Discord](https://discord.gg/Z4ww64YBQj).
