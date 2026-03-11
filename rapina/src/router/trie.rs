@@ -302,7 +302,7 @@ impl RadixTrie {
                 .zip(self.arena[i].indices.iter())
                 .map(|(&child, &byte)| (self.arena[child].priority, child, byte))
                 .collect();
-            order.sort_by(|a, b| b.0.cmp(&a.0));
+            order.sort_by_key(|t| std::cmp::Reverse(t.0));
 
             self.arena[i].children = order.iter().map(|&(_, c, _)| c).collect();
             self.arena[i].indices = order.iter().map(|&(_, _, b)| b).collect();
