@@ -3,6 +3,9 @@
 //! The [`Router`] type collects route definitions and matches incoming
 //! requests to the appropriate handlers.
 
+mod static_map;
+mod trie;
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,7 +14,7 @@ use http::{Method, Request, Response, StatusCode};
 use hyper::body::Incoming;
 
 use crate::error::ErrorVariant;
-use crate::extract::{PathParams, extract_path_params};
+use crate::extract::PathParams;
 use crate::handler::Handler;
 use crate::introspection::RouteInfo;
 use crate::response::{BoxBody, IntoResponse};
@@ -31,8 +34,11 @@ pub(crate) struct Route {
 
 /// The HTTP router for matching requests to handlers.
 ///
-/// Routes are matched in the order they are added. Use path parameters
-/// with the `:param` syntax.
+/// Static routes (no `:param` segments) are resolved via O(1) HashMap
+/// lookup. Dynamic routes are matched through a radix trie with
+/// O(path_depth) complexity. Static children take precedence over
+/// param children at every node, so `/users/current` always wins
+/// over `/users/:id` regardless of registration order.
 ///
 /// # Examples
 ///
@@ -55,12 +61,18 @@ pub(crate) struct Route {
 /// ```
 pub struct Router {
     pub(crate) routes: Vec<(Method, Route)>,
+    static_map: Option<static_map::StaticMap>,
+    trie: Option<trie::TrieRouter>,
 }
 
 impl Router {
     /// Creates a new empty router.
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            static_map: None,
+            trie: None,
+        }
     }
 
     /// Adds a route with the given HTTP method, pattern, and handler name.
@@ -275,15 +287,19 @@ impl Router {
 
     /// Handles an incoming request by matching it to a route.
     pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
-        let method = req.method().clone();
-        let path = req.uri().path().to_string();
-
-        for (route_method, route) in &self.routes {
-            if *route_method != method {
-                continue;
+        // Layer 1: O(1) static map — no allocation, no cloning.
+        if let Some(ref static_map) = self.static_map {
+            if let Some(idx) = static_map.lookup(req.method(), req.uri().path()) {
+                let route = &self.routes[idx].1;
+                return (route.handler)(req, PathParams::new(), state.clone()).await;
             }
+        }
 
-            if let Some(params) = extract_path_params(&route.pattern, &path) {
+        // Layer 2: radix trie for dynamic routes — no path allocation.
+        if let Some(ref trie) = self.trie {
+            let mut params = PathParams::new();
+            if let Some(idx) = trie.lookup(req.method(), req.uri().path(), &mut params) {
+                let route = &self.routes[idx].1;
                 return (route.handler)(req, params, state.clone()).await;
             }
         }
@@ -293,13 +309,28 @@ impl Router {
 
     /// Sorts routes so static segments come before parameterized ones.
     ///
-    /// This ensures `/users/current` is matched before `/users/:id` regardless
-    /// of registration order. Uses a stable sort so routes with identical
-    /// specificity keep their original order.
+    /// Route matching is handled by the static map and radix trie, which
+    /// enforce static-before-param precedence structurally. This sort
+    /// only affects the order of routes in introspection output and
+    /// internal index numbering. Uses a stable sort so routes with
+    /// identical specificity keep their original order.
     pub(crate) fn sort_routes(&mut self) {
         self.routes.sort_by(|(_, a), (_, b)| {
             route_specificity(&a.pattern).cmp(&route_specificity(&b.pattern))
         });
+    }
+
+    /// Builds the static route map and radix trie for fast route resolution.
+    ///
+    /// Called by `prepare()` after `sort_routes()`. After this, the router
+    /// is frozen — no more routes can be added. Idempotent: calling this
+    /// multiple times is safe and only builds the structures once.
+    pub(crate) fn freeze(&mut self) {
+        if self.static_map.is_some() {
+            return;
+        }
+        self.static_map = Some(static_map::StaticMap::build(&self.routes));
+        self.trie = Some(trie::TrieRouter::build(&self.routes));
     }
 
     fn join_group_route_pattern(prefix: &str, route_path: &str) -> String {
@@ -314,6 +345,11 @@ impl Router {
             format!("{}/{}", prefix, route_path)
         }
     }
+}
+
+/// Returns `true` if the pattern contains any `:param` segments.
+pub(super) fn is_dynamic(pattern: &str) -> bool {
+    pattern.split('/').any(|seg| seg.starts_with(':'))
 }
 
 /// Returns a specificity key for a route pattern.
@@ -553,6 +589,15 @@ mod tests {
     #[should_panic(expected = "A group's prefix pattern must start with /")]
     fn test_invalid_router_group_prefix_pattern() {
         Router::new().group("api/users", Router::new());
+    }
+
+    #[test]
+    fn test_is_dynamic() {
+        assert!(!super::is_dynamic("/health"));
+        assert!(!super::is_dynamic("/api/users"));
+        assert!(!super::is_dynamic("/api/v1:latest"));
+        assert!(super::is_dynamic("/users/:id"));
+        assert!(super::is_dynamic("/users/:id/posts/:pid"));
     }
 
     #[test]

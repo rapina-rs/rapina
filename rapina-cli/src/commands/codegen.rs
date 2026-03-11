@@ -7,6 +7,7 @@ pub(crate) struct FieldInfo {
     pub rust_type: String,
     pub schema_type: String,
     pub column_method: String,
+    pub nullable: bool,
 }
 
 pub(crate) fn to_pascal_case(s: &str) -> String {
@@ -196,7 +197,13 @@ pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json:
 pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
     let create_fields: Vec<String> = fields
         .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.rust_type))
+        .map(|f| {
+            if f.nullable {
+                format!("    pub {}: Option<{}>,", f.name, f.rust_type)
+            } else {
+                format!("    pub {}: {},", f.name, f.rust_type)
+            }
+        })
         .collect();
 
     let update_fields: Vec<String> = fields
@@ -560,6 +567,7 @@ mod tests {
             rust_type: "String".to_string(),
             schema_type: "String".to_string(),
             column_method: String::new(),
+            nullable: false,
         }];
 
         let block = generate_schema_block("Post", &fields, None, None);
@@ -583,12 +591,14 @@ mod tests {
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "role_id".to_string(),
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
         ];
 

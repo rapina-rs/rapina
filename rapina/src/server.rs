@@ -21,13 +21,14 @@ use crate::state::AppState;
 pub(crate) type ShutdownHook = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 pub(crate) async fn serve(
-    router: Router,
+    mut router: Router,
     state: AppState,
     middlewares: MiddlewareStack,
     addr: SocketAddr,
     shutdown_timeout: Duration,
     shutdown_hooks: Vec<ShutdownHook>,
 ) -> std::io::Result<()> {
+    router.freeze();
     let router = Arc::new(router);
     let state = Arc::new(state);
     let middlewares = Arc::new(middlewares);
