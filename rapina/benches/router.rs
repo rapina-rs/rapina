@@ -49,7 +49,7 @@ const RESOURCES: &[&str] = &[
 /// Dummy async handler that satisfies the Router's type signature.
 async fn noop(
     _req: http::Request<hyper::body::Incoming>,
-    _params: std::collections::HashMap<String, String>,
+    _params: rapina::extract::PathParams,
     _state: std::sync::Arc<rapina::state::AppState>,
 ) -> http::StatusCode {
     http::StatusCode::OK

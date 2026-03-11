@@ -2420,6 +2420,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "serial_test",
+ "smallvec",
  "tokio",
  "tokio-tungstenite",
  "tracing",

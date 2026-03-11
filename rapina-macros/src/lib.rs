@@ -529,7 +529,7 @@ fn relay_macro_impl(
                 if let Some(u) = __rapina_current_user {
                     __rapina_parts.extensions.insert(u);
                 }
-                let __rapina_params: rapina::extract::PathParams = std::collections::HashMap::new();
+                let __rapina_params = rapina::extract::PathParams::new();
                 #(#extractor_extractions)*
                 #func_name(#(#call_args),*).await
             })
