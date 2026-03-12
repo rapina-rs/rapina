@@ -206,6 +206,38 @@ impl Router {
         )
     }
 
+    /// Adds a PATCH route with a handler name.
+    pub fn patch_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::PATCH,
+            pattern,
+            handler_name,
+            None,
+            Vec::new(),
+            handler,
+        )
+    }
+
+    /// Adds a PATCH route with a Handler.
+    pub fn patch<H: Handler>(self, pattern: &str, handler: H) -> Self {
+        self.route_named(
+            Method::PATCH,
+            pattern,
+            H::NAME,
+            H::response_schema(),
+            H::error_responses(),
+            move |req, params, state| {
+                let h = handler.clone();
+                async move { h.call(req, params, state).await }
+            },
+        )
+    }
+
     /// Adds a DELETE route with a Handler.
     pub fn delete<H: Handler>(self, pattern: &str, handler: H) -> Self {
         self.route_named(

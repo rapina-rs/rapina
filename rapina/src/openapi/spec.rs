@@ -47,6 +47,8 @@ pub struct PathItem {
     pub put: Option<Operation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delete: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch: Option<Operation>,
 }
 
 /// A single API operation (endpoint)
@@ -315,6 +317,7 @@ pub fn build_openapi_spec(
             "POST" => path_item.post = Some(operation),
             "PUT" => path_item.put = Some(operation),
             "DELETE" => path_item.delete = Some(operation),
+            "PATCH" => path_item.patch = Some(operation),
             _ => {}
         }
     }

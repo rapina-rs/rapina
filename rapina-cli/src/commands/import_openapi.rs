@@ -685,15 +685,6 @@ fn group_by_module(
                 &mut entry.1,
             );
 
-            // Handle PATCH -> PUT mapping
-            if method == "patch" {
-                endpoint.method = "put".to_string();
-                endpoint.summary = Some(format!(
-                    "{} (mapped from PATCH)",
-                    endpoint.summary.as_deref().unwrap_or("Update")
-                ));
-            }
-
             // Handle duplicate handler names
             let count = seen_handlers
                 .entry(endpoint.handler_name.clone())
@@ -788,6 +779,7 @@ fn generate_handler_stubs(module: &ModuleDefinition) -> String {
             "get" => "get",
             "post" => "post",
             "put" => "put",
+            "patch" => "patch",
             "delete" => "delete",
             _ => "get",
         };
@@ -1698,7 +1690,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_mapped_to_put() {
+    fn test_patch_generates_patch_macro() {
         let json = serde_json::json!({
             "openapi": "3.0.0",
             "info": { "title": "Test", "version": "1.0.0" },
@@ -1720,16 +1712,12 @@ mod tests {
 
         let items = modules.iter().find(|m| m.name == "items").unwrap();
         let ep = &items.endpoints[0];
-        assert_eq!(ep.method, "put", "PATCH should be mapped to PUT");
-        assert!(
-            ep.summary.as_ref().unwrap().contains("PATCH"),
-            "summary should mention PATCH origin"
-        );
+        assert_eq!(ep.method, "patch", "PATCH should remain as patch");
 
         let output = generate_handler_stubs(items);
         assert!(
-            output.contains("#[put("),
-            "generated code should use #[put()] macro"
+            output.contains("#[patch("),
+            "generated code should use #[patch()] macro"
         );
     }
 
