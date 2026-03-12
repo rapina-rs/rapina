@@ -11,6 +11,7 @@
 //! - [`RequestLogMiddleware`] - Structured request logging
 
 mod body_limit;
+#[cfg(feature = "compression")]
 mod compression;
 mod cors;
 mod rate_limit;
@@ -19,6 +20,7 @@ mod timeout;
 mod trace_id;
 
 pub use body_limit::BodyLimitMiddleware;
+#[cfg(feature = "compression")]
 pub use compression::{CompressionConfig, CompressionMiddleware};
 pub use cors::{AllowedHeaders, AllowedMethods, AllowedOrigins, CorsConfig, CorsMiddleware};
 pub use rate_limit::{KeyExtractor, RateLimitConfig, RateLimitMiddleware};
