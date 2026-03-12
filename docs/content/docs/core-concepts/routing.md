@@ -19,6 +19,7 @@ let router = Router::new()
     .get("/about", about)
     .post("/users", create_user)
     .put("/users/:id", update_user)
+    .patch("/users/:id", patch_user)
     .delete("/users/:id", delete_user);
 ```
 
@@ -30,7 +31,8 @@ Rapina provides convenience methods for common HTTP verbs:
 |--------|-------------|
 | `.get(pattern, handler)` | GET requests (read) |
 | `.post(pattern, handler)` | POST requests (create) |
-| `.put(pattern, handler)` | PUT requests (update) |
+| `.put(pattern, handler)` | PUT requests (full update) |
+| `.patch(pattern, handler)` | PATCH requests (partial update) |
 | `.delete(pattern, handler)` | DELETE requests (remove) |
 | `.route(Method, pattern, handler)` | Any HTTP method |
 
@@ -54,7 +56,13 @@ async fn create_user(body: Json<CreateUser>) -> Result<Json<User>> {
 
 #[put("/users/:id")]
 async fn update_user(id: Path<u64>, body: Json<UpdateUser>) -> Result<Json<User>> {
-    // Update user...
+    // Full update...
+    Ok(Json(user))
+}
+
+#[patch("/users/:id")]
+async fn patch_user(id: Path<u64>, body: Json<PatchUser>) -> Result<Json<User>> {
+    // Partial update...
     Ok(Json(user))
 }
 
@@ -67,7 +75,7 @@ async fn delete_user(id: Path<u64>) -> StatusCode {
 
 ## Auto-Discovery
 
-Instead of wiring every handler to a `Router` manually, call `.discover()` on the app builder. Rapina collects all functions annotated with `#[get]`, `#[post]`, `#[put]`, or `#[delete]` at link time and registers them automatically:
+Instead of wiring every handler to a `Router` manually, call `.discover()` on the app builder. Rapina collects all functions annotated with `#[get]`, `#[post]`, `#[put]`, `#[patch]`, or `#[delete]` at link time and registers them automatically:
 
 ```rust
 use rapina::prelude::*;

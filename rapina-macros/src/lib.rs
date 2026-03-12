@@ -87,6 +87,13 @@ pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Registers a PATCH route handler.
 ///
+/// # Example
+///
+/// ```ignore
+/// #[patch("/users/:id")]
+/// async fn update_user(Path(id): Path<u64>) -> Json<User> { /* ... */ }
+/// ```
+///
 /// See [`get`] for syntax details including the optional `group` parameter.
 #[proc_macro_attribute]
 pub fn patch(attr: TokenStream, item: TokenStream) -> TokenStream {
