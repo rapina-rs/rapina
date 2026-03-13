@@ -178,9 +178,11 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     println!("  {} {}", "Adding resource:".bright_cyan(), pascal.bold());
     println!();
 
-    codegen::create_feature_module(singular, plural, pascal, &fields)?;
+    let pk_type = "i32"; // New resources default to i32 PK
+
+    codegen::create_feature_module(singular, plural, pascal, &fields, pk_type)?;
     codegen::update_entity_file(pascal, &fields, None, None)?;
-    codegen::create_migration_file(plural, pascal_plural, &fields)?;
+    codegen::create_migration_file(plural, pascal_plural, &fields, pk_type)?;
 
     print_next_steps(singular, plural, pascal);
 
@@ -308,7 +310,7 @@ mod tests {
                 nullable: false,
             },
         ];
-        let content = codegen::generate_handlers("post", "posts", "Post", &fields);
+        let content = codegen::generate_handlers("post", "posts", "Post", &fields, "i32");
 
         assert!(content.contains("use crate::entity::Post;"));
         assert!(content.contains("use crate::entity::post::{ActiveModel, Model};"));
@@ -438,7 +440,7 @@ mod tests {
                 nullable: false,
             },
         ];
-        let content = codegen::generate_migration("posts", "Posts", &fields);
+        let content = codegen::generate_migration("posts", "Posts", &fields, "i32");
 
         assert!(content.contains("MigrationTrait for Migration"));
         assert!(content.contains("Posts::Table"));

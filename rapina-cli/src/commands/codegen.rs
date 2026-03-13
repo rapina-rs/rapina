@@ -94,6 +94,7 @@ pub(crate) fn generate_handlers(
     plural: &str,
     pascal: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> String {
     let create_fields: Vec<String> = fields
         .iter()
@@ -112,10 +113,17 @@ pub(crate) fn generate_handlers(
         .collect();
     let update_body = update_checks.join("\n");
 
+    let uuid_import = if pk_type.to_lowercase().as_str() == "uuid" {
+        "use rapina::uuid::Uuid;"
+    } else {
+        ""
+    };
+
     format!(
         r#"use rapina::prelude::*;
 use rapina::database::{{Db, DbError}};
 use rapina::sea_orm::{{ActiveModelTrait, EntityTrait, IntoActiveModel, Set}};
+{uuid_import}
 
 use crate::entity::{pascal};
 use crate::entity::{singular}::{{ActiveModel, Model}};
@@ -132,7 +140,7 @@ pub async fn list_{plural}(db: Db) -> Result<Json<Vec<Model>>> {{
 
 #[get("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn get_{singular}(db: Db, id: Path<i32>) -> Result<Json<Model>> {{
+pub async fn get_{singular}(db: Db, id: Path<{pk_type}>) -> Result<Json<Model>> {{
     let id = id.into_inner();
     let item = {pascal}::find_by_id(id)
         .one(db.conn())
@@ -156,7 +164,7 @@ pub async fn create_{singular}(db: Db, body: Json<Create{pascal}>) -> Result<Jso
 
 #[put("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn update_{singular}(db: Db, id: Path<i32>, body: Json<Update{pascal}>) -> Result<Json<Model>> {{
+pub async fn update_{singular}(db: Db, id: Path<{pk_type}>, body: Json<Update{pascal}>) -> Result<Json<Model>> {{
     let id = id.into_inner();
     let item = {pascal}::find_by_id(id)
         .one(db.conn())
@@ -174,7 +182,7 @@ pub async fn update_{singular}(db: Db, id: Path<i32>, body: Json<Update{pascal}>
 
 #[delete("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json::Value>> {{
+pub async fn delete_{singular}(db: Db, id: Path<{pk_type}>) -> Result<Json<serde_json::Value>> {{
     let id = id.into_inner();
     let result = {pascal}::delete_by_id(id)
         .exec(db.conn())
@@ -191,6 +199,8 @@ pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json:
         plural = plural,
         create_body = create_body,
         update_body = update_body,
+        pk_type = pk_type,
+        uuid_import = uuid_import,
     )
 }
 
@@ -304,17 +314,18 @@ pub(crate) fn generate_schema_block(
     let mut attrs = String::new();
 
     if let Some(pk_cols) = primary_key {
-        attrs.push_str(&format!("\n    #[primary_key({})]\n", pk_cols.join(", ")));
+        attrs.push_str(&format!("\n    #[primary_key({})]", pk_cols.join(", ")));
     }
 
     if let Some(ts) = timestamps {
-        attrs.push_str(&format!("\n    #[timestamps({})]\n", ts));
+        attrs.push_str(&format!("\n    #[timestamps({})]", ts));
     }
 
     format!(
         r#"
 schema! {{
-    {pascal} {{{attrs}
+    {attrs}
+    {pascal} {{
 {fields}
     }}
 }}
@@ -329,9 +340,11 @@ pub(crate) fn generate_migration(
     plural: &str,
     pascal_plural: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> String {
     let column_defs: Vec<String> = fields
         .iter()
+        .filter(|f| f.name != "id") // Skip id as it's added separately
         .map(|f| {
             let iden = to_pascal_case(&f.name);
             format!(
@@ -345,10 +358,28 @@ pub(crate) fn generate_migration(
 
     let iden_variants: Vec<String> = fields
         .iter()
+        .filter(|f| f.name != "id") // Skip prefix/reserved id
         .map(|f| format!("    {},", to_pascal_case(&f.name)))
         .collect();
 
     let readable_name = format!("create {}", plural);
+
+    let col = match pk_type.to_lowercase().as_str() {
+        "uuid" => format!("ColumnDef::new({pascal_plural}::Id).uuid().not_null().primary_key()"),
+        "i32" | "integer" => {
+            format!(
+                "ColumnDef::new({pascal_plural}::Id).integer().not_null().auto_increment().primary_key()"
+            )
+        }
+        "i64" | "bigint" => {
+            format!(
+                "ColumnDef::new({pascal_plural}::Id).big_integer().not_null().auto_increment().primary_key()"
+            )
+        }
+        _ => format!(
+            r#"ColumnDef::new({pascal_plural}::Id).type_iden(rapina::migration::Alias::new("{pk_type}")).not_null().primary_key()"#
+        ),
+    };
 
     format!(
         r#"//! Migration: {readable_name}
@@ -366,13 +397,7 @@ impl MigrationTrait for Migration {{
             .create_table(
                 Table::create()
                     .table({pascal_plural}::Table)
-                    .col(
-                        ColumnDef::new({pascal_plural}::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
+                    .col({col})
 {column_defs}
                     .to_owned(),
             )
@@ -438,6 +463,7 @@ pub(crate) fn create_migration_file(
     plural: &str,
     pascal_plural: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> Result<(), String> {
     let migrations_dir = Path::new("src/migrations");
 
@@ -453,7 +479,7 @@ pub(crate) fn create_migration_file(
     let filename = format!("{}.rs", module_name);
     let filepath = migrations_dir.join(&filename);
 
-    let template = generate_migration(plural, pascal_plural, fields);
+    let template = generate_migration(plural, pascal_plural, fields, pk_type);
     fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
     println!(
         "  {} Created {}",
@@ -471,6 +497,7 @@ pub(crate) fn create_feature_module(
     plural: &str,
     pascal: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> Result<(), String> {
     let module_dir = Path::new("src").join(plural);
 
@@ -499,7 +526,7 @@ pub(crate) fn create_feature_module(
 
     fs::write(
         module_dir.join("handlers.rs"),
-        generate_handlers(singular, plural, pascal, fields),
+        generate_handlers(singular, plural, pascal, fields, pk_type),
     )
     .map_err(|e| format!("Failed to write handlers.rs: {}", e))?;
     println!(

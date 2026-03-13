@@ -44,7 +44,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
         .clone()
         .unwrap_or_else(|| format!("{}s", entity.name.to_string().to_snake_case()));
 
-    let model_fields = generate_model_fields(entity);
+    let model_fields = generate_model_fields(entity, schema);
     let relation_variants = generate_relation_variants(entity, schema);
     let related_impls = generate_related_impls(entity, schema);
 
@@ -139,14 +139,14 @@ fn generate_custom_pk_fields(entity: &AnalyzedEntity, pk_cols: &[String]) -> Tok
     quote! { #(#fields)* }
 }
 
-fn generate_model_fields(entity: &AnalyzedEntity) -> TokenStream {
+fn generate_model_fields(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> TokenStream {
     let pk_cols = entity.attrs.primary_key.as_deref().unwrap_or_default();
 
     let fields: Vec<TokenStream> = entity
         .fields
         .iter()
         .filter(|f| !pk_cols.iter().any(|pk| pk == &f.name.to_string()))
-        .filter_map(generate_model_field)
+        .filter_map(|f| generate_model_field(f, schema))
         .collect();
 
     quote! {
@@ -154,7 +154,7 @@ fn generate_model_fields(entity: &AnalyzedEntity) -> TokenStream {
     }
 }
 
-fn generate_model_field(field: &AnalyzedField) -> Option<TokenStream> {
+fn generate_model_field(field: &AnalyzedField, schema: &AnalyzedSchema) -> Option<TokenStream> {
     let field_name = &field.name;
 
     match &field.ty {
@@ -212,20 +212,41 @@ fn generate_model_field(field: &AnalyzedField) -> Option<TokenStream> {
             })
         }
 
-        FieldType::BelongsTo {
-            target: _,
-            optional,
-        } => {
+        FieldType::BelongsTo { target, optional } => {
             // Generate foreign key column: author -> author_id
             let fk_name = format_ident!("{}_id", field_name.to_string().to_snake_case());
 
+            // Look up target entity's primary key type
+            let target_pk_type = schema
+                .entities
+                .iter()
+                .find(|e| &e.name == target)
+                .and_then(|e| {
+                    if let Some(ref pk_cols) = e.attrs.primary_key {
+                        if pk_cols.len() == 1 {
+                            let pk_field = e.fields.iter().find(|f| f.name == pk_cols[0])?;
+                            if let FieldType::Scalar { scalar, .. } = &pk_field.ty {
+                                return Some(scalar.rust_type());
+                            }
+                        }
+                    } else {
+                        // Default PK is i32
+                        return Some(quote! { i32 });
+                    }
+                    None
+                })
+                .unwrap_or_else(|| {
+                    // Fallback to i32 if target not found or complex PK
+                    quote! { i32 }
+                });
+
             if *optional {
                 Some(quote! {
-                    pub #fk_name: Option<i32>,
+                    pub #fk_name: Option<#target_pk_type>,
                 })
             } else {
                 Some(quote! {
-                    pub #fk_name: i32,
+                    pub #fk_name: #target_pk_type,
                 })
             }
         }
@@ -739,5 +760,93 @@ mod tests {
         let b_pos = output.find("pub b_id").unwrap();
         let a_pos = output.find("pub a_id").unwrap();
         assert!(b_pos < a_pos, "b_id should come before a_id in the output");
+    }
+
+    #[test]
+    fn test_generate_belongs_to_uuid_pk() {
+        let input = quote! {
+            #[primary_key(id)]
+            Organization {
+                id: Uuid,
+                name: String,
+            }
+
+            User {
+                name: String,
+                org: Organization,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // Organization should have id: Uuid
+        assert!(output.contains("pub id : rapina :: uuid :: Uuid"));
+        // User should have org_id: Uuid (resolved from Organization's PK)
+        assert!(output.contains("pub org_id : rapina :: uuid :: Uuid"));
+    }
+
+    #[test]
+    fn test_schema_macro_uuid_pk_integration() {
+        use crate::schema::schema_impl;
+
+        let input = quote! {
+            #[primary_key(id)]
+            Organization {
+                id: Uuid,
+                name: String,
+            }
+
+            User {
+                name: String,
+                org: Organization,
+            }
+        };
+
+        let output = schema_impl(input);
+        let output_str = output.to_string();
+
+        // Verify PK in first entity
+        assert!(output_str.contains("pub id : rapina :: uuid :: Uuid"));
+        // Verify PK attribute
+        assert!(output_str.contains("primary_key"));
+
+        // Verify FK in second entity correctly resolved to Uuid
+        assert!(output_str.contains("pub org_id : rapina :: uuid :: Uuid"));
+    }
+
+    #[test]
+    fn test_generate_belongs_to_chained_uuid_pk() {
+        let input = quote! {
+            #[primary_key(id)]
+            Organization {
+                id: Uuid,
+                name: String,
+            }
+
+            #[primary_key(id)]
+            Project {
+                id: Uuid,
+                name: String,
+                org: Organization,
+            }
+
+            Task {
+                name: String,
+                project: Project,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // Project.org_id should be Uuid
+        assert!(output.contains("pub org_id : rapina :: uuid :: Uuid"));
+        // Task.project_id should be Uuid (resolved from Project's PK)
+        assert!(output.contains("pub project_id : rapina :: uuid :: Uuid"));
     }
 }

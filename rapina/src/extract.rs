@@ -8,6 +8,8 @@ use http::Request;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
+use smallvec::SmallVec;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -222,8 +224,82 @@ pub struct Context(pub RequestContext);
 #[derive(Debug)]
 pub struct Validated<T>(pub T);
 
-/// Type alias for path parameters extracted from the URL.
-pub type PathParams = HashMap<String, String>;
+/// Path parameters extracted from the URL during route matching.
+///
+/// Stores up to 4 parameters on the stack without heap allocation.
+/// Uses linear search which outperforms HashMap for the small N
+/// typical of REST APIs (1-3 path parameters).
+#[derive(Debug, Clone, Default)]
+pub struct PathParams {
+    entries: SmallVec<[(Cow<'static, str>, String); 4]>,
+}
+
+impl PathParams {
+    pub fn new() -> Self {
+        Self {
+            entries: SmallVec::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&String> {
+        self.entries
+            .iter()
+            .find(|(k, _)| k.as_ref() == key)
+            .map(|(_, v)| v)
+    }
+
+    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+        if let Some(entry) = self.entries.iter_mut().find(|(k, _)| k.as_ref() == key) {
+            let old = std::mem::replace(&mut entry.1, value);
+            Some(old)
+        } else {
+            self.entries.push((Cow::Owned(key), value));
+            None
+        }
+    }
+
+    /// Push a static key without checking for duplicates.
+    ///
+    /// Used by the trie during route matching where param names are
+    /// leaked to `&'static str` at freeze time and the same key is never
+    /// inserted twice in a single lookup. Zero allocation for the key,
+    /// and skips the linear scan that `insert()` does.
+    pub(crate) fn push(&mut self, key: &'static str, value: String) {
+        self.entries.push((Cow::Borrowed(key), value));
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<String> {
+        if let Some(pos) = self.entries.iter().position(|(k, _)| k.as_ref() == key) {
+            Some(self.entries.swap_remove(pos).1)
+        } else {
+            None
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &String)> {
+        self.entries.iter().map(|(k, v)| (k.as_ref(), v))
+    }
+}
+
+impl FromIterator<(String, String)> for PathParams {
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
+        Self {
+            entries: iter.into_iter().map(|(k, v)| (Cow::Owned(k), v)).collect(),
+        }
+    }
+}
 
 /// Trait for extractors that consume the request body.
 ///
@@ -578,7 +654,7 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
         return None;
     }
 
-    let mut params = HashMap::new();
+    let mut params = PathParams::new();
 
     for (pattern_part, path_part) in pattern_parts.iter().zip(path_parts.iter()) {
         if let Some(param_name) = pattern_part.strip_prefix(':') {
