@@ -80,12 +80,19 @@ impl App {
 
     fn join_path(&self, path: String) -> String {
         let prefix = self.prefix.trim_end_matches('/');
-        let path = if path.starts_with('/') {
-            path
+        let path = path.trim_start_matches('/');
+
+        if prefix.is_empty() {
+            if path.is_empty() {
+                "/".to_string()
+            } else {
+                format!("/{}", path)
+            }
+        } else if path.is_empty() {
+            prefix.to_string()
         } else {
-            format!("/{}", path)
-        };
-        format!("{}{}", prefix, path)
+            format!("{}/{}", prefix, path)
+        }
     }
 }
 
