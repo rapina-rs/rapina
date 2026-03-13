@@ -1,6 +1,6 @@
 **/target
 Cargo.lock
-
+openapi_demo
 # macOS
 .DS_Store
 **/.DS_Store
