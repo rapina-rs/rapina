@@ -62,7 +62,10 @@ struct Node {
     /// Arena index of the `:param` child, if any. At most one per node.
     param_child: Option<usize>,
     /// If this node was reached via a param edge, the param name (without `:`).
-    param_name: Option<String>,
+    /// Leaked to `&'static str` at build time — the trie lives for the entire
+    /// application lifetime so this is never reclaimed (and it's a handful of
+    /// bytes total for any realistic route table).
+    param_name: Option<&'static str>,
     /// Route index if this is a terminal node.
     value: Option<usize>,
     /// Number of routes reachable through this subtree.
@@ -174,17 +177,18 @@ impl RadixTrie {
                 Segment::Param(name) => {
                     if let Some(child_id) = self.arena[current].param_child {
                         // Validate that the existing param name matches.
-                        if let Some(ref existing) = self.arena[child_id].param_name {
+                        if let Some(existing) = self.arena[child_id].param_name {
                             assert!(
-                                existing == name,
+                                existing == *name,
                                 "conflicting param names at the same position: \
                                  `:{existing}` and `:{name}` in pattern `{pattern}` — \
                                  all routes sharing this param position must use the same name",
                             );
                         }
                     } else {
+                        let leaked: &'static str = Box::leak(name.to_string().into_boxed_str());
                         let id = self.alloc(Node {
-                            param_name: Some((*name).to_string()),
+                            param_name: Some(leaked),
                             ..Node::new()
                         });
                         self.arena[current].param_child = Some(id);
@@ -379,8 +383,8 @@ impl RadixTrie {
             // is already valid UTF-8 from uri.path().
             let value = &remaining[..end];
             let param_node = &self.arena[param_idx];
-            if let Some(ref name) = param_node.param_name {
-                params.insert(name.clone(), value.to_string());
+            if let Some(name) = param_node.param_name {
+                params.push(name, value.to_string());
             }
 
             if let Some(result) = self.lookup_recursive(param_idx, &remaining[end..], params) {
@@ -388,7 +392,7 @@ impl RadixTrie {
             }
 
             // Param child also failed — remove the param we just inserted.
-            if let Some(ref name) = param_node.param_name {
+            if let Some(name) = param_node.param_name {
                 params.remove(name);
             }
         }
