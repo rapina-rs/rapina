@@ -16,15 +16,20 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct OpenApiRegistry {
     spec: OpenApiSpec,
+    path: String,
 }
 
 impl OpenApiRegistry {
-    pub fn new(spec: OpenApiSpec) -> Self {
-        Self { spec }
+    pub fn new(spec: OpenApiSpec, path: String) -> Self {
+        Self { spec, path }
     }
 
     pub fn spec(&self) -> &OpenApiSpec {
         &self.spec
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -65,8 +70,9 @@ pub async fn scalar_docs(
     let registry = state.get::<OpenApiRegistry>();
 
     match registry {
-        Some(_) => {
-            let html = r#"
+        Some(registry) => {
+            let spec_url = registry.path();
+            let html = format!(r#"
 <!doctype html>
 <html>
   <head>
@@ -83,11 +89,11 @@ pub async fn scalar_docs(
     <!-- Need a theme? See https://github.com/scalar/scalar/?tab=readme-ov-file#themes -->
     <script
       id="api-reference"
-      data-url="/__rapina/openapi.json"></script>
+      data-url="{}"></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>
-            "#;
+            "#, spec_url);
             Response::builder()
                 .status(StatusCode::OK)
                 .header(CONTENT_TYPE, "text/html; charset=utf-8")
