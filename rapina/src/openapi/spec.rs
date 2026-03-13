@@ -63,6 +63,8 @@ pub struct Operation {
     #[serde(rename = "requestBody", skip_serializing_if = "Option::is_none")]
     pub request_body: Option<RequestBody>,
     pub responses: BTreeMap<String, Response>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 impl Default for Operation {
@@ -82,6 +84,7 @@ impl Default for Operation {
             parameters: Vec::new(),
             request_body: None,
             responses,
+            tags: Vec::new(),
         }
     }
 }
@@ -270,11 +273,16 @@ pub fn build_openapi_spec(
         };
 
         let summary = humanize_handler_name(&route.handler_name);
+        
+        // Use custom description if provided, otherwise default to None (OpenAPI default)
+        let description = route.description.clone();
 
         let mut operation = Operation {
             summary: Some(summary),
+            description,
             operation_id: Some(route.handler_name.clone()),
             parameters: params,
+            tags: route.tags.clone(),
             ..Default::default()
         };
 
@@ -336,6 +344,8 @@ mod tests {
             "list_users",
             None,
             Vec::new(),
+            Vec::new(),
+            None,
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
@@ -364,6 +374,8 @@ mod tests {
             "get_user",
             None,
             errors,
+            Vec::new(),
+            None,
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
@@ -390,8 +402,8 @@ mod tests {
     #[test]
     fn test_build_openapi_spec_skips_internal_routes() {
         let routes = vec![
-            RouteInfo::new("GET", "/__rapina/routes", "internal", None, Vec::new()),
-            RouteInfo::new("GET", "/users", "list_users", None, Vec::new()),
+            RouteInfo::new("GET", "/__rapina/routes", "internal", None, Vec::new(), Vec::new(), None),
+            RouteInfo::new("GET", "/users", "list_users", None, Vec::new(), Vec::new(), None),
         ];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 

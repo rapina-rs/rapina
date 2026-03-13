@@ -21,12 +21,14 @@ type BoxFuture = Pin<Box<dyn Future<Output = Response<BoxBody>> + Send>>;
 type HandlerFn =
     Box<dyn Fn(Request<Incoming>, PathParams, Arc<AppState>) -> BoxFuture + Send + Sync>;
 
-pub(crate) struct Route {
-    pub(crate) pattern: String,
-    pub(crate) handler_name: String,
-    pub(crate) response_schema: Option<serde_json::Value>,
-    pub(crate) error_responses: Vec<ErrorVariant>,
-    handler: HandlerFn,
+pub struct Route {
+    pub pattern: String,
+    pub handler_name: String,
+    pub response_schema: Option<serde_json::Value>,
+    pub error_responses: Vec<ErrorVariant>,
+    pub tags: Vec<String>,
+    pub description: Option<String>,
+    pub(crate) handler: HandlerFn,
 }
 
 /// The HTTP router for matching requests to handlers.
@@ -54,7 +56,7 @@ pub(crate) struct Route {
 ///     .post("/users", create_user);
 /// ```
 pub struct Router {
-    pub(crate) routes: Vec<(Method, Route)>,
+    pub routes: Vec<(Method, Route)>,
 }
 
 impl Router {
@@ -95,6 +97,8 @@ impl Router {
             handler_name: handler_name.to_string(),
             response_schema,
             error_responses,
+            tags: Vec::new(),
+            description: None,
             handler,
         };
 
@@ -239,6 +243,8 @@ impl Router {
                     &route.handler_name,
                     route.response_schema.clone(),
                     route.error_responses.clone(),
+                    route.tags.clone(),
+                    route.description.clone(),
                 )
             })
             .collect()

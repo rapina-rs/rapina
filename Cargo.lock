@@ -697,6 +697,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "dx_app"
+version = "0.1.0"
+dependencies = [
+ "rapina",
+ "rapina-dx",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+ "validator",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2243,6 +2257,7 @@ dependencies = [
  "jsonwebtoken",
  "nix 0.31.2",
  "prometheus",
+ "rapina-dx",
  "rapina-macros",
  "redis",
  "rust_decimal",
@@ -2280,6 +2295,21 @@ dependencies = [
  "sqlx",
  "tokio",
  "toml",
+]
+
+[[package]]
+name = "rapina-dx"
+version = "0.9.0"
+dependencies = [
+ "http",
+ "hyper",
+ "inventory",
+ "proc-macro2",
+ "quote",
+ "rapina",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -46,11 +46,11 @@ use crate::state::AppState;
 /// ```
 pub struct Rapina {
     /// The router for this application.
-    pub(crate) router: Router,
+    pub router: Router,
     /// The application state.
-    pub(crate) state: AppState,
+    pub state: AppState,
     /// The middleware stack.
-    pub(crate) middlewares: MiddlewareStack,
+    pub middlewares: MiddlewareStack,
     /// Whether introspection is enabled.
     pub(crate) introspection: bool,
     /// Whether metrics is enabled.
@@ -62,7 +62,7 @@ pub struct Rapina {
     /// Authentication configuration (if enabled)
     pub(crate) auth_config: Option<AuthConfig>,
     /// Public routes registry
-    pub(crate) public_routes: PublicRoutes,
+    pub public_routes: PublicRoutes,
     /// Whether auto-discovery is enabled
     pub(crate) auto_discover: bool,
     /// Graceful shutdown timeout (default 30s)

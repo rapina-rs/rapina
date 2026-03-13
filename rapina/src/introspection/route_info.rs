@@ -32,6 +32,12 @@ pub struct RouteInfo {
     /// Error variants for OpenAPI documentation.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub error_responses: Vec<ErrorVariant>,
+    /// Tags for OpenAPI documentation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Description for OpenAPI documentation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 impl RouteInfo {
@@ -42,6 +48,8 @@ impl RouteInfo {
         handler_name: impl Into<String>,
         response_schema: Option<serde_json::Value>,
         error_responses: Vec<ErrorVariant>,
+        tags: Vec<String>,
+        description: Option<String>,
     ) -> Self {
         Self {
             method: method.into(),
@@ -49,6 +57,8 @@ impl RouteInfo {
             handler_name: handler_name.into(),
             response_schema,
             error_responses,
+            tags,
+            description,
         }
     }
 }
@@ -59,7 +69,7 @@ mod tests {
 
     #[test]
     fn test_route_info_new() {
-        let info = RouteInfo::new("GET", "/users", "list_users", None, Vec::new());
+        let info = RouteInfo::new("GET", "/users", "list_users", None, Vec::new(), Vec::new(), None);
         assert_eq!(info.method, "GET");
         assert_eq!(info.path, "/users");
         assert_eq!(info.handler_name, "list_users");
@@ -67,20 +77,20 @@ mod tests {
 
     #[test]
     fn test_route_info_with_params() {
-        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, Vec::new());
+        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, Vec::new(), Vec::new(), None);
         assert_eq!(info.path, "/users/:id");
     }
 
     #[test]
     fn test_route_info_clone() {
-        let info = RouteInfo::new("POST", "/users", "create_user", None, Vec::new());
+        let info = RouteInfo::new("POST", "/users", "create_user", None, Vec::new(), Vec::new(), None);
         let cloned = info.clone();
         assert_eq!(info, cloned);
     }
 
     #[test]
     fn test_route_info_serialize() {
-        let info = RouteInfo::new("GET", "/health", "health_check", None, Vec::new());
+        let info = RouteInfo::new("GET", "/health", "health_check", None, Vec::new(), Vec::new(), None);
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"method\":\"GET\""));
         assert!(json.contains("\"path\":\"/health\""));
@@ -89,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_route_info_debug() {
-        let info = RouteInfo::new("DELETE", "/users/:id", "delete_user", None, Vec::new());
+        let info = RouteInfo::new("DELETE", "/users/:id", "delete_user", None, Vec::new(), Vec::new(), None);
         let debug = format!("{:?}", info);
         assert!(debug.contains("DELETE"));
         assert!(debug.contains("/users/:id"));
@@ -102,7 +112,7 @@ mod tests {
             code: "NOT_FOUND",
             description: "Resource not found",
         }];
-        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, errors);
+        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, errors, Vec::new(), None);
         assert_eq!(info.error_responses.len(), 1);
         assert_eq!(info.error_responses[0].status, 404);
     }
