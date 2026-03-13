@@ -387,8 +387,27 @@ fn extract_request_json_inner_type(arg_type: &syn::Type) -> Option<proc_macro2::
     if let syn::Type::Path(type_path) = arg_type
         && let Some(last_segment) = type_path.path.segments.last()
     {
-        // Require it to be Json<T> - we don't care about the module path
+        // Handle Json<T> - return the inner T
         if last_segment.ident == "Json"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(quote!(#inner_type));
+        }
+
+        // Handle Validated<T> - recursively extract inner type from T
+        if last_segment.ident == "Validated"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return extract_request_json_inner_type(inner_type);
+        }
+
+        // Handle State<T>, Path<T>, Query<T> etc. should be ignored for request body schema
+        // But for completeness, we only care about types that contribute to the request body (Json, Form).
+        // If someone uses Validated<Form<T>>, we should also extract T if we want schema for forms.
+        // For now, Rapina focuses on JSON schema.
+        if last_segment.ident == "Form"
             && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
             && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
         {
