@@ -622,10 +622,11 @@ mod tests {
 
     #[test]
     fn test_router_delete_named() {
-        let router =
-            Router::new().delete_named("/items/:id", "delete_item", |_req, _params, _state| async {
-                StatusCode::OK
-            });
+        let router = Router::new().delete_named(
+            "/items/:id",
+            "delete_item",
+            |_req, _params, _state| async { StatusCode::OK },
+        );
 
         let routes = router.routes();
         assert_eq!(routes[0].method, "DELETE");
