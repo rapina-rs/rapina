@@ -21,13 +21,13 @@ type BoxFuture = Pin<Box<dyn Future<Output = Response<BoxBody>> + Send>>;
 type HandlerFn =
     Box<dyn Fn(Request<Incoming>, PathParams, Arc<AppState>) -> BoxFuture + Send + Sync>;
 
-pub struct Route {
-    pub pattern: String,
-    pub handler_name: String,
-    pub response_schema: Option<serde_json::Value>,
-    pub error_responses: Vec<ErrorVariant>,
-    pub tags: Vec<String>,
-    pub description: Option<String>,
+pub(crate) struct Route {
+    pub(crate) pattern: String,
+    pub(crate) handler_name: String,
+    pub(crate) response_schema: Option<serde_json::Value>,
+    pub(crate) error_responses: Vec<ErrorVariant>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) description: Option<String>,
     pub(crate) handler: HandlerFn,
 }
 
@@ -56,7 +56,7 @@ pub struct Route {
 ///     .post("/users", create_user);
 /// ```
 pub struct Router {
-    pub routes: Vec<(Method, Route)>,
+    pub(crate) routes: Vec<(Method, Route)>,
 }
 
 impl Router {
@@ -75,6 +75,8 @@ impl Router {
         handler_name: &str,
         response_schema: Option<serde_json::Value>,
         error_responses: Vec<ErrorVariant>,
+        tags: Vec<String>,
+        description: Option<String>,
         handler: F,
     ) -> Self
     where
@@ -97,8 +99,8 @@ impl Router {
             handler_name: handler_name.to_string(),
             response_schema,
             error_responses,
-            tags: Vec::new(),
-            description: None,
+            tags,
+            description,
             handler,
         };
 
@@ -116,7 +118,16 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", None, Vec::new(), handler)
+        self.route_named(
+            method,
+            pattern,
+            "handler",
+            None,
+            Vec::new(),
+            Vec::new(),
+            None,
+            handler,
+        )
     }
 
     /// Adds a GET route with a handler name.
@@ -132,6 +143,8 @@ impl Router {
             handler_name,
             None,
             Vec::new(),
+            Vec::new(),
+            None,
             handler,
         )
     }
@@ -149,6 +162,8 @@ impl Router {
             handler_name,
             None,
             Vec::new(),
+            Vec::new(),
+            None,
             handler,
         )
     }
@@ -161,6 +176,8 @@ impl Router {
             H::NAME,
             H::response_schema(),
             H::error_responses(),
+            H::tags(),
+            H::description(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -176,6 +193,8 @@ impl Router {
             H::NAME,
             H::response_schema(),
             H::error_responses(),
+            H::tags(),
+            H::description(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -191,6 +210,8 @@ impl Router {
             H::NAME,
             H::response_schema(),
             H::error_responses(),
+            H::tags(),
+            H::description(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -206,6 +227,8 @@ impl Router {
             H::NAME,
             H::response_schema(),
             H::error_responses(),
+            H::tags(),
+            H::description(),
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -478,6 +501,8 @@ mod tests {
             "update_user",
             None,
             Vec::new(),
+            Vec::new(),
+            None,
             |_req, _params, _state| async { StatusCode::OK },
         );
 

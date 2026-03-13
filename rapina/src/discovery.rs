@@ -31,6 +31,10 @@ pub struct RouteDescriptor {
     pub handler_name: &'static str,
     /// Whether `#[public]` was found below the route macro
     pub is_public: bool,
+    /// Tags for OpenAPI documentation
+    pub tags: &'static [&'static str],
+    /// Description for OpenAPI documentation
+    pub description: Option<&'static str>,
     /// Returns the JSON Schema for the response type, if available
     pub response_schema: fn() -> Option<serde_json::Value>,
     /// Returns documented error variants for this route

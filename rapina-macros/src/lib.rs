@@ -6,27 +6,45 @@ use syn::{FnArg, ItemFn, LitStr, Pat};
 struct RouteAttr {
     path: LitStr,
     group: Option<LitStr>,
+    tag: Option<LitStr>,
+    description: Option<LitStr>,
 }
 
 impl syn::parse::Parse for RouteAttr {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let path: LitStr = input.parse()?;
-        let group = if input.peek(syn::Token![,]) {
+        let mut group = None;
+        let mut tag = None;
+        let mut description = None;
+
+        while input.peek(syn::Token![,]) {
             input.parse::<syn::Token![,]>()?;
-            let ident: syn::Ident = input.parse()?;
-            if ident != "group" {
-                return Err(syn::Error::new(ident.span(), "expected `group`"));
+            if input.is_empty() {
+                break;
             }
+            let ident: syn::Ident = input.parse()?;
             input.parse::<syn::Token![=]>()?;
             let value: LitStr = input.parse()?;
-            Some(value)
-        } else {
-            None
-        };
-        if !input.is_empty() {
-            return Err(input.error("unexpected tokens after route attribute"));
+
+            match ident.to_string().as_str() {
+                "group" => group = Some(value),
+                "tag" => tag = Some(value),
+                "description" => description = Some(value),
+                _ => {
+                    return Err(syn::Error::new(
+                        ident.span(),
+                        "expected `group`, `tag`, or `description`",
+                    ));
+                }
+            }
         }
-        Ok(RouteAttr { path, group })
+
+        Ok(RouteAttr {
+            path,
+            group,
+            tag,
+            description,
+        })
     }
 }
 
@@ -158,6 +176,41 @@ fn route_macro_core(
 
     // Extract #[public] attribute if present (when #[public] is below the route macro)
     let is_public = extract_public_attr(&mut func.attrs);
+
+    let tag = route_attr.tag.as_ref().map(|t| t.value());
+    let description = route_attr.description.as_ref().map(|d| d.value());
+
+    let tags_impl = if let Some(t) = &tag {
+        quote! {
+            fn tags() -> Vec<String> {
+                vec![#t.to_string()]
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let description_impl = if let Some(d) = &description {
+        quote! {
+            fn description() -> Option<String> {
+                Some(#d.to_string())
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let tags_fixed = if let Some(t) = &tag {
+        quote! { &[#t] }
+    } else {
+        quote! { &[] }
+    };
+
+    let description_fixed = if let Some(d) = &description {
+        quote! { Some(#d) }
+    } else {
+        quote! { None }
+    };
 
     // Extract #[errors(ErrorType)] attribute if present
     let error_type = extract_errors_attr(&mut func.attrs);
@@ -297,6 +350,8 @@ fn route_macro_core(
 
             #response_schema_impl
             #error_responses_impl
+            #tags_impl
+            #description_impl
 
             fn call(
                 &self,
@@ -321,6 +376,8 @@ fn route_macro_core(
                 path: #path_str,
                 handler_name: #func_name_str,
                 is_public: #is_public,
+                tags: #tags_fixed,
+                description: #description_fixed,
                 response_schema: <#func_name as rapina::handler::Handler>::response_schema,
                 error_responses: <#func_name as rapina::handler::Handler>::error_responses,
                 register: #register_fn_name,

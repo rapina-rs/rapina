@@ -27,6 +27,16 @@ pub trait Handler: Clone + Send + Sync + 'static {
         None
     }
 
+    /// Tags for OpenAPI documentation.
+    fn tags() -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Description for OpenAPI documentation.
+    fn description() -> Option<String> {
+        None
+    }
+
     /// Error variants for OpenAPI documentation.
     fn error_responses() -> Vec<ErrorVariant> {
         Vec::new()

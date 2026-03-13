@@ -85,7 +85,6 @@ futures-util = { version = "0.3", optional = true, default-features = false, fea
 [dev-dependencies]
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
-rapina-dx = { path = "../rapina-dx" }
 
 # Windows specific import for graceful shutdown tests
 [target.'cfg(windows)'.dev-dependencies]
