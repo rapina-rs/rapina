@@ -355,8 +355,9 @@ impl Rapina {
 
     /// Enables the Scalar OpenAPI documentation viewer at the given path.
     ///
-    /// The viewer will read the spec from `/__rapina/openapi.json`. Make
-    /// sure to also enable the OpenAPI endpoint with `.openapi(...)`.
+    /// The viewer will read the spec from the path configured with
+    /// [`with_openapi_path`](Self::with_openapi_path) (defaults to `/__rapina/openapi.json`).
+    /// Make sure to also enable the OpenAPI endpoint with `.openapi(...)`.
     ///
     /// # Example
     ///
