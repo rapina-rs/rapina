@@ -191,6 +191,23 @@ impl Router {
         )
     }
 
+    /// Adds a PUT route with a handler name.
+    pub fn put_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::PUT,
+            pattern,
+            handler_name,
+            None,
+            Vec::new(),
+            handler,
+        )
+    }
+
     /// Adds a PUT route with a Handler.
     pub fn put<H: Handler>(self, pattern: &str, handler: H) -> Self {
         self.route_named(
@@ -235,6 +252,23 @@ impl Router {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
             },
+        )
+    }
+
+    /// Adds a DELETE route with a handler name.
+    pub fn delete_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::DELETE,
+            pattern,
+            handler_name,
+            None,
+            Vec::new(),
+            handler,
         )
     }
 
@@ -572,6 +606,30 @@ mod tests {
         let routes = router.routes();
         assert_eq!(routes[0].method, "POST");
         assert_eq!(routes[0].handler_name, "create_item");
+    }
+
+    #[test]
+    fn test_router_put_named() {
+        let router =
+            Router::new().put_named("/items/:id", "update_item", |_req, _params, _state| async {
+                StatusCode::OK
+            });
+
+        let routes = router.routes();
+        assert_eq!(routes[0].method, "PUT");
+        assert_eq!(routes[0].handler_name, "update_item");
+    }
+
+    #[test]
+    fn test_router_delete_named() {
+        let router =
+            Router::new().delete_named("/items/:id", "delete_item", |_req, _params, _state| async {
+                StatusCode::OK
+            });
+
+        let routes = router.routes();
+        assert_eq!(routes[0].method, "DELETE");
+        assert_eq!(routes[0].handler_name, "delete_item");
     }
 
     #[test]
