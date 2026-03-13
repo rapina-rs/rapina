@@ -839,7 +839,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
+        assert_eq!(err.status(), 400);
     }
 
     // Headers extractor tests
@@ -899,7 +899,7 @@ mod tests {
 
         let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 400);
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 
     #[tokio::test]
@@ -961,7 +961,7 @@ mod tests {
         let result =
             State::<MissingState>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 500);
+        assert_eq!(result.unwrap_err().status(), 500);
     }
 
     // into_inner tests
@@ -1224,8 +1224,8 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
-        assert!(err.message.contains("session_id"));
+        assert_eq!(err.status(), 400);
+        assert!(err.message().contains("session_id"));
     }
 
     #[tokio::test]

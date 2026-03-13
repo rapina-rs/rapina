@@ -8,6 +8,7 @@ use http::{Response, StatusCode, header::CONTENT_TYPE};
 use http_body_util::Full;
 
 pub(crate) const APPLICATION_JSON: &str = "application/json";
+pub(crate) const APPLICATION_PROBLEM_JSON: &str = "application/problem+json";
 pub(crate) const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 #[cfg(feature = "metrics")]
 pub(crate) const PROMETHEUS_TEXT_FORMAT: &str = "text/plain; version=0.0.4; charset=utf-8";

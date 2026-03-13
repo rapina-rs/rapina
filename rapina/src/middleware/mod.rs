@@ -145,8 +145,15 @@ impl MiddlewareStack {
         state: &Arc<AppState>,
         ctx: &RequestContext,
     ) -> Response<BoxBody> {
+        let config = state
+            .get::<crate::error::ErrorConfig>()
+            .cloned()
+            .unwrap_or_default();
+
         let next = Next::new(&self.middlewares, router, state, ctx);
-        next.run(req).await
+        crate::error::ERROR_CONFIG
+            .scope(config, next.run(req))
+            .await
     }
 
     pub fn is_empty(&self) -> bool {
