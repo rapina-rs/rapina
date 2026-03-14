@@ -207,7 +207,15 @@ AuditLog {
     timestamp: DateTime,  // manage your own timestamp
 }
 
-// Join table with composite primary key and no timestamps
+// UUID primary key instead of auto-increment i32
+#[primary_key(id)]
+Product {
+    id: Uuid,
+    name: String,
+    price: f64,
+}
+
+// Composite primary key (join table)
 #[primary_key(user_id, role_id)]
 #[timestamps(none)]
 UserRole {
