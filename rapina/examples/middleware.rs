@@ -28,7 +28,7 @@
 use std::time::Duration;
 
 use rapina::middleware::{
-    BoxFuture, CompressionConfig, CorsConfig, RequestLogMiddleware, TimeoutMiddleware,
+    BoxFuture, CompressionConfig, CorsConfig, RequestLogConfig, TimeoutMiddleware,
     TraceIdMiddleware,
 };
 use rapina::prelude::*;
@@ -162,8 +162,8 @@ async fn main() -> std::io::Result<()> {
     Rapina::new()
         // 1. Trace ID — reads or generates x-trace-id
         .middleware(TraceIdMiddleware::new())
-        // 2. Request logging — structured log with method, path, status, duration
-        .middleware(RequestLogMiddleware::new())
+        // 2. Request logging — headers, query, body size, with redaction
+        .with_request_log(RequestLogConfig::verbose())
         // 3. Custom middleware — adds x-request-duration-ms header
         .middleware(RequestTimerMiddleware)
         // 4. CORS — allow specific origins
