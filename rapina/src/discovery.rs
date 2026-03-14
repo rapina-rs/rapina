@@ -31,6 +31,8 @@ pub struct RouteDescriptor {
     pub handler_name: &'static str,
     /// Whether `#[public]` was found below the route macro
     pub is_public: bool,
+    /// Returns the JSON Schema for the expected request body, if available
+    pub request_schema: fn() -> Option<serde_json::Value>,
     /// Returns the JSON Schema for the response type, if available
     pub response_schema: fn() -> Option<serde_json::Value>,
     /// Returns documented error variants for this route

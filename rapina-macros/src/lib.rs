@@ -192,6 +192,21 @@ fn route_macro_core(
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
+    // Extract request type for schema generation
+    let mut request_schema_impl = quote! {};
+    for arg in &args {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if let Some(inner_type) = extract_request_json_inner_type(&pat_type.ty) {
+                request_schema_impl = quote! {
+                    fn request_schema() -> Option<serde_json::Value> {
+                        Some(serde_json::to_value(rapina::schemars::schema_for!(#inner_type)).unwrap())
+                    }
+                };
+                break;
+            }
+        }
+    }
+
     // Extract return type for type annotation (helps with type inference in async blocks)
     let return_type_annotation = match &func.sig.output {
         syn::ReturnType::Type(_, ty) => quote! { : #ty },
@@ -295,6 +310,7 @@ fn route_macro_core(
         impl rapina::handler::Handler for #func_name {
             const NAME: &'static str = #func_name_str;
 
+            #request_schema_impl
             #response_schema_impl
             #error_responses_impl
 
@@ -321,6 +337,7 @@ fn route_macro_core(
                 path: #path_str,
                 handler_name: #func_name_str,
                 is_public: #is_public,
+                request_schema: <#func_name as rapina::handler::Handler>::request_schema,
                 response_schema: <#func_name as rapina::handler::Handler>::response_schema,
                 error_responses: <#func_name as rapina::handler::Handler>::error_responses,
                 register: #register_fn_name,
@@ -360,6 +377,41 @@ fn extract_json_inner_type(return_type: &syn::Type) -> Option<proc_macro2::Token
             && let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
         {
             return extract_json_inner_type(ok_type);
+        }
+    }
+    None
+}
+
+/// Extracts the inner type from extractor wrappers like Json<T> for request schema generation
+fn extract_request_json_inner_type(arg_type: &syn::Type) -> Option<proc_macro2::TokenStream> {
+    if let syn::Type::Path(type_path) = arg_type
+        && let Some(last_segment) = type_path.path.segments.last()
+    {
+        // Handle Json<T> - return the inner T
+        if last_segment.ident == "Json"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(quote!(#inner_type));
+        }
+
+        // Handle Validated<T> - recursively extract inner type from T
+        if last_segment.ident == "Validated"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return extract_request_json_inner_type(inner_type);
+        }
+
+        // Handle State<T>, Path<T>, Query<T> etc. should be ignored for request body schema
+        // But for completeness, we only care about types that contribute to the request body (Json, Form).
+        // If someone uses Validated<Form<T>>, we should also extract T if we want schema for forms.
+        // For now, Rapina focuses on JSON schema.
+        if last_segment.ident == "Form"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(quote!(#inner_type));
         }
     }
     None
@@ -800,6 +852,24 @@ mod tests {
         assert!(output_str.contains("fn response_schema"));
         assert!(output_str.contains("rapina :: schemars :: schema_for !"));
         assert!(output_str.contains("UserResponse"));
+    }
+
+    #[test]
+    fn test_json_request_type_generates_request_schema() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn create_user(body: rapina::extract::Json<CreateUserRequest>) -> &'static str {
+                "ok"
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // Check request_schema method is generated with schema_for!
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("CreateUserRequest"));
     }
 
     #[test]

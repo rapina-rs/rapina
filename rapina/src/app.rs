@@ -13,7 +13,7 @@ use crate::middleware::{
     MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
 };
 use crate::observability::TracingConfig;
-use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
+use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec, scalar_docs};
 use crate::router::Router;
 use crate::server::{ShutdownHook, serve};
 use crate::state::AppState;
@@ -59,6 +59,10 @@ pub struct Rapina {
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
     pub(crate) openapi_version: String,
+    /// Path to serve the OpenAPI spec (default "/__rapina/openapi.json")
+    pub(crate) openapi_path: String,
+    /// Path to serve the Scalar UI (if enabled)
+    pub(crate) scalar_path: Option<String>,
     /// Authentication configuration (if enabled)
     pub(crate) auth_config: Option<AuthConfig>,
     /// Public routes registry
@@ -88,6 +92,8 @@ impl Rapina {
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
+            openapi_path: "/__rapina/openapi.json".to_string(),
+            scalar_path: None,
             auth_config: None,
             public_routes: PublicRoutes::new(),
             auto_discover: false,
@@ -339,6 +345,32 @@ impl Rapina {
         self
     }
 
+    /// Configures the path where the OpenAPI specification is served.
+    ///
+    /// Defaults to `/__rapina/openapi.json`.
+    pub fn with_openapi_path(mut self, path: impl Into<String>) -> Self {
+        self.openapi_path = path.into();
+        self
+    }
+
+    /// Enables the Scalar OpenAPI documentation viewer at the given path.
+    ///
+    /// The viewer will read the spec from the path configured with
+    /// [`with_openapi_path`](Self::with_openapi_path) (defaults to `/__rapina/openapi.json`).
+    /// Make sure to also enable the OpenAPI endpoint with `.openapi(...)`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .openapi("My API", "1.0")
+    ///     .with_scalar("/docs")
+    /// ```
+    pub fn with_scalar(mut self, path: impl Into<String>) -> Self {
+        self.scalar_path = Some(path.into());
+        self
+    }
+
     /// Enables response caching with the given configuration.
     ///
     /// Caches GET responses that use `#[cache(ttl = N)]` and auto-invalidates
@@ -506,8 +538,15 @@ impl Rapina {
 
         // Add auth middleware if configured
         if let Some(auth_config) = self.auth_config.take() {
-            let auth_middleware =
-                AuthMiddleware::with_public_routes(auth_config, self.public_routes.clone());
+            let mut public_routes = self.public_routes.clone();
+            if let Some(path) = &self.scalar_path {
+                public_routes.add("GET", path);
+            }
+            if self.openapi {
+                public_routes.add("GET", &self.openapi_path);
+            }
+
+            let auth_middleware = AuthMiddleware::with_public_routes(auth_config, public_routes);
             self.middlewares.add(auth_middleware);
         }
 
@@ -532,10 +571,17 @@ impl Rapina {
         if self.openapi {
             let routes = self.router.routes();
             let spec = build_openapi_spec(&self.openapi_title, &self.openapi_version, &routes);
-            self.state = self.state.with(OpenApiRegistry::new(spec));
+            self.state = self.state.with(OpenApiRegistry::new(spec, self.openapi_path.clone()));
             self.router =
                 self.router
-                    .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
+                    .get_named(&self.openapi_path, "openapi_spec", openapi_spec);
+        }
+
+        if let Some(path) = self.scalar_path.take() {
+            tracing::info!("Registered Scalar documentation viewer at {}", path);
+            self.router = self
+                .router
+                .get_named(&path, "scalar_docs", scalar_docs);
         }
 
         // Sort routes so static segments take priority over parameterized ones.

@@ -278,6 +278,21 @@ pub fn build_openapi_spec(
             ..Default::default()
         };
 
+        if let Some(schema) = &route.request_schema {
+            let mut content = BTreeMap::new();
+            content.insert(
+                "application/json".to_string(),
+                MediaType {
+                    schema: Schema::Inline(schema.clone()),
+                },
+            );
+            operation.request_body = Some(RequestBody {
+                description: None,
+                required: true,
+                content,
+            });
+        }
+
         operation
             .responses
             .insert("200".to_string(), success_response);
@@ -335,6 +350,7 @@ mod tests {
             "/users",
             "list_users",
             None,
+            None,
             Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -363,6 +379,7 @@ mod tests {
             "/users/:id",
             "get_user",
             None,
+            None,
             errors,
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -390,8 +407,15 @@ mod tests {
     #[test]
     fn test_build_openapi_spec_skips_internal_routes() {
         let routes = vec![
-            RouteInfo::new("GET", "/__rapina/routes", "internal", None, Vec::new()),
-            RouteInfo::new("GET", "/users", "list_users", None, Vec::new()),
+            RouteInfo::new(
+                "GET",
+                "/__rapina/routes",
+                "internal",
+                None,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new("GET", "/users", "list_users", None, None, Vec::new()),
         ];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
