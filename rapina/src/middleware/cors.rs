@@ -276,10 +276,11 @@ mod tests {
         let mw = CorsMiddleware::new(config);
         let origin = Some(HeaderValue::from_static("https://evil.com"));
         let resp = mw.preflight_response(&origin);
-        assert!(resp
-            .headers()
-            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
-            .is_none());
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
     }
 
     #[test]
@@ -287,10 +288,11 @@ mod tests {
         let config = CorsConfig::with_origins(vec!["https://example.com".into()]);
         let mw = CorsMiddleware::new(config);
         let resp = mw.preflight_response(&None);
-        assert!(resp
-            .headers()
-            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
-            .is_none());
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
     }
 
     #[test]
@@ -404,10 +406,11 @@ mod tests {
         let mut resp = empty_response();
         let origin = Some(HeaderValue::from_static("https://evil.com"));
         mw.add_cors_headers(&mut resp, &origin);
-        assert!(resp
-            .headers()
-            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
-            .is_none());
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
     }
 
     #[test]
