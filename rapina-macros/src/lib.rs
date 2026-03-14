@@ -238,59 +238,74 @@ fn route_macro_core(
             __rapina_response
         }
     } else {
-        let mut parts_extractions = Vec::new();
-        let mut body_extractors: Vec<(syn::Ident, Box<syn::Type>)> = Vec::new();
+        let inner_block = &func.block;
 
-        for arg in &args {
+        if args.len() == 1 {
+            // Single arg: pass request directly to FromRequest
+            let arg = &args[0];
             if let FnArg::Typed(pat_type) = arg
                 && let Pat::Ident(pat_ident) = &*pat_type.pat
             {
                 let arg_name = &pat_ident.ident;
                 let arg_type = &pat_type.ty;
+                quote! {
+                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                        Ok(v) => v,
+                        Err(e) => return rapina::response::IntoResponse::into_response(e),
+                    };
+                    let __rapina_result #return_type_annotation = (async #inner_block).await;
+                    let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+                    #cache_header_injection
+                    __rapina_response
+                }
+            } else {
+                unreachable!("handler argument must be a typed pattern")
+            }
+        } else {
+            // Multiple args: all but last use FromRequestParts, last uses FromRequest
+            let mut parts_extractions = Vec::new();
 
-                let type_str = quote!(#arg_type).to_string();
-                if is_parts_only_extractor(&type_str) {
+            for arg in &args[..args.len() - 1] {
+                if let FnArg::Typed(pat_type) = arg
+                    && let Pat::Ident(pat_ident) = &*pat_type.pat
+                {
+                    let arg_name = &pat_ident.ident;
+                    let arg_type = &pat_type.ty;
                     parts_extractions.push(quote! {
                         let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
                             Ok(v) => v,
                             Err(e) => return rapina::response::IntoResponse::into_response(e),
                         };
                     });
-                } else {
-                    body_extractors.push((arg_name.clone(), arg_type.clone()));
                 }
             }
-        }
 
-        let body_extraction = if body_extractors.is_empty() {
-            quote! {}
-        } else if body_extractors.len() == 1 {
-            let (arg_name, arg_type) = &body_extractors[0];
+            let last_arg = args.last().unwrap();
+            let last_extraction = if let FnArg::Typed(pat_type) = last_arg
+                && let Pat::Ident(pat_ident) = &*pat_type.pat
+            {
+                let arg_name = &pat_ident.ident;
+                let arg_type = &pat_type.ty;
+                quote! {
+                    let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
+                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                        Ok(v) => v,
+                        Err(e) => return rapina::response::IntoResponse::into_response(e),
+                    };
+                }
+            } else {
+                unreachable!("handler argument must be a typed pattern")
+            };
+
             quote! {
-                let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
-                let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
-                    Ok(v) => v,
-                    Err(e) => return rapina::response::IntoResponse::into_response(e),
-                };
+                let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+                #(#parts_extractions)*
+                #last_extraction
+                let __rapina_result #return_type_annotation = (async #inner_block).await;
+                let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+                #cache_header_injection
+                __rapina_response
             }
-        } else {
-            let names: Vec<_> = body_extractors.iter().map(|(n, _)| n.to_string()).collect();
-            panic!(
-                "Multiple body-consuming extractors are not supported: {}. Only one extractor can consume the request body.",
-                names.join(", ")
-            );
-        };
-
-        let inner_block = &func.block;
-
-        quote! {
-            let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
-            #(#parts_extractions)*
-            #body_extraction
-            let __rapina_result #return_type_annotation = (async #inner_block).await;
-            let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
-            #cache_header_injection
-            __rapina_response
         }
     };
 
@@ -342,18 +357,6 @@ fn route_macro_core(
             }
         }
     }
-}
-
-fn is_parts_only_extractor(type_str: &str) -> bool {
-    type_str.contains("Path")
-        || type_str.contains("Query")
-        || type_str.contains("Headers")
-        || type_str.contains("State")
-        || type_str.contains("Context")
-        || type_str.contains("CurrentUser")
-        || type_str.contains("Db")
-        || type_str.contains("Cookie")
-        || type_str.contains("Relay")
 }
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
@@ -746,10 +749,11 @@ mod tests {
         let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
-        // Check struct is generated
         assert!(output_str.contains("struct get_user"));
-        // Check extraction code is present
-        assert!(output_str.contains("FromRequestParts"));
+        // Single arg is last arg — uses FromRequest (blanket impl handles parts-only)
+        assert!(output_str.contains("FromRequest"));
+        // Single arg should NOT destructure request into parts
+        assert!(!output_str.contains("into_parts"));
     }
 
     #[test]
@@ -775,8 +779,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Multiple body-consuming extractors are not supported")]
-    fn test_multiple_body_extractors_panics() {
+    fn test_two_body_extractors_no_macro_panic() {
+        // With positional convention, the macro does NOT panic for multiple body consumers.
+        // Instead, it generates code where the first Json is bounded by FromRequestParts
+        // (which it doesn't implement), so the compiler catches it at type-check time.
         let path = quote!("/users");
         let input = quote! {
             async fn handler(
@@ -787,7 +793,59 @@ mod tests {
             }
         };
 
-        route_macro_core("POST", path, input);
+        // Should NOT panic — macro expansion succeeds, compiler catches the error later
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // First arg gets FromRequestParts (will fail at compile time since Json doesn't impl it)
+        assert!(output_str.contains("FromRequestParts"));
+        // Last arg gets FromRequest
+        assert!(output_str.contains("FromRequest"));
+    }
+
+    #[test]
+    fn test_custom_type_name_not_misclassified() {
+        // UserPathInfo contains "Path" but should NOT be routed to FromRequestParts
+        // Positional convention: single (last) arg always uses FromRequest
+        let path = quote!("/users");
+        let input = quote! {
+            async fn handler(info: UserPathInfo) -> String {
+                "ok".to_string()
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("FromRequest"));
+        assert!(!output_str.contains("FromRequestParts"));
+    }
+
+    #[test]
+    fn test_multiple_parts_only_extractors_positional() {
+        // All parts-only extractors: first N-1 use FromRequestParts, last uses FromRequest
+        let path = quote!("/users/:id");
+        let input = quote! {
+            async fn handler(
+                id: rapina::extract::Path<u64>,
+                query: rapina::extract::Query<Params>,
+                headers: rapina::extract::Headers,
+            ) -> String {
+                "ok".to_string()
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        // First two args use FromRequestParts
+        assert!(output_str.contains("FromRequestParts"));
+        // Last arg uses FromRequest (via blanket impl at runtime)
+        assert!(output_str.contains("FromRequest"));
+        // Request is destructured for multi-arg case
+        assert!(output_str.contains("into_parts"));
+        // Request is reassembled for last arg
+        assert!(output_str.contains("from_parts"));
     }
 
     #[test]
@@ -1073,7 +1131,8 @@ mod tests {
 
         assert!(output_str.contains("x-rapina-cache-ttl"));
         assert!(output_str.contains("120"));
-        assert!(output_str.contains("FromRequestParts"));
+        // Single arg uses FromRequest (positional convention)
+        assert!(output_str.contains("FromRequest"));
     }
 
     #[test]

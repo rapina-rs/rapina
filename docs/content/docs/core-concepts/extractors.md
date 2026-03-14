@@ -211,17 +211,19 @@ If validation fails, returns 422 with validation error details.
 
 ## Multiple Extractors
 
-You can use multiple extractors in a single handler:
+You can use multiple extractors in a single handler. Body-consuming extractors (`Json`, `Form`, `Validated<Json<T>>`, `Validated<Form<T>>`) **must be the last parameter**:
 
 ```rust
 #[post("/users/:id/posts")]
 async fn create_post(
     id: Path<u64>,
     user: CurrentUser,
-    body: Json<CreatePost>,
+    body: Json<CreatePost>,  // body consumer must be last
 ) -> Result<Json<Post>> {
     // All extractors available
 }
 ```
 
-> **Note:** Only one body-consuming extractor (`Json`, `Form`) can be used per handler.
+Parts-only extractors (`Path`, `Query`, `Headers`, `State`, `Context`, `Cookie`, `CurrentUser`, `Db`) can appear in any order before the last parameter.
+
+> **Note:** Only one body-consuming extractor can be used per handler. If you need both JSON and form data, choose one.

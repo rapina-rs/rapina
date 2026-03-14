@@ -41,7 +41,7 @@ async fn recv_server_msg(rx: &mut WsRx) -> ServerMessage {
 }
 
 /// App that uses the `Relay` extractor in a proc-macro handler, proving
-/// the full path: proc macro -> is_parts_only_extractor -> FromRequestParts.
+/// the full path: proc macro -> positional convention -> FromRequest.
 fn relay_app() -> Rapina {
     Rapina::new()
         .with_introspection(false)
@@ -254,7 +254,7 @@ async fn test_duplicate_subscribe_is_idempotent() {
 #[tokio::test]
 async fn test_relay_extractor_via_proc_macro() {
     // This handler is defined with the proc macro, proving that "Relay"
-    // is recognized by is_parts_only_extractor and extracted correctly.
+    // is extracted correctly via positional convention (last arg -> FromRequest).
     #[rapina::post("/notify")]
     #[rapina::public]
     async fn notify(relay: Relay) -> StatusCode {

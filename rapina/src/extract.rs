@@ -304,7 +304,8 @@ impl FromIterator<(String, String)> for PathParams {
 /// Trait for extractors that consume the request body.
 ///
 /// Implement this trait for extractors that need access to the full request,
-/// including the body. Only one body-consuming extractor can be used per handler.
+/// including the body. Only one body-consuming extractor can be used per handler,
+/// and it **must be the last parameter** in the handler function signature.
 pub trait FromRequest: Sized {
     /// Extract the value from the request.
     fn from_request(
@@ -318,7 +319,8 @@ pub trait FromRequest: Sized {
 ///
 /// Implement this trait for extractors that don't need the request body,
 /// such as path parameters, query strings, or headers.
-/// Multiple parts-only extractors can be used in a single handler.
+/// Multiple parts-only extractors can be used in a single handler
+/// and must appear before any body-consuming extractor.
 pub trait FromRequestParts: Sized + Send {
     /// Extract the value from request parts.
     fn from_request_parts(
