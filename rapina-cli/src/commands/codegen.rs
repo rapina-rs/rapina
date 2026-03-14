@@ -26,7 +26,85 @@ pub(crate) fn to_pascal_case(s: &str) -> String {
         .collect()
 }
 
+/// Irregular plural forms: (singular, plural)
+const IRREGULARS: &[(&str, &str)] = &[
+    // Common irregular plurals
+    ("person", "people"),
+    ("child", "children"),
+    ("man", "men"),
+    ("woman", "women"),
+    ("mouse", "mice"),
+    ("goose", "geese"),
+    ("tooth", "teeth"),
+    ("foot", "feet"),
+    ("ox", "oxen"),
+    // -f/-fe → -ves
+    ("leaf", "leaves"),
+    ("life", "lives"),
+    ("knife", "knives"),
+    ("wife", "wives"),
+    ("half", "halves"),
+    ("wolf", "wolves"),
+    ("shelf", "shelves"),
+    ("loaf", "loaves"),
+    // Latin/Greek-origin
+    ("datum", "data"),
+    ("medium", "media"),
+    ("criterion", "criteria"),
+    ("phenomenon", "phenomena"),
+    ("index", "indices"),
+    ("vertex", "vertices"),
+    ("matrix", "matrices"),
+    ("appendix", "appendices"),
+    ("analysis", "analyses"),
+    ("base", "bases"),
+    ("crisis", "crises"),
+    ("thesis", "theses"),
+    ("diagnosis", "diagnoses"),
+    ("hypothesis", "hypotheses"),
+    ("parenthesis", "parentheses"),
+    ("synopsis", "synopses"),
+    ("curriculum", "curricula"),
+    ("formula", "formulae"),
+    ("antenna", "antennae"),
+    ("alumnus", "alumni"),
+    ("cactus", "cacti"),
+    ("fungus", "fungi"),
+    ("nucleus", "nuclei"),
+    ("radius", "radii"),
+    ("stimulus", "stimuli"),
+    ("syllabus", "syllabi"),
+];
+
+/// Words that are the same in singular and plural form.
+const UNCOUNTABLE: &[&str] = &[
+    "series", "species", "news", "info", "metadata",
+    "sheep", "fish", "deer", "aircraft",
+    "software", "hardware", "firmware", "middleware",
+    "equipment", "feedback", "moose", "bison",
+    "trout", "salmon", "shrimp",
+];
+
+/// Words ending in -us where the singular should not have -s stripped,
+/// and the plural is formed by adding -es (e.g. status → statuses).
+const SINGULAR_US: &[&str] = &[
+    "status", "campus", "virus", "census", "corpus",
+    "opus", "genus", "apparatus", "nexus", "prospectus", "consensus",
+];
+
 pub(crate) fn pluralize(s: &str) -> String {
+    if UNCOUNTABLE.contains(&s) {
+        return s.to_string();
+    }
+    if IRREGULARS.iter().any(|(_, plural)| *plural == s) {
+        return s.to_string();
+    }
+    if let Some((_, plural)) = IRREGULARS.iter().find(|(singular, _)| *singular == s) {
+        return plural.to_string();
+    }
+    if s.ends_with("us") {
+        return format!("{}es", s);
+    }
     let cases = [
         ("ss", "sses"), //address -> addresses
         ("sh", "shes"), //bush -> bushes
@@ -49,29 +127,41 @@ pub(crate) fn pluralize(s: &str) -> String {
 }
 
 pub(crate) fn singularize(s: &str) -> String {
+    if UNCOUNTABLE.contains(&s) {
+        return s.to_string();
+    }
+    if SINGULAR_US.contains(&s) {
+        return s.to_string();
+    }
+    if IRREGULARS.iter().any(|(singular, _)| *singular == s) {
+        return s.to_string();
+    }
+    if let Some((singular, _)) = IRREGULARS.iter().find(|(_, plural)| *plural == s) {
+        return singular.to_string();
+    }
+    if let Some(stem) = s.strip_suffix("uses") {
+        let candidate = format!("{}us", stem);
+        if SINGULAR_US.contains(&candidate.as_str()) {
+            return candidate;
+        }
+    }
     if let Some(stem) = s.strip_suffix("ies") {
         format!("{}y", stem)
     } else if let Some(stem) = s.strip_suffix("sses") {
-        // "bosses" -> "boss"
         format!("{}ss", stem)
     } else if let Some(stem) = s.strip_suffix("shes") {
-        // "bushes" -> "bush"
         format!("{}sh", stem)
     } else if let Some(stem) = s.strip_suffix("ches") {
-        // "watches" -> "watch"
         format!("{}ch", stem)
     } else if let Some(stem) = s.strip_suffix("xes") {
-        // "boxes" -> "box"
         format!("{}x", stem)
     } else if let Some(stem) = s.strip_suffix("zes") {
-        // "buzzes" -> "buzz"
         format!("{}z", stem)
     } else if let Some(stem) = s.strip_suffix("ses") {
-        // "addresses" -> "address"
         format!("{}s", stem)
     } else if let Some(stem) = s.strip_suffix('s') {
         if stem.ends_with('s') {
-            s.to_string() // "boss" -> "boss"
+            s.to_string()
         } else {
             stem.to_string()
         }
@@ -559,8 +649,8 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "import")]
     fn test_singularize() {
+        // Regular plurals (already working)
         assert_eq!(singularize("users"), "user");
         assert_eq!(singularize("posts"), "post");
         assert_eq!(singularize("categories"), "category");
@@ -568,11 +658,104 @@ mod tests {
         assert_eq!(singularize("boxes"), "box");
         assert_eq!(singularize("buzzes"), "buzz");
         assert_eq!(singularize("boss"), "boss");
-        assert_eq!(singularize("status"), "statu"); // naive, acceptable
+        assert_eq!(singularize("buses"), "bus");
+        assert_eq!(singularize("watches"), "watch");
+        assert_eq!(singularize("bushes"), "bush");
+
+        // Irregular plurals
+        assert_eq!(singularize("people"), "person");
+        assert_eq!(singularize("children"), "child");
+        assert_eq!(singularize("men"), "man");
+        assert_eq!(singularize("women"), "woman");
+        assert_eq!(singularize("mice"), "mouse");
+        assert_eq!(singularize("geese"), "goose");
+        assert_eq!(singularize("teeth"), "tooth");
+        assert_eq!(singularize("feet"), "foot");
+        assert_eq!(singularize("oxen"), "ox");
+        assert_eq!(singularize("leaves"), "leaf");
+        assert_eq!(singularize("lives"), "life");
+        assert_eq!(singularize("knives"), "knife");
+        assert_eq!(singularize("wives"), "wife");
+        assert_eq!(singularize("halves"), "half");
+        assert_eq!(singularize("wolves"), "wolf");
+        assert_eq!(singularize("shelves"), "shelf");
+        assert_eq!(singularize("loaves"), "loaf");
+
+        // Latin/Greek-origin plurals common in tech
+        assert_eq!(singularize("data"), "datum");
+        assert_eq!(singularize("media"), "medium");
+        assert_eq!(singularize("criteria"), "criterion");
+        assert_eq!(singularize("phenomena"), "phenomenon");
+        assert_eq!(singularize("indices"), "index");
+        assert_eq!(singularize("vertices"), "vertex");
+        assert_eq!(singularize("matrices"), "matrix");
+        assert_eq!(singularize("appendices"), "appendix");
+        assert_eq!(singularize("analyses"), "analysis");
+        assert_eq!(singularize("bases"), "base");
+        assert_eq!(singularize("crises"), "crisis");
+        assert_eq!(singularize("theses"), "thesis");
+        assert_eq!(singularize("diagnoses"), "diagnosis");
+        assert_eq!(singularize("hypotheses"), "hypothesis");
+        assert_eq!(singularize("parentheses"), "parenthesis");
+        assert_eq!(singularize("synopses"), "synopsis");
+        assert_eq!(singularize("curricula"), "curriculum");
+        assert_eq!(singularize("formulae"), "formula");
+        assert_eq!(singularize("antennae"), "antenna");
+        assert_eq!(singularize("alumni"), "alumnus");
+        assert_eq!(singularize("cacti"), "cactus");
+        assert_eq!(singularize("fungi"), "fungus");
+        assert_eq!(singularize("nuclei"), "nucleus");
+        assert_eq!(singularize("radii"), "radius");
+        assert_eq!(singularize("stimuli"), "stimulus");
+        assert_eq!(singularize("syllabi"), "syllabus");
+
+        // Words ending in -us (should NOT strip the s)
+        assert_eq!(singularize("statuses"), "status");
+        assert_eq!(singularize("status"), "status");
+        assert_eq!(singularize("campus"), "campus");
+        assert_eq!(singularize("virus"), "virus");
+        assert_eq!(singularize("census"), "census");
+        assert_eq!(singularize("corpus"), "corpus");
+        assert_eq!(singularize("opus"), "opus");
+        assert_eq!(singularize("genus"), "genus");
+        assert_eq!(singularize("apparatus"), "apparatus");
+        assert_eq!(singularize("nexus"), "nexus");
+        assert_eq!(singularize("prospectus"), "prospectus");
+        assert_eq!(singularize("consensus"), "consensus");
+
+        // Uncountable / identity words
+        assert_eq!(singularize("series"), "series");
+        assert_eq!(singularize("species"), "species");
+        assert_eq!(singularize("news"), "news");
+        assert_eq!(singularize("info"), "info");
+        assert_eq!(singularize("metadata"), "metadata");
+        assert_eq!(singularize("sheep"), "sheep");
+        assert_eq!(singularize("fish"), "fish");
+        assert_eq!(singularize("deer"), "deer");
+        assert_eq!(singularize("aircraft"), "aircraft");
+        assert_eq!(singularize("software"), "software");
+        assert_eq!(singularize("hardware"), "hardware");
+        assert_eq!(singularize("firmware"), "firmware");
+        assert_eq!(singularize("middleware"), "middleware");
+        assert_eq!(singularize("equipment"), "equipment");
+        assert_eq!(singularize("feedback"), "feedback");
+        assert_eq!(singularize("moose"), "moose");
+        assert_eq!(singularize("bison"), "bison");
+        assert_eq!(singularize("trout"), "trout");
+        assert_eq!(singularize("salmon"), "salmon");
+        assert_eq!(singularize("shrimp"), "shrimp");
+
+        // Already singular — should be idempotent
+        assert_eq!(singularize("user"), "user");
+        assert_eq!(singularize("post"), "post");
+        assert_eq!(singularize("category"), "category");
+        assert_eq!(singularize("person"), "person");
+        assert_eq!(singularize("child"), "child");
     }
 
     #[test]
     fn test_pluralize() {
+        // Regular plurals (already working)
         assert_eq!(pluralize("user"), "users");
         assert_eq!(pluralize("post"), "posts");
         assert_eq!(pluralize("category"), "categories");
@@ -580,11 +763,102 @@ mod tests {
         assert_eq!(pluralize("box"), "boxes");
         assert_eq!(pluralize("buzz"), "buzzes");
         assert_eq!(pluralize("boss"), "bosses");
-        assert_eq!(pluralize("status"), "statuses"); // naive, acceptable
         assert_eq!(pluralize("monkey"), "monkeys");
         assert_eq!(pluralize("boy"), "boys");
         assert_eq!(pluralize("day"), "days");
-        assert_eq!(pluralize("guy"), "guys")
+        assert_eq!(pluralize("guy"), "guys");
+        assert_eq!(pluralize("watch"), "watches");
+        assert_eq!(pluralize("bush"), "bushes");
+        assert_eq!(pluralize("bus"), "buses");
+
+        // Irregular plurals
+        assert_eq!(pluralize("person"), "people");
+        assert_eq!(pluralize("child"), "children");
+        assert_eq!(pluralize("man"), "men");
+        assert_eq!(pluralize("woman"), "women");
+        assert_eq!(pluralize("mouse"), "mice");
+        assert_eq!(pluralize("goose"), "geese");
+        assert_eq!(pluralize("tooth"), "teeth");
+        assert_eq!(pluralize("foot"), "feet");
+        assert_eq!(pluralize("ox"), "oxen");
+        assert_eq!(pluralize("leaf"), "leaves");
+        assert_eq!(pluralize("life"), "lives");
+        assert_eq!(pluralize("knife"), "knives");
+        assert_eq!(pluralize("wife"), "wives");
+        assert_eq!(pluralize("half"), "halves");
+        assert_eq!(pluralize("wolf"), "wolves");
+        assert_eq!(pluralize("shelf"), "shelves");
+        assert_eq!(pluralize("loaf"), "loaves");
+
+        // Latin/Greek-origin
+        assert_eq!(pluralize("datum"), "data");
+        assert_eq!(pluralize("medium"), "media");
+        assert_eq!(pluralize("criterion"), "criteria");
+        assert_eq!(pluralize("phenomenon"), "phenomena");
+        assert_eq!(pluralize("index"), "indices");
+        assert_eq!(pluralize("vertex"), "vertices");
+        assert_eq!(pluralize("matrix"), "matrices");
+        assert_eq!(pluralize("appendix"), "appendices");
+        assert_eq!(pluralize("analysis"), "analyses");
+        assert_eq!(pluralize("base"), "bases");
+        assert_eq!(pluralize("crisis"), "crises");
+        assert_eq!(pluralize("thesis"), "theses");
+        assert_eq!(pluralize("diagnosis"), "diagnoses");
+        assert_eq!(pluralize("hypothesis"), "hypotheses");
+        assert_eq!(pluralize("parenthesis"), "parentheses");
+        assert_eq!(pluralize("synopsis"), "synopses");
+        assert_eq!(pluralize("curriculum"), "curricula");
+        assert_eq!(pluralize("formula"), "formulae");
+        assert_eq!(pluralize("antenna"), "antennae");
+        assert_eq!(pluralize("alumnus"), "alumni");
+        assert_eq!(pluralize("cactus"), "cacti");
+        assert_eq!(pluralize("fungus"), "fungi");
+        assert_eq!(pluralize("nucleus"), "nuclei");
+        assert_eq!(pluralize("radius"), "radii");
+        assert_eq!(pluralize("stimulus"), "stimuli");
+        assert_eq!(pluralize("syllabus"), "syllabi");
+
+        // Words ending in -us
+        assert_eq!(pluralize("status"), "statuses");
+        assert_eq!(pluralize("campus"), "campuses");
+        assert_eq!(pluralize("virus"), "viruses");
+        assert_eq!(pluralize("census"), "censuses");
+        assert_eq!(pluralize("corpus"), "corpuses");
+        assert_eq!(pluralize("opus"), "opuses");
+        assert_eq!(pluralize("genus"), "genuses");
+        assert_eq!(pluralize("apparatus"), "apparatuses");
+        assert_eq!(pluralize("nexus"), "nexuses");
+        assert_eq!(pluralize("prospectus"), "prospectuses");
+        assert_eq!(pluralize("consensus"), "consensuses");
+
+        // Uncountable / identity words
+        assert_eq!(pluralize("series"), "series");
+        assert_eq!(pluralize("species"), "species");
+        assert_eq!(pluralize("news"), "news");
+        assert_eq!(pluralize("info"), "info");
+        assert_eq!(pluralize("metadata"), "metadata");
+        assert_eq!(pluralize("sheep"), "sheep");
+        assert_eq!(pluralize("fish"), "fish");
+        assert_eq!(pluralize("deer"), "deer");
+        assert_eq!(pluralize("aircraft"), "aircraft");
+        assert_eq!(pluralize("software"), "software");
+        assert_eq!(pluralize("hardware"), "hardware");
+        assert_eq!(pluralize("firmware"), "firmware");
+        assert_eq!(pluralize("middleware"), "middleware");
+        assert_eq!(pluralize("equipment"), "equipment");
+        assert_eq!(pluralize("feedback"), "feedback");
+        assert_eq!(pluralize("moose"), "moose");
+        assert_eq!(pluralize("bison"), "bison");
+        assert_eq!(pluralize("trout"), "trout");
+        assert_eq!(pluralize("salmon"), "salmon");
+        assert_eq!(pluralize("shrimp"), "shrimp");
+
+        // Already plural (irregular) — should be idempotent
+        assert_eq!(pluralize("people"), "people");
+        assert_eq!(pluralize("children"), "children");
+        assert_eq!(pluralize("men"), "men");
+        assert_eq!(pluralize("data"), "data");
+        assert_eq!(pluralize("indices"), "indices");
     }
 
     #[test]
