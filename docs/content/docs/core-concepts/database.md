@@ -165,7 +165,8 @@ Post::delete_by_id(1).exec(db.conn()).await?;
 | `f64` | `f64` | DOUBLE |
 | `bool` | `bool` | BOOLEAN |
 | `Uuid` | `Uuid` | UUID |
-| `DateTime` | `DateTimeUtc` | TIMESTAMPTZ |
+| `DateTime` | `DateTimeUtc` | TIMESTAMPTZ (timezone-aware) |
+| `NaiveDateTime` | `NaiveDateTime` | TIMESTAMP (without timezone) |
 | `Date` | `Date` | DATE |
 | `Decimal` | `Decimal` | DECIMAL |
 | `Json` | `Json` | JSON |
@@ -201,7 +202,7 @@ Person {
 #[timestamps(none)]
 AuditLog {
     action: String,
-    timestamp: DateTime,  // manage your own timestamp
+    timestamp: NaiveDateTime,  // manage your own timestamp (no timezone)
 }
 ```
 
