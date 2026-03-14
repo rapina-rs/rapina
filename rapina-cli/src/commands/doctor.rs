@@ -330,4 +330,177 @@ mod tests {
         assert_eq!(result.passed.len(), 1);
         assert_eq!(result.passed[0], "No duplicate handler paths");
     }
+
+    #[test]
+    fn check_response_schemas_passes_when_all_have_schemas() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/users", "response_schema": {"type": "array"}},
+            {"method": "POST", "path": "/users", "response_schema": {"type": "object"}},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_response_schemas(&routes, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+        assert_eq!(result.passed[0], "All routes have response schemas");
+    }
+
+    #[test]
+    fn check_response_schemas_warns_on_missing_schema() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/users"},
+            {"method": "POST", "path": "/users", "response_schema": {"type": "object"}},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_response_schemas(&routes, &mut result);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("GET /users"));
+        assert!(result.passed.is_empty());
+    }
+
+    #[test]
+    fn check_response_schemas_skips_internal_routes() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/__rapina/routes"},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_response_schemas(&routes, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+    }
+
+    #[test]
+    fn check_error_documentation_passes_when_all_documented() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/users", "error_responses": [{"status": 404}]},
+            {"method": "POST", "path": "/users", "error_responses": [{"status": 422}]},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_error_documentation(&routes, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+        assert_eq!(result.passed[0], "All routes have documented errors");
+    }
+
+    #[test]
+    fn check_error_documentation_warns_on_missing_errors() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/users"},
+            {"method": "DELETE", "path": "/users/:id", "error_responses": []},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_error_documentation(&routes, &mut result);
+        assert_eq!(result.warnings.len(), 2);
+        assert!(result.warnings[0].contains("GET /users"));
+        assert!(result.warnings[1].contains("DELETE /users/:id"));
+        assert!(result.passed.is_empty());
+    }
+
+    #[test]
+    fn check_error_documentation_skips_internal_routes() {
+        let routes = serde_json::json!([
+            {"method": "GET", "path": "/__rapina/openapi"},
+        ]);
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_error_documentation(&routes, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+    }
+
+    #[test]
+    fn check_openapi_metadata_passes_when_all_documented() {
+        let openapi: Result<Value, String> = Ok(serde_json::json!({
+            "paths": {
+                "/users": {
+                    "get": {"summary": "List users"},
+                    "post": {"description": "Create a user"}
+                }
+            }
+        }));
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_openapi_metadata(&openapi, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+        assert_eq!(result.passed[0], "All operations have descriptions");
+    }
+
+    #[test]
+    fn check_openapi_metadata_warns_on_missing_docs() {
+        let openapi: Result<Value, String> = Ok(serde_json::json!({
+            "paths": {
+                "/users": {
+                    "get": {},
+                    "post": {"summary": "Create a user"}
+                }
+            }
+        }));
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_openapi_metadata(&openapi, &mut result);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("GET /users"));
+        assert!(result.passed.is_empty());
+    }
+
+    #[test]
+    fn check_openapi_metadata_warns_when_openapi_not_enabled() {
+        let openapi: Result<Value, String> = Err("not found".to_string());
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_openapi_metadata(&openapi, &mut result);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("not enabled"));
+    }
+
+    #[test]
+    fn check_openapi_metadata_skips_internal_paths() {
+        let openapi: Result<Value, String> = Ok(serde_json::json!({
+            "paths": {
+                "/__rapina/routes": {
+                    "get": {}
+                }
+            }
+        }));
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_openapi_metadata(&openapi, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+    }
 }
