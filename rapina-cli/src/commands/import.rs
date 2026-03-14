@@ -495,6 +495,7 @@ fn detect_timestamps(table: &IntrospectedTable) -> Option<&'static str> {
 fn generate_for_table(
     table: &IntrospectedTable,
     _relationships: &HashMap<String, Vec<RelationshipInfo>>,
+    force: bool,
 ) -> Result<(), String> {
     let singular = codegen::singularize(&table.name);
     let plural = &table.name;
@@ -563,9 +564,9 @@ fn generate_for_table(
         "i32"
     };
 
-    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref())?;
+    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
     codegen::create_migration_file(plural, &pascal_plural, &fields, pk_type)?;
-    codegen::create_feature_module(&singular, plural, &pascal, &fields, pk_type)?;
+    codegen::create_feature_module(&singular, plural, &pascal, &fields, pk_type, force)?;
 
     println!(
         "  {} Imported table {:?} as {} ({} columns, {} skipped)",
@@ -587,6 +588,7 @@ pub fn database(
     url: &str,
     table_filter: Option<&[String]>,
     schema_name: Option<&str>,
+    force: bool,
 ) -> Result<(), String> {
     codegen::verify_rapina_project()?;
 
@@ -669,7 +671,7 @@ pub fn database(
     for table in &tables {
         let singular = codegen::singularize(&table.name);
         let pascal = codegen::to_pascal_case(&singular);
-        generate_for_table(table, &relationships)?;
+        generate_for_table(table, &relationships, force)?;
         imported.push((table.name.clone(), pascal));
     }
 
