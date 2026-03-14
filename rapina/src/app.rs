@@ -8,9 +8,10 @@ use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
 use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
+#[cfg(feature = "compression")]
+use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
-    CompressionConfig, CompressionMiddleware, CorsConfig, CorsMiddleware, Middleware,
-    MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
 };
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
@@ -190,6 +191,7 @@ impl Rapina {
     }
 
     /// Enables response compression (gzip, deflate).
+    #[cfg(feature = "compression")]
     pub fn with_compression(mut self, config: CompressionConfig) -> Self {
         self.middlewares.add(CompressionMiddleware::new(config));
         self
