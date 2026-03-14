@@ -192,6 +192,9 @@ Relationships are inferred from types:
 | `#[timestamps(created_at)]` | Only include `created_at` timestamp |
 | `#[timestamps(updated_at)]` | Only include `updated_at` timestamp |
 | `#[timestamps(none)]` | No automatic timestamps |
+| `#[primary_key(col1, col2)]` | Define a custom primary key (single or composite) |
+
+When `#[primary_key(...)]` is set, the auto-generated `id: i32` field is **not** added — you must declare the primary key columns yourself as regular fields.
 
 ```rust
 #[table_name = "people"]
@@ -203,6 +206,22 @@ Person {
 AuditLog {
     action: String,
     timestamp: NaiveDateTime,  // manage your own timestamp (no timezone)
+}
+
+// UUID primary key instead of auto-increment i32
+#[primary_key(id)]
+Product {
+    id: Uuid,
+    name: String,
+    price: f64,
+}
+
+// Composite primary key (join table)
+#[primary_key(user_id, role_id)]
+#[timestamps(none)]
+UserRole {
+    user_id: User,     // belongs_to User
+    role_id: Role,     // belongs_to Role
 }
 ```
 
