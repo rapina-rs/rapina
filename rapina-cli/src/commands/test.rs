@@ -256,6 +256,48 @@ fn extract_test_name(line: &str) -> &str {
         .trim()
 }
 
+/// Print the test summary.
+fn print_summary(summary: &TestSummary, success: bool) {
+    let total = summary.passed + summary.failed + summary.ignored;
+
+    println!("{}", "─".repeat(50).custom_color(colors::subtext()));
+
+    if success {
+        println!(
+            "{} {} passed, {} failed, {} ignored",
+            "PASS".custom_color(colors::green()).bold(),
+            summary.passed.to_string().custom_color(colors::green()),
+            summary.failed.to_string().custom_color(colors::subtext()),
+            summary.ignored.to_string().custom_color(colors::yellow()),
+        );
+    } else {
+        println!(
+            "{} {} passed, {} failed, {} ignored",
+            "FAIL".custom_color(colors::red()).bold(),
+            summary.passed.to_string().custom_color(colors::green()),
+            summary.failed.to_string().custom_color(colors::red()),
+            summary.ignored.to_string().custom_color(colors::yellow()),
+        );
+    }
+
+    if total > 0 {
+        let bar_width = 40;
+        let passed_width = (summary.passed as f64 / total as f64 * bar_width as f64) as usize;
+        let failed_width = (summary.failed as f64 / total as f64 * bar_width as f64) as usize;
+        let ignored_width = bar_width - passed_width - failed_width;
+
+        let bar = format!(
+            "{}{}{}",
+            "█".repeat(passed_width).custom_color(colors::green()),
+            "█".repeat(failed_width).custom_color(colors::red()),
+            "░".repeat(ignored_width).custom_color(colors::subtext()),
+        );
+        println!("{}", bar);
+    }
+
+    println!();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,46 +446,4 @@ mod tests {
         assert_eq!(summary.failed, 0);
         assert_eq!(summary.ignored, 0);
     }
-}
-
-/// Print the test summary.
-fn print_summary(summary: &TestSummary, success: bool) {
-    let total = summary.passed + summary.failed + summary.ignored;
-
-    println!("{}", "─".repeat(50).custom_color(colors::subtext()));
-
-    if success {
-        println!(
-            "{} {} passed, {} failed, {} ignored",
-            "PASS".custom_color(colors::green()).bold(),
-            summary.passed.to_string().custom_color(colors::green()),
-            summary.failed.to_string().custom_color(colors::subtext()),
-            summary.ignored.to_string().custom_color(colors::yellow()),
-        );
-    } else {
-        println!(
-            "{} {} passed, {} failed, {} ignored",
-            "FAIL".custom_color(colors::red()).bold(),
-            summary.passed.to_string().custom_color(colors::green()),
-            summary.failed.to_string().custom_color(colors::red()),
-            summary.ignored.to_string().custom_color(colors::yellow()),
-        );
-    }
-
-    if total > 0 {
-        let bar_width = 40;
-        let passed_width = (summary.passed as f64 / total as f64 * bar_width as f64) as usize;
-        let failed_width = (summary.failed as f64 / total as f64 * bar_width as f64) as usize;
-        let ignored_width = bar_width - passed_width - failed_width;
-
-        let bar = format!(
-            "{}{}{}",
-            "█".repeat(passed_width).custom_color(colors::green()),
-            "█".repeat(failed_width).custom_color(colors::red()),
-            "░".repeat(ignored_width).custom_color(colors::subtext()),
-        );
-        println!("{}", bar);
-    }
-
-    println!();
 }
