@@ -349,7 +349,6 @@ async fn test_form_extraction() {
 
 // State Extractor Tests
 
-#[derive(Clone)]
 struct AppConfig {
     app_name: String,
     version: String,
@@ -385,12 +384,10 @@ async fn test_state_extraction() {
 async fn test_multiple_state_types() {
     use rapina::state::AppState;
 
-    #[derive(Clone)]
     struct DbConfig {
         url: String,
     }
 
-    #[derive(Clone)]
     struct CacheConfig {
         ttl: u32,
     }

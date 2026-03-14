@@ -9,7 +9,7 @@
 
 use rapina::prelude::*;
 
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "HOST"]
     #[default = "127.0.0.1"]
@@ -42,7 +42,7 @@ async fn health() -> &'static str {
 // Public route - login to get a token
 #[public]
 #[post("/login")]
-async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+async fn login(auth: State<AuthConfig>, body: Json<LoginRequest>) -> Result<Json<TokenResponse>> {
     // In a real app, validate credentials against a database
     if body.username == "admin" && body.password == "password" {
         let token = auth.create_token(&body.username)?;

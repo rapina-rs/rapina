@@ -58,8 +58,8 @@ dashmap = "6.1.0"
 # SmallVec for stack-allocated path params
 smallvec = "1"
 
-# Compression
-flate2 = "1.1"
+# Compression (optional)
+flate2 =  { version = "1.1", optional = true }
 
 # Our macros
 rapina-macros = { version = "0.9.0", path = "../rapina-macros/" }
@@ -70,7 +70,7 @@ inventory = "0.3"
 # Database (optional)
 sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
 
-# Database migration (Optional)
+# Database migration (optional)
 sea-orm-migration = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
 async-trait = { version = "0.1", optional = true }
 
@@ -100,7 +100,8 @@ harness = false
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
 [features]
-default = []
+default = ["compression"]
+compression = ["flate2"]
 database = ["sea-orm", "sea-orm-migration", "async-trait"]
 postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
 mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
