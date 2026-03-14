@@ -20,7 +20,7 @@ struct AppConfig {
     port: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct LoginRequest {
     username: String,
     password: String,

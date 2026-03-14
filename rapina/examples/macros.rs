@@ -17,7 +17,7 @@ struct AppConfig {
     host: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct CreateUser {
     name: String,
     email: String,
