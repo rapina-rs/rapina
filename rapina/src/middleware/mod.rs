@@ -24,7 +24,7 @@ pub use body_limit::BodyLimitMiddleware;
 pub use compression::{CompressionConfig, CompressionMiddleware};
 pub use cors::{AllowedHeaders, AllowedMethods, AllowedOrigins, CorsConfig, CorsMiddleware};
 pub use rate_limit::{KeyExtractor, RateLimitConfig, RateLimitMiddleware};
-pub use request_log::RequestLogMiddleware;
+pub use request_log::{RequestLogConfig, RequestLogMiddleware};
 pub use timeout::TimeoutMiddleware;
 pub use trace_id::{TRACE_ID_HEADER, TraceIdMiddleware};
 

@@ -1,6 +1,6 @@
 +++
 title = "Middleware"
-description = "Rate limiting, compression, CORS, timeout, and custom middleware"
+description = "Request logging, rate limiting, compression, CORS, timeout, and custom middleware"
 weight = 7
 date = 2026-02-23
 +++
@@ -136,6 +136,59 @@ let cors = CorsConfig {
     ]),
 };
 ```
+
+---
+
+## Request Logging
+
+Structured request/response logging built on `tracing`. By default it logs method, path, status, and duration at INFO level. Turn on extra fields with `RequestLogConfig`.
+
+```rust
+use rapina::prelude::*;
+
+// Zero-config — method, path, status, duration only
+Rapina::new()
+    .middleware(RequestLogMiddleware::new())
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+For richer output, use the convenience builder or pass a config directly:
+
+```rust
+use rapina::prelude::*;
+
+// Everything on, sensitive headers redacted
+Rapina::new()
+    .with_request_log(RequestLogConfig::verbose())
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+`RequestLogConfig::verbose()` enables header logging, query parameter logging, and body size logging, with these headers redacted by default: `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`.
+
+| Field | Default | Verbose |
+|-------|---------|---------|
+| `log_headers` | `false` | `true` |
+| `log_query_params` | `false` | `true` |
+| `log_body_size` | `false` | `true` |
+| `redacted_headers` | `[]` | 5 headers |
+
+Toggle individual flags or add custom redactions:
+
+```rust
+let config = RequestLogConfig::default()
+    .log_headers(true)
+    .log_body_size(true)
+    .redact_header("x-custom-secret");
+
+Rapina::new()
+    .with_request_log(config)
+```
+
+Redacted header values appear as `[REDACTED]` in the logs. Matching is case-insensitive. All extra fields are emitted as structured tracing fields, so they flow through whatever subscriber you configure (JSON, logfmt, etc.).
 
 ---
 
@@ -350,16 +403,18 @@ Response ←  [A]  ←  [B]  ←  [C]  ←  Handler
 | Middleware | Position | Reason |
 |------------|----------|--------|
 | Trace ID | First | All downstream logs carry the request ID |
+| Request Log | After Trace ID | Captures the trace ID in the log span |
 | CORS | Before rate limit | Preflights are answered before consuming any quota |
 | Rate limit | Before auth | No JWT work done for clients that will be blocked |
 | Compression | After rate limit | Compresses the final response including error bodies |
 | Auth | Last (framework-managed) | Always appended after user-registered middleware |
 
 ```rust
-use rapina::middleware::{CorsConfig, CompressionConfig, TraceIdMiddleware};
+use rapina::middleware::{CorsConfig, CompressionConfig, TraceIdMiddleware, RequestLogConfig};
 
 Rapina::new()
     .middleware(TraceIdMiddleware::new())
+    .with_request_log(RequestLogConfig::verbose())
     .with_cors(CorsConfig::with_origins(vec!["https://app.example.com".to_string()]))
     .with_rate_limit(RateLimitConfig::per_minute(60))
     .with_compression(CompressionConfig::default())

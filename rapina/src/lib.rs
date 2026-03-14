@@ -132,7 +132,9 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
-    pub use crate::middleware::{KeyExtractor, Middleware, Next, RateLimitConfig};
+    pub use crate::middleware::{
+        KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
+    };
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};

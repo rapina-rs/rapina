@@ -12,6 +12,7 @@ use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
 use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
     CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    RequestLogConfig, RequestLogMiddleware,
 };
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
@@ -193,6 +194,26 @@ impl Rapina {
     /// ```
     pub fn with_rate_limit(mut self, config: RateLimitConfig) -> Self {
         self.middlewares.add(RateLimitMiddleware::new(config));
+        self
+    }
+
+    /// Enables configurable request/response logging.
+    ///
+    /// Use `RequestLogConfig::verbose()` for full logging with default
+    /// redaction, or build a custom config to pick individual fields.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .with_request_log(RequestLogConfig::verbose())
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn with_request_log(mut self, config: RequestLogConfig) -> Self {
+        self.middlewares
+            .add(RequestLogMiddleware::with_config(config));
         self
     }
 
