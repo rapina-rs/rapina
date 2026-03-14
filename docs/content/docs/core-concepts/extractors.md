@@ -54,15 +54,32 @@ Avoid using `.0` to access extractor contents — it's an implementation detail.
 
 Extract values from URL path segments:
 
+Path parameters are stored in a stack-allocated buffer — routes with up to 4 parameters incur zero heap allocation during extraction.
+
 ```rust
+// Single parameter
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> String {
     format!("User ID: {}", *id)
 }
 
+// Multiple parameters — destructure the tuple
 #[get("/posts/:year/:month")]
-async fn archive(year: Path<u32>, month: Path<u32>) -> String {
-    format!("{}/{}", *year, *month)
+async fn archive(Path((year, month)): Path<(u32, u32)>) -> String {
+    format!("{}/{}", year, month)
+}
+
+// Named struct — parameters matched by field name
+#[derive(Deserialize)]
+struct PostParams {
+    year: u32,
+    month: u32,
+    slug: String,
+}
+
+#[get("/posts/:year/:month/:slug")]
+async fn get_post(Path(p): Path<PostParams>) -> String {
+    format!("{}/{}/{}", p.year, p.month, p.slug)
 }
 ```
 

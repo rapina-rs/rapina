@@ -7,12 +7,12 @@ use bytes::Bytes;
 use http::Request;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
-use serde::de::DeserializeOwned;
+use serde::de::{self, DeserializeOwned, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::Arc;
 use validator::Validate;
 
@@ -46,21 +46,35 @@ use http::header::CONTENT_TYPE;
 #[derive(Debug)]
 pub struct Json<T>(pub T);
 
-/// Extracts a single path parameter from the URL.
+/// Extracts path parameters from the URL.
 ///
-/// Parses a path segment into the specified type `T`.
-/// Returns 400 Bad Request if parsing fails.
+/// Supports three extraction modes:
 ///
-/// # Examples
-///
+/// **Single parameter** — parses one `:param` into any type that implements `FromStr`:
 /// ```ignore
-/// use rapina::prelude::*;
-///
 /// #[get("/users/:id")]
 /// async fn get_user(id: Path<u64>) -> String {
-///     format!("User ID: {}", *id) // deref to access value of Path
+///     format!("User ID: {}", *id)
 /// }
 /// ```
+///
+/// **Tuple** — extracts multiple parameters in declaration order (left to right in the pattern):
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id")]
+/// async fn get_team(Path((org_id, team_id)): Path<(u64, u64)>) -> String {
+///     format!("org={} team={}", org_id, team_id)
+/// }
+/// ```
+///
+/// **Three or more** — same tuple syntax, up to 5 parameters:
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id/members/:member_id")]
+/// async fn get_member(Path((org_id, team_id, member_id)): Path<(u64, u64, u64)>) -> String {
+///     format!("org={} team={} member={}", org_id, team_id, member_id)
+/// }
+/// ```
+///
+/// Returns 400 Bad Request if a parameter is missing or cannot be parsed.
 #[derive(Debug)]
 pub struct Path<T>(pub T);
 
@@ -611,32 +625,250 @@ impl<T: DeserializeOwned + Send> FromRequestParts for Cookie<T> {
     }
 }
 
-impl<T: FromStr + Send> FromRequestParts for Path<T>
-where
-    T::Err: std::fmt::Display,
-{
+// ── PathParamsDeserializer ────────────────────────────────────────────────────
+//
+// Teaches serde how to read from PathParams so a single
+// `impl<T: DeserializeOwned> FromRequestParts for Path<T>` can handle:
+//   - Path<u64> / Path<String>  → first param value
+//   - Path<(u64, String)>       → params in insertion order (SeqAccess)
+//   - Path<MyStruct>            → params by field name (MapAccess)
+
+#[derive(Debug)]
+struct PathDeError(String);
+
+impl fmt::Display for PathDeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PathDeError {}
+
+impl de::Error for PathDeError {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        PathDeError(msg.to_string())
+    }
+}
+
+struct PathParamsDeserializer<'de>(&'de PathParams);
+
+impl<'de> PathParamsDeserializer<'de> {
+    fn first_str(&self) -> Result<&'de str, PathDeError> {
+        self.0
+            .iter()
+            .next()
+            .map(|(_, v)| v.as_str())
+            .ok_or_else(|| {
+                de::Error::custom(
+                    "Missing path parameter. Ensure your route pattern includes a parameter like /:id",
+                )
+            })
+    }
+}
+
+// Generates scalar deserialize methods for PathParamsDeserializer by delegating
+// to StrDeserializer, which holds the actual parse logic.
+macro_rules! delegate_scalar {
+    ($($method:ident),+ $(,)?) => {
+        $(fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+            StrDeserializer(self.first_str()?).$method(visitor)
+        })+
+    };
+}
+
+impl<'de> de::Deserializer<'de> for PathParamsDeserializer<'de> {
+    type Error = PathDeError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        match self.0.len() {
+            0 => Err(de::Error::custom("missing path parameter")),
+            1 => visitor.visit_str(self.first_str()?),
+            _ => self.deserialize_seq(visitor),
+        }
+    }
+
+    delegate_scalar! {
+        deserialize_bool,
+        deserialize_i8, deserialize_i16, deserialize_i32, deserialize_i64, deserialize_i128,
+        deserialize_u8, deserialize_u16, deserialize_u32, deserialize_u64, deserialize_u128,
+        deserialize_f32, deserialize_f64,
+        deserialize_str, deserialize_string, deserialize_identifier,
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        StrDeserializer(self.first_str()?).deserialize_option(visitor)
+    }
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        StrDeserializer(self.first_str()?).deserialize_newtype_struct(name, visitor)
+    }
+
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_seq(PathParamsSeqAccess {
+            iter: self.0.entries.iter(),
+        })
+    }
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_seq(visitor)
+    }
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_seq(visitor)
+    }
+    fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_map(PathParamsMapAccess {
+            iter: self.0.entries.iter(),
+            pending_value: None,
+        })
+    }
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_map(visitor)
+    }
+
+    serde::forward_to_deserialize_any! {
+        char bytes byte_buf unit unit_struct enum ignored_any
+    }
+}
+
+// Iterates param values in insertion order (for tuples).
+struct PathParamsSeqAccess<'de> {
+    iter: std::slice::Iter<'de, (Cow<'static, str>, String)>,
+}
+
+impl<'de> SeqAccess<'de> for PathParamsSeqAccess<'de> {
+    type Error = PathDeError;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, PathDeError> {
+        match self.iter.next() {
+            None => Ok(None),
+            Some((_, val)) => seed.deserialize(StrDeserializer(val.as_str())).map(Some),
+        }
+    }
+}
+
+// Iterates param key-value pairs (for structs).
+struct PathParamsMapAccess<'de> {
+    iter: std::slice::Iter<'de, (Cow<'static, str>, String)>,
+    pending_value: Option<&'de str>,
+}
+
+impl<'de> MapAccess<'de> for PathParamsMapAccess<'de> {
+    type Error = PathDeError;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, PathDeError> {
+        match self.iter.next() {
+            None => Ok(None),
+            Some((key, val)) => {
+                self.pending_value = Some(val.as_str());
+                seed.deserialize(StrDeserializer(key.as_ref())).map(Some)
+            }
+        }
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(
+        &mut self,
+        seed: V,
+    ) -> Result<V::Value, PathDeError> {
+        let val = self
+            .pending_value
+            .take()
+            .ok_or_else(|| de::Error::custom("next_value called before next_key"))?;
+        seed.deserialize(StrDeserializer(val))
+    }
+}
+
+// Deserializes a single &str into any primitive — used by SeqAccess and MapAccess.
+struct StrDeserializer<'de>(&'de str);
+
+// Generates parse-and-visit methods for StrDeserializer.
+macro_rules! parse_scalar {
+    ($($method:ident => $visit:ident: $ty:ty),+ $(,)?) => {
+        $(fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+            visitor.$visit(self.0.parse::<$ty>().map_err(de::Error::custom)?)
+        })+
+    };
+}
+
+impl<'de> de::Deserializer<'de> for StrDeserializer<'de> {
+    type Error = PathDeError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+
+    parse_scalar! {
+        deserialize_bool  => visit_bool:  bool,
+        deserialize_i8    => visit_i8:    i8,
+        deserialize_i16   => visit_i16:   i16,
+        deserialize_i32   => visit_i32:   i32,
+        deserialize_i64   => visit_i64:   i64,
+        deserialize_i128  => visit_i128:  i128,
+        deserialize_u8    => visit_u8:    u8,
+        deserialize_u16   => visit_u16:   u16,
+        deserialize_u32   => visit_u32:   u32,
+        deserialize_u64   => visit_u64:   u64,
+        deserialize_u128  => visit_u128:  u128,
+        deserialize_f32   => visit_f32:   f32,
+        deserialize_f64   => visit_f64:   f64,
+    }
+
+    fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+    fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_string(self.0.to_owned())
+    }
+    fn deserialize_identifier<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_some(self)
+    }
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    serde::forward_to_deserialize_any! {
+        char bytes byte_buf unit unit_struct seq tuple tuple_struct
+        map struct enum ignored_any
+    }
+}
+
+impl<T: DeserializeOwned + Send> FromRequestParts for Path<T> {
     async fn from_request_parts(
         _parts: &http::request::Parts,
         params: &PathParams,
         _state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let (param_name, value) = params.iter().next().ok_or_else(|| {
-            Error::bad_request(
-                "Missing path parameter. Ensure your route pattern includes a parameter like /:id",
-            )
-        })?;
-
-        let parsed = value.parse::<T>().map_err(|e| {
-            Error::bad_request(format!(
-                "Path parameter '{}' must be a valid {}, got '{}': {}",
-                param_name,
-                std::any::type_name::<T>(),
-                value,
-                e
-            ))
-        })?;
-
-        Ok(Path(parsed))
+        T::deserialize(PathParamsDeserializer(params))
+            .map(Path)
+            .map_err(|e| Error::bad_request(e.to_string()))
     }
 }
 
@@ -1260,5 +1492,96 @@ mod tests {
     fn test_cookie_into_inner() {
         let cookie = Cookie("session".to_string());
         assert_eq!(cookie.into_inner(), "session");
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_two_params() {
+        let p = params(&[("org_id", "10"), ("team_id", "42")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (10, 42));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_three_params() {
+        let p = params(&[("org_id", "1"), ("team_id", "2"), ("member_id", "3")]);
+        let result = Path::<(u64, u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (1, 2, 3));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_missing_param() {
+        let p = params(&[("org_id", "1")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_bad_parse() {
+        let p = params(&[("org_id", "not_a_number"), ("team_id", "2")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_struct_params() {
+        #[derive(serde::Deserialize)]
+        struct OrgParams {
+            org_id: u64,
+            team_id: u64,
+        }
+
+        let p = params(&[("org_id", "10"), ("team_id", "42")]);
+        let result = Path::<OrgParams>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let Path(v) = result.unwrap();
+        assert_eq!(v.org_id, 10);
+        assert_eq!(v.team_id, 42);
+    }
+
+    #[tokio::test]
+    async fn test_path_struct_bad_parse() {
+        #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
+        struct OrgParams {
+            org_id: u64,
+            team_id: u64,
+        }
+
+        let p = params(&[("org_id", "not_a_number"), ("team_id", "42")]);
+        let result = Path::<OrgParams>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 }
