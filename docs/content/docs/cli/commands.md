@@ -97,6 +97,45 @@ The generated handlers follow Rapina conventions and are ready to wire into your
 
 The resource name must be lowercase with underscores (e.g., `user`, `blog_post`). Pluralization is automatic. If the resource directory already exists, the command fails with a clear error instead of overwriting.
 
+## rapina import database
+
+Import schema from a live database, generating entities, migrations, handlers, DTOs, and error types for each table:
+
+```bash
+rapina import database --url postgres://user:pass@localhost/mydb
+```
+
+Options:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--url <URL>` | Database connection URL (or `DATABASE_URL` env) | *required* |
+| `--tables <T1,T2>` | Only import specific tables (comma-separated) | all tables |
+| `--schema <NAME>` | Database schema name | `public` (Postgres) |
+| `--force` | Overwrite existing files (re-import after schema changes) | false |
+
+Supported databases: PostgreSQL (`postgres://`), MySQL (`mysql://`), SQLite (`sqlite://`). Each requires the corresponding feature:
+
+```bash
+cargo install rapina-cli --features import-postgres
+cargo install rapina-cli --features import-mysql
+cargo install rapina-cli --features import-sqlite
+```
+
+For each valid table, the command generates the same files as `rapina add resource`: a feature module (`src/<plural>/`), a `schema!` block in `src/entity.rs`, and a timestamped migration.
+
+Tables are skipped if they have no primary key, a composite primary key, or are internal migration tables (`seaql_migrations`, `sqlx_migrations`, `__diesel_schema_migrations`).
+
+### Re-importing with `--force`
+
+Without `--force`, the command errors if a feature module directory already exists. With `--force`:
+
+- Existing `src/<plural>/` directories are removed and re-created
+- Duplicate `schema!` blocks in `entity.rs` are replaced instead of appended
+- A new migration file is always created (timestamps prevent collisions)
+
+This is useful when the upstream database schema changes and you want to regenerate the Rapina code to match.
+
 ## rapina dev
 
 Start the development server with hot reload:

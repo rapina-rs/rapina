@@ -126,6 +126,9 @@ enum ImportCommands {
         /// Database schema name (default: "public" for Postgres)
         #[arg(long)]
         schema: Option<String>,
+        /// Overwrite existing files (useful for re-importing after schema changes)
+        #[arg(long)]
+        force: bool,
     },
     /// Import handlers, DTOs, and module structure from an OpenAPI 3.0 spec
     #[cfg(feature = "import-openapi")]
@@ -268,14 +271,20 @@ fn main() {
                     url,
                     tables,
                     schema,
+                    force,
                 } => {
                     #[cfg(feature = "import")]
                     {
-                        commands::import::database(&url, tables.as_deref(), schema.as_deref())
+                        commands::import::database(
+                            &url,
+                            tables.as_deref(),
+                            schema.as_deref(),
+                            force,
+                        )
                     }
                     #[cfg(not(feature = "import"))]
                     {
-                        let _ = (url, tables, schema);
+                        let _ = (url, tables, schema, force);
                         Err("The import command requires the import feature. \
                              Reinstall with: cargo install rapina-cli --features import-postgres"
                             .to_string())
