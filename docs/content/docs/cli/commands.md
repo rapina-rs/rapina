@@ -62,7 +62,8 @@ Fields use a `name:type` format. Supported types:
 | `f64` | `double` | `f64` | DOUBLE |
 | `bool` | `boolean` | `bool` | BOOLEAN |
 | `uuid` | | `Uuid` | UUID |
-| `datetime` | | `DateTime` | TIMESTAMPTZ |
+| `datetime` | `timestamptz` | `DateTime` | TIMESTAMPTZ (timezone-aware) |
+| `naivedatetime` | `timestamp` | `NaiveDateTime` | TIMESTAMP (without timezone) |
 | `date` | | `Date` | DATE |
 | `decimal` | | `Decimal` | DECIMAL |
 | `json` | | `Json` | JSON |
