@@ -9,7 +9,7 @@
 
 use rapina::prelude::*;
 
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "HOST"]
     #[default = "127.0.0.1"]

@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 // =============================================================================
 
 /// App config loaded from environment (host, port).
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "HOST"]
     #[default = "127.0.0.1"]

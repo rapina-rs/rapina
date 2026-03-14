@@ -8,9 +8,10 @@ use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
 use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
+#[cfg(feature = "compression")]
+use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
-    CompressionConfig, CompressionMiddleware, CorsConfig, CorsMiddleware, Middleware,
-    MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
 };
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
@@ -72,6 +73,10 @@ pub struct Rapina {
     /// Relay configuration (if enabled)
     #[cfg(feature = "websocket")]
     pub(crate) relay_config: Option<crate::relay::RelayConfig>,
+    /// Whether to use RFC 7807 Problem Details for error responses (default: false)
+    pub(crate) rfc7807_errors: bool,
+    /// Custom base URI for RFC 7807 `type` field (default: "about:blank")
+    pub(crate) rfc7807_base_uri: String,
 }
 
 impl Rapina {
@@ -95,6 +100,8 @@ impl Rapina {
             shutdown_hooks: Vec::new(),
             #[cfg(feature = "websocket")]
             relay_config: None,
+            rfc7807_errors: false,
+            rfc7807_base_uri: "about:blank".to_string(),
         }
     }
 
@@ -190,6 +197,7 @@ impl Rapina {
     }
 
     /// Enables response compression (gzip, deflate).
+    #[cfg(feature = "compression")]
     pub fn with_compression(mut self, config: CompressionConfig) -> Self {
         self.middlewares.add(CompressionMiddleware::new(config));
         self
@@ -278,6 +286,37 @@ impl Rapina {
     /// Introspection is enabled by default in debug builds.
     pub fn with_introspection(mut self, enabled: bool) -> Self {
         self.introspection = enabled;
+        self
+    }
+
+    /// Enables RFC 7807 Problem Details for error responses.
+    ///
+    /// When enabled, error responses use the `application/problem+json`
+    /// content type and follow the RFC 7807 structure.
+    ///
+    /// This is disabled by default for backwards compatibility.
+    pub fn enable_rfc7807_errors(mut self) -> Self {
+        self.rfc7807_errors = true;
+        self
+    }
+
+    /// Sets the base URI used for RFC 7807 `type` field.
+    ///
+    /// Error codes are appended as kebab-case path segments.
+    /// For example, with `"https://myapp.com/errors"`, a `NOT_FOUND`
+    /// error produces `"https://myapp.com/errors/not-found"`.
+    ///
+    /// Defaults to `"about:blank"` per RFC 7807 §4.2.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let app = Rapina::new()
+    ///     .enable_rfc7807_errors()
+    ///     .rfc7807_base_uri("https://myapp.com/errors");
+    /// ```
+    pub fn rfc7807_base_uri(mut self, uri: impl Into<String>) -> Self {
+        self.rfc7807_base_uri = uri.into();
         self
     }
 
@@ -449,6 +488,11 @@ impl Rapina {
     /// Both [`listen`](Self::listen) and [`TestClient::new`](crate::testing::TestClient::new)
     /// call this so the app behaves identically in tests and production.
     pub(crate) fn prepare(mut self) -> Self {
+        self.state = self.state.with(crate::error::ErrorConfig {
+            use_rfc7807: self.rfc7807_errors,
+            base_uri: self.rfc7807_base_uri.clone(),
+        });
+
         // Auto-discover routes from inventory (must run before auth middleware)
         if self.auto_discover {
             let manual_count = self.router.routes.len();

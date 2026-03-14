@@ -162,23 +162,26 @@ pub struct Cookie<T>(pub T);
 /// Provides access to shared application state that was registered
 /// with [`Rapina::state`](crate::app::Rapina::state).
 ///
+/// The inner value is wrapped in an `Arc<T>`, so extraction is always
+/// a cheap atomic reference-count bump rather than a deep clone.
+/// This also removes the `Clone` requirement on `T`.
+///
 /// # Examples
 ///
 /// ```ignore
 /// use rapina::prelude::*;
 ///
-/// #[derive(Clone)]
 /// struct AppConfig {
 ///     db_url: String,
 /// }
 ///
 /// #[get("/config")]
 /// async fn get_config(state: State<AppConfig>) -> String {
-///     state.db_url
+///     state.db_url.clone()
 /// }
 /// ```
-#[derive(Debug)]
-pub struct State<T>(pub T);
+#[derive(Debug, Clone)]
+pub struct State<T>(pub Arc<T>);
 
 /// Provides access to the request context.
 ///
@@ -378,8 +381,8 @@ impl<T> Cookie<T> {
 }
 
 impl<T> State<T> {
-    /// Consumes the extractor and returns the inner value.
-    pub fn into_inner(self) -> T {
+    /// Consumes the extractor and returns the inner `Arc<T>`.
+    pub fn into_inner(self) -> Arc<T> {
         self.0
     }
 }
@@ -511,19 +514,19 @@ impl<T: DeserializeOwned + Validate + Send> FromRequest for Validated<Form<T>> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> FromRequestParts for State<T> {
+impl<T: Send + Sync + 'static> FromRequestParts for State<T> {
     async fn from_request_parts(
         _parts: &http::request::Parts,
         _params: &PathParams,
         state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let value = state.get::<T>().ok_or_else(|| {
+        let arc = state.get_arc::<T>().ok_or_else(|| {
             Error::internal(format!(
                 "State not registered for type '{}'. Did you forget to call .state()?",
                 std::any::type_name::<T>()
             ))
         })?;
-        Ok(State(value.clone()))
+        Ok(State(arc))
     }
 }
 
@@ -680,7 +683,13 @@ macro_rules! impl_deref {
     };
 }
 
-impl_deref!(State);
+impl<T> Deref for State<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl_deref!(Json);
 impl_deref!(Path);
 impl_deref!(Query);
@@ -841,7 +850,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
+        assert_eq!(err.status(), 400);
     }
 
     // Headers extractor tests
@@ -901,7 +910,7 @@ mod tests {
 
         let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 400);
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 
     #[tokio::test]
@@ -937,7 +946,6 @@ mod tests {
     // State extractor tests
     #[tokio::test]
     async fn test_state_extractor_success() {
-        #[derive(Clone)]
         struct AppConfig {
             name: String,
         }
@@ -949,12 +957,12 @@ mod tests {
 
         let result = State::<AppConfig>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().0.name, "test-app");
+        assert_eq!(result.unwrap().name, "test-app");
     }
 
     #[tokio::test]
     async fn test_state_extractor_not_found() {
-        #[derive(Clone, Debug)]
+        #[derive(Debug)]
         struct MissingState;
 
         let state = empty_state();
@@ -963,7 +971,7 @@ mod tests {
         let result =
             State::<MissingState>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 500);
+        assert_eq!(result.unwrap_err().status(), 500);
     }
 
     // into_inner tests
@@ -1000,8 +1008,9 @@ mod tests {
 
     #[test]
     fn test_state_into_inner() {
-        let state = State("value".to_string());
-        assert_eq!(state.into_inner(), "value");
+        let state = State(Arc::new("value".to_string()));
+        let arc = state.into_inner();
+        assert_eq!(*arc, "value");
     }
 
     #[test]
@@ -1070,7 +1079,7 @@ mod tests {
 
     #[test]
     fn test_state_deref() {
-        let state = State("value".to_string());
+        let state = State(Arc::new("value".to_string()));
         assert_eq!(*state, "value");
     }
 
@@ -1110,7 +1119,7 @@ mod tests {
             name: "state test".to_string(),
         };
 
-        let state = State(data.clone());
+        let state = State(Arc::new(data.clone()));
         assert_eq!(state.name, data.name);
     }
 
@@ -1226,8 +1235,8 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
-        assert!(err.message.contains("session_id"));
+        assert_eq!(err.status(), 400);
+        assert!(err.message().contains("session_id"));
     }
 
     #[tokio::test]

@@ -16,12 +16,12 @@ type StateMap = HashMap<TypeId, Arc<dyn Any + Send + Sync>>;
 /// ```
 /// use rapina::state::AppState;
 ///
-/// #[derive(Debug, Clone)]
+/// #[derive(Debug)]
 /// struct DatabaseConfig {
 ///     url: String,
 /// }
 ///
-/// #[derive(Debug, Clone)]
+/// #[derive(Debug)]
 /// struct CacheConfig {
 ///     ttl_secs: u64,
 /// }
@@ -69,6 +69,20 @@ impl AppState {
         self.inner
             .get(&TypeId::of::<T>())
             .and_then(|arc| arc.downcast_ref::<T>())
+    }
+
+    /// Retrieves a shared `Arc<T>` for a value of type `T`, if registered.
+    ///
+    /// This is useful when you want to share state without cloning the
+    /// inner value. The [`State`](crate::extract::State) extractor uses
+    /// this internally so that extraction is an atomic reference-count
+    /// bump rather than a deep clone.
+    ///
+    /// Returns `None` if no value of type `T` has been added.
+    pub fn get_arc<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.inner
+            .get(&TypeId::of::<T>())
+            .and_then(|arc| Arc::clone(arc).downcast::<T>().ok())
     }
 }
 
@@ -155,6 +169,33 @@ mod tests {
 
         assert_eq!(state.get::<i32>(), Some(&42));
         assert_eq!(cloned.get::<i32>(), Some(&42));
+    }
+
+    #[test]
+    fn test_app_state_get_arc() {
+        #[derive(Debug, PartialEq)]
+        struct Config {
+            name: String,
+        }
+
+        let state = AppState::new().with(Config {
+            name: "test".to_string(),
+        });
+
+        let arc = state.get_arc::<Config>().unwrap();
+        assert_eq!(arc.name, "test");
+
+        // A second call returns an independent Arc pointing to the same data
+        let arc2 = state.get_arc::<Config>().unwrap();
+        assert!(Arc::ptr_eq(&arc, &arc2));
+    }
+
+    #[test]
+    fn test_app_state_get_arc_missing() {
+        struct Missing;
+
+        let state = AppState::new();
+        assert!(state.get_arc::<Missing>().is_none());
     }
 
     #[test]
