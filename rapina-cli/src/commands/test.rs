@@ -297,3 +297,153 @@ fn print_summary(summary: &TestSummary, success: bool) {
 
     println!();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- extract_test_name ---
+
+    #[test]
+    fn test_extract_test_name_standard_ok() {
+        assert_eq!(
+            extract_test_name("test commands::add::tests::test_parse_field ... ok"),
+            "commands::add::tests::test_parse_field"
+        );
+    }
+
+    #[test]
+    fn test_extract_test_name_failed() {
+        assert_eq!(
+            extract_test_name("test my_mod::my_test ... FAILED"),
+            "my_mod::my_test"
+        );
+    }
+
+    #[test]
+    fn test_extract_test_name_ignored() {
+        assert_eq!(extract_test_name("test slow_test ... ignored"), "slow_test");
+    }
+
+    #[test]
+    fn test_extract_test_name_no_prefix() {
+        // Lines without "test " prefix return the full line
+        assert_eq!(extract_test_name("some other output"), "some other output");
+    }
+
+    #[test]
+    fn test_extract_test_name_no_dots_separator() {
+        // "test foo" with no " ..." returns just "foo"
+        assert_eq!(extract_test_name("test foo"), "foo");
+    }
+
+    // --- build_test_command ---
+
+    #[test]
+    fn test_build_test_command_default() {
+        let config = TestConfig::default();
+        let (cmd, args) = build_test_command(&config);
+        assert_eq!(cmd, "cargo");
+        assert_eq!(args, vec!["test", "--color=always"]);
+    }
+
+    #[test]
+    fn test_build_test_command_with_coverage() {
+        let config = TestConfig {
+            coverage: true,
+            ..Default::default()
+        };
+        let (cmd, args) = build_test_command(&config);
+        assert_eq!(cmd, "cargo");
+        assert_eq!(args, vec!["llvm-cov", "--", "--color=always"]);
+    }
+
+    #[test]
+    fn test_build_test_command_with_filter() {
+        let config = TestConfig {
+            filter: Some("my_test".to_string()),
+            ..Default::default()
+        };
+        let (_, args) = build_test_command(&config);
+        assert_eq!(args, vec!["test", "my_test", "--color=always"]);
+    }
+
+    #[test]
+    fn test_build_test_command_coverage_and_filter() {
+        let config = TestConfig {
+            coverage: true,
+            filter: Some("integration".to_string()),
+            ..Default::default()
+        };
+        let (_, args) = build_test_command(&config);
+        assert_eq!(
+            args,
+            vec!["llvm-cov", "--", "integration", "--color=always"]
+        );
+    }
+
+    // --- process_test_line ---
+
+    #[test]
+    fn test_process_test_line_passed() {
+        let mut summary = TestSummary::default();
+        process_test_line("test my_test ... ok", &mut summary);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_process_test_line_failed() {
+        let mut summary = TestSummary::default();
+        process_test_line("test my_test ... FAILED", &mut summary);
+        assert_eq!(summary.passed, 0);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_process_test_line_ignored() {
+        let mut summary = TestSummary::default();
+        process_test_line("test slow_test ... ignored", &mut summary);
+        assert_eq!(summary.passed, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.ignored, 1);
+    }
+
+    #[test]
+    fn test_process_test_line_unrelated() {
+        let mut summary = TestSummary::default();
+        process_test_line("Compiling my_crate v0.1.0", &mut summary);
+        process_test_line("running 5 tests", &mut summary);
+        process_test_line("", &mut summary);
+        assert_eq!(summary.passed, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_process_test_line_accumulates() {
+        let mut summary = TestSummary::default();
+        process_test_line("test a ... ok", &mut summary);
+        process_test_line("test b ... ok", &mut summary);
+        process_test_line("test c ... FAILED", &mut summary);
+        process_test_line("test d ... ignored", &mut summary);
+        assert_eq!(summary.passed, 2);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.ignored, 1);
+    }
+
+    #[test]
+    fn test_process_test_line_result_line_no_count() {
+        let mut summary = TestSummary::default();
+        process_test_line(
+            "test result: ok. 3 passed; 0 failed; 0 ignored",
+            &mut summary,
+        );
+        // The "test result:" line should not increment any counters
+        assert_eq!(summary.passed, 0);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.ignored, 0);
+    }
+}
