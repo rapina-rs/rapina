@@ -415,6 +415,8 @@ async fn test_rate_limit_includes_retry_after_header() {
 async fn test_rate_limit_returns_json_error() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .with_rate_limit(RateLimitConfig::new(1.0, 1))
         .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
 
@@ -428,8 +430,9 @@ async fn test_rate_limit_returns_json_error() {
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "RATE_LIMITED");
-    assert_eq!(json["error"]["message"], "too many requests");
+    assert_eq!(json["type"], "https://userapina.com/errors/rate-limited");
+    assert_eq!(json["title"], "Rate Limited");
+    assert_eq!(json["detail"], "too many requests");
     assert!(json["trace_id"].is_string());
 }
 

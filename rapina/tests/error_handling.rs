@@ -8,6 +8,8 @@ use rapina::testing::TestClient;
 async fn test_error_400_bad_request() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/bad", |_, _, _| async {
                 Error::bad_request("invalid input")
@@ -20,8 +22,9 @@ async fn test_error_400_bad_request() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "BAD_REQUEST");
-    assert_eq!(json["error"]["message"], "invalid input");
+    assert_eq!(json["type"], "https://userapina.com/errors/bad-request");
+    assert_eq!(json["title"], "Bad Request");
+    assert_eq!(json["detail"], "invalid input");
     assert!(json["trace_id"].is_string());
 }
 
@@ -29,6 +32,8 @@ async fn test_error_400_bad_request() {
 async fn test_error_401_unauthorized() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/protected", |_, _, _| async {
                 Error::unauthorized("authentication required")
@@ -41,14 +46,17 @@ async fn test_error_401_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "UNAUTHORIZED");
-    assert_eq!(json["error"]["message"], "authentication required");
+    assert_eq!(json["type"], "https://userapina.com/errors/unauthorized");
+    assert_eq!(json["title"], "Unauthorized");
+    assert_eq!(json["detail"], "authentication required");
 }
 
 #[tokio::test]
 async fn test_error_403_forbidden() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/admin", |_, _, _| async {
                 Error::forbidden("access denied")
@@ -61,14 +69,17 @@ async fn test_error_403_forbidden() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "FORBIDDEN");
-    assert_eq!(json["error"]["message"], "access denied");
+    assert_eq!(json["type"], "https://userapina.com/errors/forbidden");
+    assert_eq!(json["title"], "Forbidden");
+    assert_eq!(json["detail"], "access denied");
 }
 
 #[tokio::test]
 async fn test_error_404_not_found() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/users/:id", |_, _, _| async {
                 Error::not_found("user not found")
@@ -81,14 +92,17 @@ async fn test_error_404_not_found() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "NOT_FOUND");
-    assert_eq!(json["error"]["message"], "user not found");
+    assert_eq!(json["type"], "https://userapina.com/errors/not-found");
+    assert_eq!(json["title"], "Not Found");
+    assert_eq!(json["detail"], "user not found");
 }
 
 #[tokio::test]
 async fn test_error_409_conflict() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::POST, "/users", |_, _, _| async {
                 Error::conflict("user already exists")
@@ -101,14 +115,17 @@ async fn test_error_409_conflict() {
     assert_eq!(response.status(), StatusCode::CONFLICT);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "CONFLICT");
-    assert_eq!(json["error"]["message"], "user already exists");
+    assert_eq!(json["type"], "https://userapina.com/errors/conflict");
+    assert_eq!(json["title"], "Conflict");
+    assert_eq!(json["detail"], "user already exists");
 }
 
 #[tokio::test]
 async fn test_error_422_validation() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::POST, "/users", |_, _, _| async {
                 Error::validation("validation failed")
@@ -121,14 +138,20 @@ async fn test_error_422_validation() {
     assert_eq!(response.status(), 422);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "VALIDATION_ERROR");
-    assert_eq!(json["error"]["message"], "validation failed");
+    assert_eq!(
+        json["type"],
+        "https://userapina.com/errors/validation-error"
+    );
+    assert_eq!(json["title"], "Validation Error");
+    assert_eq!(json["detail"], "validation failed");
 }
 
 #[tokio::test]
 async fn test_error_429_rate_limited() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/api", |_, _, _| async {
                 Error::rate_limited("too many requests")
@@ -141,14 +164,17 @@ async fn test_error_429_rate_limited() {
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "RATE_LIMITED");
-    assert_eq!(json["error"]["message"], "too many requests");
+    assert_eq!(json["type"], "https://userapina.com/errors/rate-limited");
+    assert_eq!(json["title"], "Rate Limited");
+    assert_eq!(json["detail"], "too many requests");
 }
 
 #[tokio::test]
 async fn test_error_500_internal() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/crash", |_, _, _| async {
                 Error::internal("something went wrong")
@@ -161,14 +187,17 @@ async fn test_error_500_internal() {
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "INTERNAL_ERROR");
-    assert_eq!(json["error"]["message"], "something went wrong");
+    assert_eq!(json["type"], "https://userapina.com/errors/internal-error");
+    assert_eq!(json["title"], "Internal Error");
+    assert_eq!(json["detail"], "something went wrong");
 }
 
 #[tokio::test]
 async fn test_error_with_details() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::POST, "/users", |_, _, _| async {
                 Error::validation("validation failed").with_details(serde_json::json!({
@@ -186,10 +215,14 @@ async fn test_error_with_details() {
     assert_eq!(response.status(), 422);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "VALIDATION_ERROR");
-    assert!(json["error"]["details"]["errors"].is_array());
+    assert_eq!(
+        json["type"],
+        "https://userapina.com/errors/validation-error"
+    );
+    assert_eq!(json["title"], "Validation Error");
+    assert!(json["errors"].is_array());
 
-    let errors = json["error"]["details"]["errors"].as_array().unwrap();
+    let errors = json["errors"].as_array().unwrap();
     assert_eq!(errors.len(), 2);
     assert_eq!(errors[0]["field"], "email");
 }
@@ -198,6 +231,8 @@ async fn test_error_with_details() {
 async fn test_error_with_custom_trace_id() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/error", |_, _, _| async {
                 Error::bad_request("test error").with_trace_id("custom-trace-123")
@@ -217,6 +252,8 @@ async fn test_error_with_custom_trace_id() {
 async fn test_error_trace_id_is_uuid_by_default() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/error", |_, _, _| async {
                 Error::bad_request("test error")
@@ -238,6 +275,8 @@ async fn test_error_trace_id_is_uuid_by_default() {
 async fn test_error_response_content_type() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/error", |_, _, _| async {
                 Error::bad_request("test")
@@ -253,13 +292,15 @@ async fn test_error_response_content_type() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert!(content_type.contains("application/json"));
+    assert!(content_type.contains("application/problem+json"));
 }
 
 #[tokio::test]
 async fn test_result_ok_returns_success() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/result", |_, _, _| async {
                 let result: std::result::Result<&str, Error> = Ok("success");
@@ -278,6 +319,8 @@ async fn test_result_ok_returns_success() {
 async fn test_result_err_returns_error() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/result", |_, _, _| async {
                 let result: std::result::Result<&str, Error> = Err(Error::not_found("not found"));
@@ -295,6 +338,8 @@ async fn test_result_err_returns_error() {
 async fn test_custom_error_status() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/custom", |_, _, _| async {
                 Error::new(418, "IM_A_TEAPOT", "I'm a teapot")
@@ -307,14 +352,17 @@ async fn test_custom_error_status() {
     assert_eq!(response.status().as_u16(), 418);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "IM_A_TEAPOT");
-    assert_eq!(json["error"]["message"], "I'm a teapot");
+    assert_eq!(json["type"], "https://userapina.com/errors/im-a-teapot");
+    assert_eq!(json["title"], "Im A Teapot");
+    assert_eq!(json["detail"], "I'm a teapot");
 }
 
 #[tokio::test]
 async fn test_error_without_details_omits_field() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::GET, "/error", |_, _, _| async {
                 Error::bad_request("simple error")
@@ -325,14 +373,17 @@ async fn test_error_without_details_omits_field() {
     let response = client.get("/error").send().await;
 
     let json: serde_json::Value = response.json();
-    // details should not be present when None
-    assert!(json["error"]["details"].is_null());
+    // detail is always present, but extensions should be omitted if None
+    assert_eq!(json["detail"], "simple error");
+    assert!(json.as_object().unwrap().get("details").is_none());
 }
 
 #[tokio::test]
 async fn test_error_chaining() {
     let app = Rapina::new()
         .with_introspection(false)
+        .enable_rfc7807_errors()
+        .rfc7807_base_uri("https://userapina.com/errors/")
         .router(
             Router::new().route(http::Method::POST, "/users", |_, _, _| async {
                 Error::validation("invalid input")
@@ -347,9 +398,12 @@ async fn test_error_chaining() {
     assert_eq!(response.status(), 422);
 
     let json: serde_json::Value = response.json();
-    assert_eq!(json["error"]["code"], "VALIDATION_ERROR");
-    assert_eq!(json["error"]["message"], "invalid input");
-    assert_eq!(json["error"]["details"]["field"], "email");
+    assert_eq!(
+        json["type"],
+        "https://userapina.com/errors/validation-error"
+    );
+    assert_eq!(json["detail"], "invalid input");
+    assert_eq!(json["field"], "email");
     assert_eq!(json["trace_id"], "trace-abc-123");
 }
 
@@ -364,4 +418,42 @@ async fn test_router_404_response() {
 
     // Router returns plain 404, not JSON error
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_standard_error_format() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        // Default is now standard format
+        .router(
+            Router::new().route(http::Method::GET, "/standard", |_, _, _| async {
+                Error::not_found("user not found")
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/standard").send().await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Should be application/json, not application/problem+json
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(content_type.contains("application/json"));
+    assert!(!content_type.contains("application/problem+json"));
+
+    let json: serde_json::Value = response.json();
+    // Standard format: { "error": { "code": "NOT_FOUND", "message": "user not found" }, "trace_id": "..." }
+    assert_eq!(json["error"]["code"], "NOT_FOUND");
+    assert_eq!(json["error"]["message"], "user not found");
+    assert!(json["trace_id"].is_string());
+
+    // Should NOT have RFC 7807 fields at the root
+    assert!(json.get("type").is_none());
+    assert!(json.get("title").is_none());
+    assert!(json.get("detail").is_none());
 }
