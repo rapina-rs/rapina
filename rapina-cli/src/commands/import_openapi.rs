@@ -1181,6 +1181,10 @@ mod tests {
         assert_eq!(singularize("boxes"), "box");
         assert_eq!(singularize("class"), "class"); // ends in 'ss'
         assert_eq!(singularize("buses"), "bus");
+        assert_eq!(singularize("statuses"), "status");
+        assert_eq!(singularize("people"), "person");
+        assert_eq!(singularize("indices"), "index");
+        assert_eq!(singularize("series"), "series");
     }
 
     fn make_test_spec() -> OpenAPI {
