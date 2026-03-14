@@ -78,18 +78,42 @@ const IRREGULARS: &[(&str, &str)] = &[
 
 /// Words that are the same in singular and plural form.
 const UNCOUNTABLE: &[&str] = &[
-    "series", "species", "news", "info", "metadata",
-    "sheep", "fish", "deer", "aircraft",
-    "software", "hardware", "firmware", "middleware",
-    "equipment", "feedback", "moose", "bison",
-    "trout", "salmon", "shrimp",
+    "series",
+    "species",
+    "news",
+    "info",
+    "metadata",
+    "sheep",
+    "fish",
+    "deer",
+    "aircraft",
+    "software",
+    "hardware",
+    "firmware",
+    "middleware",
+    "equipment",
+    "feedback",
+    "moose",
+    "bison",
+    "trout",
+    "salmon",
+    "shrimp",
 ];
 
 /// Words ending in -us where the singular should not have -s stripped,
 /// and the plural is formed by adding -es (e.g. status → statuses).
 const SINGULAR_US: &[&str] = &[
-    "status", "campus", "virus", "census", "corpus",
-    "opus", "genus", "apparatus", "nexus", "prospectus", "consensus",
+    "status",
+    "campus",
+    "virus",
+    "census",
+    "corpus",
+    "opus",
+    "genus",
+    "apparatus",
+    "nexus",
+    "prospectus",
+    "consensus",
 ];
 
 pub(crate) fn pluralize(s: &str) -> String {
