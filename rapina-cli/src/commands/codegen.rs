@@ -425,18 +425,82 @@ enum {pascal_plural} {{
     )
 }
 
+pub(crate) fn remove_schema_block(content: &str, entity_name: &str) -> String {
+    let mut result = String::new();
+    let mut lines = content.lines().peekable();
+    let entity_pattern = format!("{} {{", entity_name);
+
+    while let Some(line) = lines.next() {
+        if line.trim_start().starts_with("schema! {") {
+            // Collect the entire schema block
+            let mut block_lines = vec![line.to_string()];
+            let mut depth: i32 =
+                line.matches('{').count() as i32 - line.matches('}').count() as i32;
+
+            while depth > 0 {
+                if let Some(next) = lines.next() {
+                    depth += next.matches('{').count() as i32 - next.matches('}').count() as i32;
+                    block_lines.push(next.to_string());
+                } else {
+                    break;
+                }
+            }
+
+            // Check if this block contains our entity
+            let block_text = block_lines.join("\n");
+            if !block_text.contains(&entity_pattern) {
+                result.push_str(&block_text);
+                result.push('\n');
+            }
+            // else: skip the block entirely
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    // Clean up excessive blank lines left behind
+    while result.contains("\n\n\n") {
+        result = result.replace("\n\n\n", "\n\n");
+    }
+
+    result
+}
+
 pub(crate) fn update_entity_file(
     pascal: &str,
     fields: &[FieldInfo],
     timestamps: Option<&str>,
     primary_key: Option<&[String]>,
+    force: bool,
 ) -> Result<(), String> {
-    let entity_path = Path::new("src/entity.rs");
+    update_entity_file_in(
+        pascal,
+        fields,
+        timestamps,
+        primary_key,
+        force,
+        Path::new("src/entity.rs"),
+    )
+}
+
+fn update_entity_file_in(
+    pascal: &str,
+    fields: &[FieldInfo],
+    timestamps: Option<&str>,
+    primary_key: Option<&[String]>,
+    force: bool,
+    entity_path: &Path,
+) -> Result<(), String> {
     let schema_block = generate_schema_block(pascal, fields, timestamps, primary_key);
 
     if entity_path.exists() {
-        let content = fs::read_to_string(entity_path)
+        let mut content = fs::read_to_string(entity_path)
             .map_err(|e| format!("Failed to read entity.rs: {}", e))?;
+
+        if force {
+            content = remove_schema_block(&content, pascal);
+        }
 
         // Ensure schema! macro is importable
         let needs_import =
@@ -498,14 +562,44 @@ pub(crate) fn create_feature_module(
     pascal: &str,
     fields: &[FieldInfo],
     pk_type: &str,
+    force: bool,
 ) -> Result<(), String> {
-    let module_dir = Path::new("src").join(plural);
+    create_feature_module_in(
+        singular,
+        plural,
+        pascal,
+        fields,
+        pk_type,
+        force,
+        Path::new("src"),
+    )
+}
+
+fn create_feature_module_in(
+    singular: &str,
+    plural: &str,
+    pascal: &str,
+    fields: &[FieldInfo],
+    pk_type: &str,
+    force: bool,
+    base: &Path,
+) -> Result<(), String> {
+    let module_dir = base.join(plural);
 
     if module_dir.exists() {
-        return Err(format!(
-            "Directory 'src/{}/' already exists. Remove it first or choose a different resource name.",
-            plural
-        ));
+        if !force {
+            return Err(format!(
+                "Directory 'src/{}/' already exists. Remove it first, choose a different resource name, or use --force to overwrite.",
+                plural
+            ));
+        }
+        fs::remove_dir_all(&module_dir)
+            .map_err(|e| format!("Failed to remove existing directory: {}", e))?;
+        println!(
+            "  {} Removed existing {}",
+            "↻".yellow(),
+            format!("src/{}/", plural).cyan()
+        );
     }
 
     fs::create_dir_all(&module_dir)
@@ -635,5 +729,165 @@ mod tests {
         assert!(block.contains("#[timestamps(none)]"));
         assert!(block.contains("user_id: i32,"));
         assert!(block.contains("role_id: i32,"));
+    }
+
+    #[test]
+    fn test_remove_schema_block_removes_matching_entity() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+
+schema! {
+    Comment {
+        body: String,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "Post");
+        assert!(!result.contains("Post {"));
+        assert!(result.contains("Comment {"));
+        assert!(result.contains("schema! {"));
+    }
+
+    #[test]
+    fn test_remove_schema_block_no_match_returns_unchanged() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "User");
+        assert_eq!(result.trim(), content.trim());
+    }
+
+    #[test]
+    fn test_create_feature_module_errors_without_force_when_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let module_dir = dir.path().join("users");
+        fs::create_dir_all(&module_dir).unwrap();
+        fs::write(module_dir.join("mod.rs"), "old content").unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "email".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        let result =
+            create_feature_module_in("user", "users", "User", &fields, "i32", false, dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_create_feature_module_overwrites_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let module_dir = dir.path().join("users");
+        fs::create_dir_all(&module_dir).unwrap();
+        fs::write(module_dir.join("mod.rs"), "old content").unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "email".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        let result =
+            create_feature_module_in("user", "users", "User", &fields, "i32", true, dir.path());
+        assert!(result.is_ok());
+        let mod_content = fs::read_to_string(module_dir.join("mod.rs")).unwrap();
+        assert!(mod_content.contains("pub mod"));
+    }
+
+    #[test]
+    fn test_update_entity_file_deduplicates_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+        fs::write(
+            &entity_path,
+            r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        update_entity_file_in("Post", &fields, None, None, true, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        // Should have exactly one schema! block for Post, not two
+        assert_eq!(content.matches("Post {").count(), 1);
+        assert!(content.contains("schema! {"));
+    }
+
+    #[test]
+    fn test_update_entity_file_appends_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+        fs::write(
+            &entity_path,
+            r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        update_entity_file_in("Post", &fields, None, None, false, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        // Without force, should have two schema! blocks (duplicate)
+        assert_eq!(content.matches("Post {").count(), 2);
+    }
+
+    #[test]
+    fn test_remove_schema_block_with_attributes() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    #[primary_key(user_id, role_id)]
+    #[timestamps(none)]
+    UsersRole {
+        user_id: i32,
+        role_id: i32,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "UsersRole");
+        assert!(!result.contains("UsersRole"));
+        assert!(!result.contains("schema!"));
     }
 }
