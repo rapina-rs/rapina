@@ -69,10 +69,7 @@ fn default_redacted_headers() -> Vec<String> {
     ]
 }
 
-fn format_headers(
-    headers: &hyper::HeaderMap,
-    redacted: &[String],
-) -> String {
+fn format_headers(headers: &hyper::HeaderMap, redacted: &[String]) -> String {
     let mut parts: Vec<String> = Vec::new();
     for (name, value) in headers.iter() {
         let name_lower = name.as_str().to_lowercase();
@@ -227,7 +224,11 @@ mod tests {
         assert!(config.log_query_params);
         assert!(config.log_body_size);
         assert_eq!(config.redacted_headers.len(), 4);
-        assert!(config.redacted_headers.contains(&"authorization".to_string()));
+        assert!(
+            config
+                .redacted_headers
+                .contains(&"authorization".to_string())
+        );
         assert!(config.redacted_headers.contains(&"cookie".to_string()));
         assert!(config.redacted_headers.contains(&"set-cookie".to_string()));
         assert!(config.redacted_headers.contains(&"x-api-key".to_string()));
@@ -245,10 +246,13 @@ mod tests {
 
     #[test]
     fn test_redact_header_appends() {
-        let config = RequestLogConfig::verbose()
-            .redact_header("x-custom-secret");
+        let config = RequestLogConfig::verbose().redact_header("x-custom-secret");
         assert_eq!(config.redacted_headers.len(), 5);
-        assert!(config.redacted_headers.contains(&"x-custom-secret".to_string()));
+        assert!(
+            config
+                .redacted_headers
+                .contains(&"x-custom-secret".to_string())
+        );
     }
 
     #[test]

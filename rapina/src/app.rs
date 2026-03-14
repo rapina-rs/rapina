@@ -212,7 +212,8 @@ impl Rapina {
     ///     .await
     /// ```
     pub fn with_request_log(mut self, config: RequestLogConfig) -> Self {
-        self.middlewares.add(RequestLogMiddleware::with_config(config));
+        self.middlewares
+            .add(RequestLogMiddleware::with_config(config));
         self
     }
 
