@@ -88,6 +88,9 @@ enum Commands {
         /// Watch for changes and re-run tests
         #[arg(short, long)]
         watch: bool,
+        /// Update snapshot files (golden-file testing)
+        #[arg(long)]
+        bless: bool,
         /// Filter tests by name
         filter: Option<String>,
     },
@@ -316,11 +319,13 @@ fn main() {
         Some(Commands::Test {
             coverage,
             watch,
+            bless,
             filter,
         }) => {
             let config = commands::test::TestConfig {
                 coverage,
                 watch,
+                bless,
                 filter,
             };
             if let Err(e) = commands::test::execute(config) {

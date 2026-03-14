@@ -17,6 +17,7 @@ use crate::commands::verify_rapina_project;
 pub struct TestConfig {
     pub coverage: bool,
     pub watch: bool,
+    pub bless: bool,
     pub filter: Option<String>,
 }
 
@@ -64,14 +65,28 @@ fn run_tests(config: &TestConfig) -> Result<(), String> {
         "{} Running tests...",
         "INFO".custom_color(colors::blue()).bold()
     );
+
+    if config.bless {
+        println!(
+            "{} Blessing snapshots — new .snap files will be written",
+            "INFO".custom_color(colors::blue()).bold()
+        );
+    }
+
     println!();
 
-    let (cmd, args) = build_test_command(config);
+    let (cmd_name, args) = build_test_command(config);
 
-    let mut child = Command::new(&cmd)
-        .args(&args)
+    let mut cmd = Command::new(&cmd_name);
+    cmd.args(&args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if config.bless {
+        cmd.env("RAPINA_BLESS", "1");
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to run tests: {}", e))?;
 

@@ -41,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 uuid = { version = "1", features = ["v4"] }
+regex = "1"
 rust_decimal = "1"
 
 # Environtment
@@ -90,6 +91,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 matchit = "0.8"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
+tempfile = "3"
 
 [[bench]]
 name = "router"

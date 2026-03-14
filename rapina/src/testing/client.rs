@@ -279,6 +279,23 @@ impl TestResponse {
     pub fn try_json<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         serde_json::from_slice(&self.body)
     }
+
+    /// Asserts the response body matches a saved snapshot.
+    ///
+    /// In bless mode (`RAPINA_BLESS=1`), saves the response as a new snapshot.
+    /// Otherwise, compares against the existing snapshot and panics on mismatch.
+    ///
+    /// Dynamic values (UUIDs, timestamps) are automatically redacted.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let response = client.get("/users/1").send().await;
+    /// response.assert_snapshot("get_user_by_id");
+    /// ```
+    pub fn assert_snapshot(&self, name: &str) {
+        super::snapshot::assert_snapshot(name, self.status.as_u16(), &self.body);
+    }
 }
 
 #[cfg(test)]
