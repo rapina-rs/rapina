@@ -171,6 +171,7 @@ Options:
 |------|-------------|
 | `--coverage` | Generate coverage report (requires cargo-llvm-cov) |
 | `-w, --watch` | Watch for changes and re-run tests |
+| `--bless` | Update snapshot files (golden-file testing) |
 | `[FILTER]` | Filter tests by name |
 
 Examples:
@@ -187,6 +188,9 @@ rapina test -w
 
 # Generate coverage report
 rapina test --coverage
+
+# Save or update response snapshots
+rapina test --bless
 ```
 
 Output:

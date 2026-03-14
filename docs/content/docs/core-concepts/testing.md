@@ -83,6 +83,7 @@ Every `.send().await` returns a `TestResponse` with these methods:
 | `.try_json::<T>()` | `Result<T, serde_json::Error>` | Deserialize body as JSON (returns error) |
 | `.headers()` | `&HeaderMap` | Response headers |
 | `.bytes()` | `&Bytes` | Raw body bytes |
+| `.assert_snapshot(name)` | `()` | Compare body against a saved snapshot (see [Snapshot testing](#snapshot-testing)) |
 
 ```rust
 #[derive(serde::Deserialize)]
@@ -270,6 +271,70 @@ assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 let json: serde_json::Value = resp.json();
 assert_eq!(json["error"]["details"]["field"], "email");
 ```
+
+## Snapshot testing
+
+When you have many endpoints, asserting on individual fields gets tedious. Snapshot testing captures the full response body as a golden file and compares against it on subsequent runs — any unexpected change in the response shape fails the test with a clear diff.
+
+### Basic usage
+
+Call `.assert_snapshot("name")` on any `TestResponse`:
+
+```rust
+#[tokio::test]
+async fn test_get_user() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(/* your routes */);
+
+    let client = TestClient::new(app).await;
+
+    let resp = client.get("/users/1").send().await;
+    resp.assert_snapshot("get_user");
+}
+```
+
+The first time you run this, it will fail because no snapshot exists yet. Run `rapina test --bless` to create the snapshot files:
+
+```bash
+rapina test --bless
+```
+
+This saves `snapshots/get_user.snap` with the redacted response:
+
+```
+HTTP 200 OK
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "Alice",
+  "created_at": "[TIMESTAMP]",
+  "trace_id": "[UUID]"
+}
+```
+
+On subsequent runs, `rapina test` compares the response against the saved snapshot. If the response changes, the test fails with a line-by-line diff showing exactly what's different.
+
+### Automatic redaction
+
+Dynamic values are automatically replaced with stable placeholders so snapshots don't break between runs:
+
+| Pattern | Placeholder |
+|---------|-------------|
+| UUID v4 values | `[UUID]` |
+| ISO 8601 timestamps | `[TIMESTAMP]` |
+| `trace_id` fields (any value) | `[UUID]` |
+
+### Updating snapshots
+
+When you intentionally change a response, run `--bless` again to update the snapshots:
+
+```bash
+rapina test --bless
+```
+
+Commit the updated `.snap` files alongside your code changes so reviewers can see exactly what changed in the response shape.
 
 ## Complete example
 
