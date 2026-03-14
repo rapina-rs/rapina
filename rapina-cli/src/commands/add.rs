@@ -180,8 +180,8 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
 
     let pk_type = "i32"; // New resources default to i32 PK
 
-    codegen::create_feature_module(singular, plural, pascal, &fields, pk_type)?;
-    codegen::update_entity_file(pascal, &fields, None, None)?;
+    codegen::create_feature_module(singular, plural, pascal, &fields, pk_type, false)?;
+    codegen::update_entity_file(pascal, &fields, None, None, false)?;
     codegen::create_migration_file(plural, pascal_plural, &fields, pk_type)?;
 
     print_next_steps(singular, plural, pascal);
