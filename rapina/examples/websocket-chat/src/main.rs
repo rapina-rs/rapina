@@ -4,9 +4,9 @@ use bytes::Bytes;
 use http_body_util::Full;
 use rapina::prelude::*;
 use rapina::websocket::{Message, WebSocket, WebSocketUpgrade};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
-#[derive(Clone)]
 struct ChatRoom {
     tx: broadcast::Sender<String>,
 }
@@ -17,7 +17,7 @@ async fn chat(upgrade: WebSocketUpgrade, room: State<ChatRoom>) -> rapina::http:
     upgrade.on_upgrade(|socket| handle_connection(socket, room.into_inner()))
 }
 
-async fn handle_connection(socket: WebSocket, room: ChatRoom) {
+async fn handle_connection(socket: WebSocket, room: Arc<ChatRoom>) {
     let (mut writer, mut reader) = socket.split();
     let mut broadcast_rx = room.tx.subscribe();
 

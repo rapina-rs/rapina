@@ -35,7 +35,7 @@ Use the `#[derive(Config)]` macro for type-safe configuration:
 ```rust
 use rapina::prelude::*;
 
-#[derive(Config, Clone)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "DATABASE_URL"]
     database_url: String,

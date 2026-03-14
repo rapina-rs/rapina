@@ -2,7 +2,7 @@ use rapina::extract::{FromRequestParts, State};
 use rapina::prelude::*;
 use std::sync::Arc;
 
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "APP_NAME"]
     #[default = "Rapina Demo"]
