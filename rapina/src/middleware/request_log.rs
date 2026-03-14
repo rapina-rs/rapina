@@ -63,6 +63,7 @@ impl RequestLogConfig {
 fn default_redacted_headers() -> Vec<String> {
     vec![
         "authorization".to_string(),
+        "proxy-authorization".to_string(),
         "cookie".to_string(),
         "set-cookie".to_string(),
         "x-api-key".to_string(),
@@ -132,6 +133,8 @@ impl Middleware for RequestLogMiddleware {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
         let trace_id = ctx.trace_id.clone();
+        let verbose =
+            self.config.log_headers || self.config.log_query_params || self.config.log_body_size;
 
         let req_headers = if self.config.log_headers {
             Some(format_headers(req.headers(), &self.config.redacted_headers))
@@ -167,35 +170,43 @@ impl Middleware for RequestLogMiddleware {
                 let duration = ctx.elapsed();
                 let status = response.status().as_u16();
 
-                let res_headers = if self.config.log_headers {
-                    Some(format_headers(
-                        response.headers(),
-                        &self.config.redacted_headers,
-                    ))
-                } else {
-                    None
-                };
+                if verbose {
+                    let res_headers = if self.config.log_headers {
+                        Some(format_headers(
+                            response.headers(),
+                            &self.config.redacted_headers,
+                        ))
+                    } else {
+                        None
+                    };
 
-                let res_body_size = if self.config.log_body_size {
-                    response
-                        .headers()
-                        .get(hyper::header::CONTENT_LENGTH)
-                        .and_then(|v| v.to_str().ok())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                };
+                    let res_body_size = if self.config.log_body_size {
+                        response
+                            .headers()
+                            .get(hyper::header::CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string())
+                    } else {
+                        None
+                    };
 
-                info!(
-                    status = status,
-                    duration_ms = duration.as_millis() as u64,
-                    request_headers = req_headers.as_deref().unwrap_or_default(),
-                    response_headers = res_headers.as_deref().unwrap_or_default(),
-                    query = query.as_deref().unwrap_or_default(),
-                    request_body_size = req_body_size.as_deref().unwrap_or_default(),
-                    response_body_size = res_body_size.as_deref().unwrap_or_default(),
-                    "request completed"
-                );
+                    info!(
+                        status = status,
+                        duration_ms = duration.as_millis() as u64,
+                        request_headers = req_headers.as_deref().unwrap_or_default(),
+                        response_headers = res_headers.as_deref().unwrap_or_default(),
+                        query = query.as_deref().unwrap_or_default(),
+                        request_body_size = req_body_size.as_deref().unwrap_or_default(),
+                        response_body_size = res_body_size.as_deref().unwrap_or_default(),
+                        "request completed"
+                    );
+                } else {
+                    info!(
+                        status = status,
+                        duration_ms = duration.as_millis() as u64,
+                        "request completed"
+                    );
+                }
 
                 response
             }
@@ -223,11 +234,16 @@ mod tests {
         assert!(config.log_headers);
         assert!(config.log_query_params);
         assert!(config.log_body_size);
-        assert_eq!(config.redacted_headers.len(), 4);
+        assert_eq!(config.redacted_headers.len(), 5);
         assert!(
             config
                 .redacted_headers
                 .contains(&"authorization".to_string())
+        );
+        assert!(
+            config
+                .redacted_headers
+                .contains(&"proxy-authorization".to_string())
         );
         assert!(config.redacted_headers.contains(&"cookie".to_string()));
         assert!(config.redacted_headers.contains(&"set-cookie".to_string()));
@@ -247,7 +263,7 @@ mod tests {
     #[test]
     fn test_redact_header_appends() {
         let config = RequestLogConfig::verbose().redact_header("x-custom-secret");
-        assert_eq!(config.redacted_headers.len(), 5);
+        assert_eq!(config.redacted_headers.len(), 6);
         assert!(
             config
                 .redacted_headers
@@ -287,7 +303,7 @@ mod tests {
     fn test_middleware_verbose_uses_verbose_config() {
         let mw = RequestLogMiddleware::verbose();
         assert!(mw.config.log_headers);
-        assert_eq!(mw.config.redacted_headers.len(), 4);
+        assert_eq!(mw.config.redacted_headers.len(), 5);
     }
 
     #[test]

@@ -167,14 +167,14 @@ Rapina::new()
     .await
 ```
 
-`RequestLogConfig::verbose()` enables header logging, query parameter logging, and body size logging, with these headers redacted by default: `authorization`, `cookie`, `set-cookie`, `x-api-key`.
+`RequestLogConfig::verbose()` enables header logging, query parameter logging, and body size logging, with these headers redacted by default: `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`.
 
 | Field | Default | Verbose |
 |-------|---------|---------|
 | `log_headers` | `false` | `true` |
 | `log_query_params` | `false` | `true` |
 | `log_body_size` | `false` | `true` |
-| `redacted_headers` | `[]` | 4 headers |
+| `redacted_headers` | `[]` | 5 headers |
 
 Toggle individual flags or add custom redactions:
 
