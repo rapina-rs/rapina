@@ -9,6 +9,18 @@ use crate::response::{BoxBody, IntoResponse};
 
 use super::{BoxFuture, Middleware, Next};
 
+/// Middleware that enforces a maximum duration for each request.
+///
+/// If a handler does not respond within the configured duration the request is
+/// cancelled and a `500 Internal Server Error` is returned to the client.
+/// Defaults to 30 seconds.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// Rapina::new()
+///     .with(TimeoutMiddleware::new(Duration::from_secs(10)))
+/// ```
 #[derive(Debug, Clone)]
 pub struct TimeoutMiddleware {
     pub(crate) duration: Duration,

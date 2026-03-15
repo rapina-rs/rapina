@@ -20,6 +20,12 @@ use crate::state::AppState;
 /// A shutdown hook: a closure that returns a boxed future.
 pub(crate) type ShutdownHook = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
+/// Start the HTTP server and block until a shutdown signal is received.
+///
+/// Binds to `addr`, runs `router` behind `middlewares`, and performs a graceful
+/// shutdown on SIGINT or SIGTERM, waiting up to `shutdown_timeout` for
+/// in-flight requests to drain before forcing a close. After all connections
+/// are drained, each `shutdown_hooks` closure is awaited in registration order.
 pub(crate) async fn serve(
     mut router: Router,
     state: AppState,
