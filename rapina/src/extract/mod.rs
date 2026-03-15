@@ -16,6 +16,11 @@ use std::str::FromStr;
 use std::sync::Arc;
 use validator::Validate;
 
+#[cfg(feature = "multipart")]
+pub mod multipart;
+#[cfg(feature = "multipart")]
+pub use multipart::{Field, Multipart};
+
 use crate::context::RequestContext;
 use crate::error::Error;
 use crate::response::{APPLICATION_JSON, BoxBody, FORM_CONTENT_TYPE, IntoResponse};

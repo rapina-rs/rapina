@@ -243,13 +243,11 @@ fn route_macro_core(
         if args.len() == 1 {
             // Single arg: pass request directly to FromRequest
             let arg = &args[0];
-            if let FnArg::Typed(pat_type) = arg
-                && let Pat::Ident(pat_ident) = &*pat_type.pat
-            {
-                let arg_name = &pat_ident.ident;
+            if let FnArg::Typed(pat_type) = arg {
+                let arg_pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
                 quote! {
-                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                    let #arg_pat = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                         Ok(v) => v,
                         Err(e) => return rapina::response::IntoResponse::into_response(e),
                     };
@@ -266,13 +264,11 @@ fn route_macro_core(
             let mut parts_extractions = Vec::new();
 
             for arg in &args[..args.len() - 1] {
-                if let FnArg::Typed(pat_type) = arg
-                    && let Pat::Ident(pat_ident) = &*pat_type.pat
-                {
-                    let arg_name = &pat_ident.ident;
+                if let FnArg::Typed(pat_type) = arg {
+                    let arg_pat = &pat_type.pat;
                     let arg_type = &pat_type.ty;
                     parts_extractions.push(quote! {
-                        let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
+                        let #arg_pat = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
                             Ok(v) => v,
                             Err(e) => return rapina::response::IntoResponse::into_response(e),
                         };
@@ -281,14 +277,12 @@ fn route_macro_core(
             }
 
             let last_arg = args.last().unwrap();
-            let last_extraction = if let FnArg::Typed(pat_type) = last_arg
-                && let Pat::Ident(pat_ident) = &*pat_type.pat
-            {
-                let arg_name = &pat_ident.ident;
+            let last_extraction = if let FnArg::Typed(pat_type) = last_arg {
+                let arg_pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
                 quote! {
                     let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
-                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                    let #arg_pat = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                         Ok(v) => v,
                         Err(e) => return rapina::response::IntoResponse::into_response(e),
                     };
