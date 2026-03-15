@@ -46,21 +46,35 @@ use http::header::CONTENT_TYPE;
 #[derive(Debug)]
 pub struct Json<T>(pub T);
 
-/// Extracts a single path parameter from the URL.
+/// Extracts path parameters from the URL.
 ///
-/// Parses a path segment into the specified type `T`.
-/// Returns 400 Bad Request if parsing fails.
+/// Supports three extraction modes:
 ///
-/// # Examples
-///
+/// **Single parameter** — parses one `:param` into any type that implements `FromStr`:
 /// ```ignore
-/// use rapina::prelude::*;
-///
 /// #[get("/users/:id")]
 /// async fn get_user(id: Path<u64>) -> String {
-///     format!("User ID: {}", *id) // deref to access value of Path
+///     format!("User ID: {}", *id)
 /// }
 /// ```
+///
+/// **Tuple** — extracts multiple parameters in declaration order (left to right in the pattern):
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id")]
+/// async fn get_team(Path((org_id, team_id)): Path<(u64, u64)>) -> String {
+///     format!("org={} team={}", org_id, team_id)
+/// }
+/// ```
+///
+/// **Three or more** — same tuple syntax, up to 5 parameters:
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id/members/:member_id")]
+/// async fn get_member(Path((org_id, team_id, member_id)): Path<(u64, u64, u64)>) -> String {
+///     format!("org={} team={} member={}", org_id, team_id, member_id)
+/// }
+/// ```
+///
+/// Returns 400 Bad Request if a parameter is missing or cannot be parsed.
 #[derive(Debug)]
 pub struct Path<T>(pub T);
 
@@ -611,7 +625,17 @@ impl<T: DeserializeOwned + Send> FromRequestParts for Cookie<T> {
     }
 }
 
-impl<T: FromStr + Send> FromRequestParts for Path<T>
+mod sealed {
+    pub trait SingleParam: std::str::FromStr + Send {}
+}
+macro_rules! impl_single_param {
+    ($($t:ty),+) => { $(impl sealed::SingleParam for $t {})+ };
+}
+impl_single_param!(
+    u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, bool, String
+);
+
+impl<T: sealed::SingleParam> FromRequestParts for Path<T>
 where
     T::Err: std::fmt::Display,
 {
@@ -671,6 +695,41 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
 
     Some(params)
 }
+
+macro_rules! impl_multiple_params {
+    ($($T:ident),+) => {
+        impl<$($T),+> FromRequestParts for Path<($($T),+,)>
+        where
+            $($T: FromStr + Send,)+
+            $($T::Err: std::fmt::Display,)+
+        {
+            async fn from_request_parts(
+                _parts: &http::request::Parts,
+                params: &PathParams,
+                _state: &Arc<AppState>,
+            ) -> Result<Self, Error> {
+                let mut iter = params.iter();
+                Ok(Path((
+                    $(
+                        {
+                            let (name, val) = iter.next().ok_or_else(|| {
+                                Error::bad_request("missing parameters")
+                            })?;
+                            val.parse::<$T>().map_err(|e| {
+                                Error::bad_request(format!("path param {} could not be parsed: {}", name, e))
+                            })?
+                        }
+                    ),+
+                    ,
+                )))
+            }
+        }
+    };
+}
+impl_multiple_params!(T1, T2);
+impl_multiple_params!(T1, T2, T3);
+impl_multiple_params!(T1, T2, T3, T4);
+impl_multiple_params!(T1, T2, T3, T4, T5); //5th parameter just in case
 
 macro_rules! impl_deref {
     ($name:ident) => {
@@ -1260,5 +1319,55 @@ mod tests {
     fn test_cookie_into_inner() {
         let cookie = Cookie("session".to_string());
         assert_eq!(cookie.into_inner(), "session");
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_two_params() {
+        let p = params(&[("org_id", "10"), ("team_id", "42")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (10, 42));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_three_params() {
+        let p = params(&[("org_id", "1"), ("team_id", "2"), ("member_id", "3")]);
+        let result = Path::<(u64, u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (1, 2, 3));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_missing_param() {
+        let p = params(&[("org_id", "1")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_bad_parse() {
+        let p = params(&[("org_id", "not_a_number"), ("team_id", "2")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
     }
 }
