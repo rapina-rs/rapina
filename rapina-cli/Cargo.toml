@@ -22,12 +22,16 @@ notify = { version = "8", default-features = false, features = [
   "macos_kqueue",
 ] }
 notify-debouncer-mini = "0.4"
+sea-orm = { version = "1", features = ["runtime-tokio-rustls"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+dotenvy = { version = "0.15", optional = true }
 ctrlc = "3"
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
-tokio = { version = "1", features = ["full"], optional = true }
+fastrand = { version = "2.3.0", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 sea-schema = { version = "0.16", optional = true, default-features = false }
 sqlx = { version = "0.8", optional = true }
 openapiv3 = { version = "2", optional = true }
@@ -35,7 +39,11 @@ serde_yaml_ng = { version = "0.10", optional = true }
 
 [features]
 default = []
-import = ["tokio"]
+seed = ["dep:sea-orm", "dep:tokio", "dep:dotenvy", "dep:fastrand", "dep:uuid"]
+seed-postgres = ["seed", "sea-orm/sqlx-postgres"]
+seed-mysql = ["seed", "sea-orm/sqlx-mysql"]
+seed-sqlite = ["seed", "sea-orm/sqlx-sqlite"]
+import = ["dep:tokio"]
 import-postgres = [
     "import",
     "sea-schema/postgres",
@@ -67,3 +75,5 @@ import-openapi = ["dep:openapiv3", "dep:serde_yaml_ng"]
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tokio = { version = "1", features = ["rt", "macros"] }  # for #[tokio::test]
+sea-orm = { version = "1", features = ["runtime-tokio-rustls", "sqlx-sqlite"] }

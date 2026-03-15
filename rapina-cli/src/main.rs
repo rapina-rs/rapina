@@ -61,6 +61,11 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
+    /// Database seeding tools
+    Seed {
+        #[command(subcommand)]
+        command: SeedCommands,
+    },
     /// Database migration tools
     Migrate {
         #[command(subcommand)]
@@ -90,6 +95,34 @@ enum Commands {
         watch: bool,
         /// Filter tests by name
         filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SeedCommands {
+    /// Load seed data from JSON files into the database
+    Load {
+        /// Load specific entity only
+        #[arg(long)]
+        entity: Option<String>,
+        /// Wipe database before loading (truncate + load)
+        #[arg(long)]
+        fresh: bool,
+    },
+    /// Dump database data to JSON seed files
+    Dump {
+        /// Dump specific entity only
+        #[arg(long)]
+        entity: Option<String>,
+    },
+    /// Generate fake seed data based on schema types
+    Generate {
+        /// Number of records per entity
+        #[arg(long, default_value = "10")]
+        count: u32,
+        /// Generate for specific entity only
+        #[arg(long)]
+        entity: Option<String>,
     },
 }
 
@@ -225,6 +258,35 @@ fn main() {
             };
             if let Err(e) = commands::dev::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Seed { command }) => {
+            #[cfg(feature = "seed")]
+            {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                let result = rt.block_on(async {
+                    match command {
+                        SeedCommands::Load { entity, fresh } => {
+                            commands::seed::load(entity, fresh).await
+                        }
+                        SeedCommands::Dump { entity } => commands::seed::dump(entity).await,
+                        SeedCommands::Generate { count, entity } => {
+                            commands::seed::generate(count, entity)
+                        }
+                    }
+                });
+                if let Err(e) = result {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
+            }
+            #[cfg(not(feature = "seed"))]
+            {
+                let _ = command;
+                let msg = "The seed command requires a database feature. \
+                           Reinstall with: cargo install rapina-cli --features seed-postgres";
+                eprintln!("{} {}", "Error:".red().bold(), msg);
                 std::process::exit(1);
             }
         }
