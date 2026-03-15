@@ -294,7 +294,12 @@ impl TestResponse {
     /// response.assert_snapshot("get_user_by_id");
     /// ```
     pub fn assert_snapshot(&self, name: &str) {
-        super::snapshot::assert_snapshot(name, self.status.as_u16(), &self.body);
+        let content_type = self
+            .headers
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream");
+        super::snapshot::assert_snapshot(name, self.status.as_u16(), content_type, &self.body);
     }
 }
 

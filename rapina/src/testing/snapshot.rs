@@ -68,13 +68,8 @@ fn redact_inner(value: &mut serde_json::Value, key: Option<&str>) {
 }
 
 /// Format a snapshot with a status line, content type, and body.
-pub fn format_snapshot(status: u16, body: &str) -> String {
+pub fn format_snapshot(status: u16, content_type: &str, body: &str) -> String {
     let reason = reason_phrase(status);
-    let content_type = if body.starts_with('{') || body.starts_with('[') {
-        "application/json"
-    } else {
-        "text/plain"
-    };
     format!(
         "HTTP {} {}\nContent-Type: {}\n\n{}\n",
         status, reason, content_type, body
@@ -85,19 +80,40 @@ pub fn format_snapshot(status: u16, body: &str) -> String {
 ///
 /// In bless mode (`RAPINA_BLESS=1`), writes the snapshot. Otherwise, compares
 /// against the existing snapshot and panics with a diff on mismatch.
-pub fn assert_snapshot(name: &str, status: u16, body: &[u8]) {
-    assert_snapshot_impl(name, status, body, Path::new("snapshots"), is_bless_mode());
+pub fn assert_snapshot(name: &str, status: u16, content_type: &str, body: &[u8]) {
+    assert_snapshot_impl(
+        name,
+        status,
+        content_type,
+        body,
+        Path::new("snapshots"),
+        is_bless_mode(),
+    );
 }
 
 /// Assert a response matches its snapshot file under a given base directory.
 ///
 /// The `bless` parameter controls whether to write or compare.
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn assert_snapshot_in(name: &str, status: u16, body: &[u8], base_dir: &Path, bless: bool) {
-    assert_snapshot_impl(name, status, body, base_dir, bless);
+pub fn assert_snapshot_in(
+    name: &str,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+    base_dir: &Path,
+    bless: bool,
+) {
+    assert_snapshot_impl(name, status, content_type, body, base_dir, bless);
 }
 
-fn assert_snapshot_impl(name: &str, status: u16, body: &[u8], base_dir: &Path, bless: bool) {
+fn assert_snapshot_impl(
+    name: &str,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+    base_dir: &Path,
+    bless: bool,
+) {
     let display_body = match serde_json::from_slice::<serde_json::Value>(body) {
         Ok(mut val) => {
             redact(&mut val);
@@ -106,7 +122,7 @@ fn assert_snapshot_impl(name: &str, status: u16, body: &[u8], base_dir: &Path, b
         Err(_) => String::from_utf8_lossy(body).to_string(),
     };
 
-    let snapshot = format_snapshot(status, &display_body);
+    let snapshot = format_snapshot(status, content_type, &display_body);
     let snap_path = base_dir.join(format!("{}.snap", name));
 
     if bless {
@@ -134,26 +150,10 @@ fn assert_snapshot_impl(name: &str, status: u16, body: &[u8], base_dir: &Path, b
 }
 
 fn reason_phrase(status: u16) -> &'static str {
-    match status {
-        200 => "OK",
-        201 => "Created",
-        204 => "No Content",
-        301 => "Moved Permanently",
-        302 => "Found",
-        304 => "Not Modified",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        409 => "Conflict",
-        422 => "Unprocessable Entity",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        _ => "Unknown",
-    }
+    http::StatusCode::from_u16(status)
+        .ok()
+        .and_then(|s| s.canonical_reason())
+        .unwrap_or("Unknown")
 }
 
 fn line_diff(expected: &str, actual: &str) -> String {
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_format_snapshot_json() {
-        let snap = format_snapshot(200, "{\n  \"id\": 1\n}");
+        let snap = format_snapshot(200, "application/json", "{\n  \"id\": 1\n}");
         assert!(snap.starts_with("HTTP 200 OK\n"));
         assert!(snap.contains("Content-Type: application/json"));
         assert!(snap.contains("\"id\": 1"));
@@ -263,14 +263,14 @@ mod tests {
 
     #[test]
     fn test_format_snapshot_404() {
-        let snap = format_snapshot(404, "not found");
+        let snap = format_snapshot(404, "text/plain", "not found");
         assert!(snap.starts_with("HTTP 404 Not Found\n"));
         assert!(snap.contains("Content-Type: text/plain"));
     }
 
     #[test]
     fn test_format_snapshot_plain_text() {
-        let snap = format_snapshot(200, "Hello, world!");
+        let snap = format_snapshot(200, "text/plain", "Hello, world!");
         assert!(snap.contains("Content-Type: text/plain"));
     }
 
@@ -314,6 +314,7 @@ mod tests {
         assert_snapshot_in(
             "test_endpoint",
             200,
+            "application/json",
             br#"{"name":"Alice","trace_id":"550e8400-e29b-41d4-a716-446655440000"}"#,
             &snap_dir,
             true,
@@ -331,10 +332,24 @@ mod tests {
         let snap_dir = dir.path().join("snaps");
 
         // Bless first
-        assert_snapshot_in("match_test", 200, br#"{"ok":true}"#, &snap_dir, true);
+        assert_snapshot_in(
+            "match_test",
+            200,
+            "application/json",
+            br#"{"ok":true}"#,
+            &snap_dir,
+            true,
+        );
 
         // Compare — should not panic
-        assert_snapshot_in("match_test", 200, br#"{"ok":true}"#, &snap_dir, false);
+        assert_snapshot_in(
+            "match_test",
+            200,
+            "application/json",
+            br#"{"ok":true}"#,
+            &snap_dir,
+            false,
+        );
     }
 
     #[test]
@@ -344,10 +359,24 @@ mod tests {
         let snap_dir = dir.path().join("snaps");
 
         // Bless with one value
-        assert_snapshot_in("mismatch_test", 200, br#"{"ok":true}"#, &snap_dir, true);
+        assert_snapshot_in(
+            "mismatch_test",
+            200,
+            "application/json",
+            br#"{"ok":true}"#,
+            &snap_dir,
+            true,
+        );
 
         // Compare with different value — should panic
-        assert_snapshot_in("mismatch_test", 200, br#"{"ok":false}"#, &snap_dir, false);
+        assert_snapshot_in(
+            "mismatch_test",
+            200,
+            "application/json",
+            br#"{"ok":false}"#,
+            &snap_dir,
+            false,
+        );
     }
 
     #[test]
@@ -357,6 +386,13 @@ mod tests {
         let snap_dir = dir.path().join("snaps");
 
         // No bless, no file — should panic
-        assert_snapshot_in("nonexistent", 200, br#"{"ok":true}"#, &snap_dir, false);
+        assert_snapshot_in(
+            "nonexistent",
+            200,
+            "application/json",
+            br#"{"ok":true}"#,
+            &snap_dir,
+            false,
+        );
     }
 }
