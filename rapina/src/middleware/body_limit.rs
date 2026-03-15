@@ -9,6 +9,19 @@ use super::{BoxFuture, Middleware, Next};
 
 const DEFAULT_MAX_SIZE: usize = 1024 * 1024; // 1MB
 
+/// Middleware that rejects requests whose `Content-Length` exceeds a limit.
+///
+/// Checks the `Content-Length` header before passing the request downstream.
+/// Requests that exceed `max_size` receive a `400 Bad Request` response.
+/// Defaults to 1 MB. Requests without a `Content-Length` header are passed
+/// through unchecked.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// Rapina::new()
+///     .with(BodyLimitMiddleware::new(5 * 1024 * 1024)) // 5 MB
+/// ```
 #[derive(Debug, Clone)]
 pub struct BodyLimitMiddleware {
     pub(crate) max_size: usize,
