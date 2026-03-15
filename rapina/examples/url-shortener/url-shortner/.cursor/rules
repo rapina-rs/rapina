@@ -1,0 +1,64 @@
+# Rapina Framework Rules
+
+This is a Rust project using the Rapina web framework.
+
+## Route Handlers
+
+- Use proc macros: `#[get("/path")]`, `#[post("/path")]`, `#[put("/path")]`, `#[delete("/path")]`
+- All routes require JWT auth by default. Use `#[public]` for public routes
+- Handler names: `list_todos`, `get_todo`, `create_todo`, `update_todo`, `delete_todo`
+- Use `#[errors(ErrorType)]` to document error responses
+
+## Extractors
+
+- `Json<T>` for request/response bodies (T: Serialize/Deserialize + JsonSchema)
+- `Validated<Json<T>>` for validated bodies (T: also Validate, returns 422)
+- `Path<T>` for URL params (`:id` syntax)
+- `Query<T>` for query strings
+- `State<T>` for shared app state
+- `CurrentUser` for the authenticated user
+- `Db` for database connection
+- Only one body extractor per handler
+
+## Error Handling
+
+- Return `Result<Json<T>>` from handlers
+- Use `Error::not_found()`, `Error::bad_request()`, etc.
+- Each feature has a typed error enum implementing `IntoApiError` + `DocumentedError`
+- All errors include `trace_id` in the response
+
+## Project Structure
+
+Feature-first modules (plural names):
+```
+src/todos/handlers.rs   — route handlers
+src/todos/dto.rs        — CreateTodo, UpdateTodo (Deserialize + JsonSchema)
+src/todos/error.rs      — TodoError with IntoApiError + DocumentedError
+src/todos/mod.rs        — pub mod dto; pub mod error; pub mod handlers;
+src/entity.rs           — schema! macro for DB entities
+src/migrations/         — database migrations
+```
+
+## Response Types
+
+- Derive `Serialize` + `JsonSchema` on all response structs
+- Derive `Deserialize` + `JsonSchema` on request structs
+- Update DTOs use `Option<T>` for partial updates
+
+## Builder Pattern
+
+```rust
+Rapina::new()
+    .with_tracing(TracingConfig::new())
+    .middleware(RequestLogMiddleware::new())
+    .discover()  // auto-discover handlers
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+## CLI
+
+- `rapina dev` — development server with auto-reload
+- `rapina doctor` — diagnose issues
+- `rapina routes` — list routes
+- `rapina add resource <name>` — scaffold CRUD resource

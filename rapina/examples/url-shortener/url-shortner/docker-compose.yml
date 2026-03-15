@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: shortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://shortener:shortener@db:5432/shortener
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

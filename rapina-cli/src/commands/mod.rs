@@ -10,6 +10,8 @@ pub mod migrate;
 pub mod new;
 pub mod openapi;
 pub mod routes;
+#[cfg(feature = "seed")]
+pub mod seed;
 pub mod templates;
 pub mod test;
 

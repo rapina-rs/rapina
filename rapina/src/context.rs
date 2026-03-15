@@ -1,8 +1,17 @@
 use std::time::Instant;
 
+/// Per-request context passed through the middleware stack and into handlers.
+///
+/// Created automatically for each incoming connection. Available via
+/// `req.extensions().get::<RequestContext>()` inside handlers and middleware.
 #[derive(Debug, Clone)]
 pub struct RequestContext {
+    /// Unique identifier for this request, used for distributed tracing.
+    /// Populated from the incoming `x-trace-id` header if present, otherwise
+    /// a new UUID v4 is generated.
     pub trace_id: String,
+    /// Timestamp recorded when the request context was created, used to
+    /// calculate request duration.
     pub start_time: Instant,
 }
 
