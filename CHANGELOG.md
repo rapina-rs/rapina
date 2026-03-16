@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-16
+
+### Added
+- **Serde-based Path extraction**: `Path<T>` now uses a custom serde deserializer, supporting `Path<u64>`, `Path<(u64, String)>` tuples, and `Path<MyStruct>` structs from a single implementation
+- **Database seeding**: `rapina seed load`, `rapina seed dump`, and `rapina seed generate` commands behind `seed-*` feature flags
+- **Snapshot testing**: `response.assert_snapshot("name")` with automatic UUID/timestamp redaction, `--bless` mode for updating golden files
+- **RFC 7807 Problem Details**: Standardized error responses with configurable `ErrorConfig`, per-request scoping via `task_local!`
+- **Three-layer router**: Static route map for O(1) parameterless lookup, hot cache, and frozen radix trie
+- **Router benchmarks**: Criterion benchmarks for router resolution performance
+- **Configurable request logging**: Verbose mode with header/query/body-size logging, header redaction for sensitive values
+- **`--force` flag for `import database`**: Re-import over existing generated files
+- **Irregular plurals in codegen**: Handles words like `status`, `address`, `child` correctly in singularize/pluralize
+- **UUID primary key support** in `schema!` macro
+- **`put_named` and `delete_named`** convenience methods on Router
+- **URL shortener example**: Full CRUD example with database, migrations, and tests
+
+### Changed
+- **`State<T>` wrapped in `Arc<T>`**: Removes the `Clone` bound on state types, `into_inner()` returns `Arc<T>`
+- **Positional extractor convention**: Last handler argument uses `FromRequest` (consumes body), all others use `FromRequestParts` — replaces string-based classification
+- **`PathParams` backed by `SmallVec`**: Stack-allocated for up to 4 parameters, zero heap allocation for typical routes
+- **Compression gated behind feature flag**: `compression` feature (enabled by default)
+- **Macro preserves `mut` on handler arguments**: Enables mutable extractors like `mut form: Multipart`
+
 ## [0.6.0] - 2026-02-22
 
 ### Added
@@ -69,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized error handling with `trace_id`
 - CLI (`rapina new`, `rapina dev`)
 
-[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/rapina-rs/rapina/compare/v0.9.0...v0.10.0
 [0.6.0]: https://github.com/rapina-rs/rapina/compare/v0.5.0...v0.6.0
 [0.2.0]: https://github.com/rapina-rs/rapina/compare/v0.1.0-alpha.3...v0.2.0
 [0.1.0-alpha.3]: https://github.com/rapina-rs/rapina/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
