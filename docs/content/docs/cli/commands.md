@@ -113,6 +113,7 @@ Options:
 | `--tables <T1,T2>` | Only import specific tables (comma-separated) | all tables |
 | `--schema <NAME>` | Database schema name | `public` (Postgres) |
 | `--force` | Overwrite existing files (re-import after schema changes) | false |
+| `--diff` | Compare entity definitions against live database and report drift | false |
 
 Supported databases: PostgreSQL (`postgres://`), MySQL (`mysql://`), SQLite (`sqlite://`). Each requires the corresponding feature:
 
@@ -135,6 +136,49 @@ Without `--force`, the command errors if a feature module directory already exis
 - A new migration file is always created (timestamps prevent collisions)
 
 This is useful when the upstream database schema changes and you want to regenerate the Rapina code to match.
+
+### Detecting drift with `--diff`
+
+Compare your entity definitions in `src/entity.rs` against the live database to catch manual DB changes that aren't reflected in code:
+
+```bash
+rapina import database --diff --url postgres://user:pass@localhost/mydb
+```
+
+Output:
+
+```
+  → Parsing entity definitions...
+  ✓ Parsed 3 entity/entities from src/entity.rs
+  → Connecting to database...
+  ✓ Discovered 5 table(s)
+
+  Drift report:
+
+  ✗ Table "users" (User) has drift:
+    + column "phone" (String, nullable) exists in DB but not in entity
+    ~ column "email" type mismatch: entity has String, DB has Text
+
+  ⚠ Untracked tables (in DB, no entity):
+    • analytics_events
+
+  ⚠ Missing tables (in entity, not in DB):
+    • notifications
+
+  Summary: 1 table(s) with drift, 1 untracked, 1 missing
+```
+
+The command exits with code 1 if any drift is detected, making it useful in CI pipelines. The `--diff` and `--force` flags are mutually exclusive.
+
+Drift detection checks:
+- **Extra columns** — columns in the DB that have no matching field in the entity
+- **Missing columns** — fields in the entity with no matching DB column
+- **Type mismatches** — columns where the DB type doesn't match the entity type
+- **Nullability mismatches** — columns where NULL/NOT NULL differs
+- **Untracked tables** — DB tables with no corresponding entity
+- **Missing tables** — entities with no corresponding DB table
+
+The parser respects `#[table_name]`, `#[column]`, `#[timestamps]`, and `#[primary_key]` attributes, as well as `belongs_to` FK columns.
 
 ## rapina dev
 

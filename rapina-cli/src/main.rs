@@ -163,8 +163,11 @@ enum ImportCommands {
         #[arg(long)]
         schema: Option<String>,
         /// Overwrite existing files (useful for re-importing after schema changes)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "diff")]
         force: bool,
+        /// Compare entity definitions against live database and report drift
+        #[arg(long, conflicts_with = "force")]
+        diff: bool,
     },
     /// Import handlers, DTOs, and module structure from an OpenAPI 3.0 spec
     #[cfg(feature = "import-openapi")]
@@ -337,19 +340,28 @@ fn main() {
                     tables,
                     schema,
                     force,
+                    diff,
                 } => {
                     #[cfg(feature = "import")]
                     {
-                        commands::import::database(
-                            &url,
-                            tables.as_deref(),
-                            schema.as_deref(),
-                            force,
-                        )
+                        if diff {
+                            commands::import::database_diff(
+                                &url,
+                                tables.as_deref(),
+                                schema.as_deref(),
+                            )
+                        } else {
+                            commands::import::database(
+                                &url,
+                                tables.as_deref(),
+                                schema.as_deref(),
+                                force,
+                            )
+                        }
                     }
                     #[cfg(not(feature = "import"))]
                     {
-                        let _ = (url, tables, schema, force);
+                        let _ = (url, tables, schema, force, diff);
                         Err("The import command requires the import feature. \
                              Reinstall with: cargo install rapina-cli --features import-postgres"
                             .to_string())
