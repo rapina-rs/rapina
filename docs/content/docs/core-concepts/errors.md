@@ -32,7 +32,7 @@ Error::forbidden("access denied")        // 403
 Error::not_found("user not found")       // 404
 Error::conflict("already exists")        // 409
 Error::validation("invalid email")       // 422
-Error::rate_limited("too many requests") // 429
+Error::rate_limited("too many requests") // 429 (requires `rate-limit` feature)
 Error::internal("something went wrong")  // 500
 ```
 

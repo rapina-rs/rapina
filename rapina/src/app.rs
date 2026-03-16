@@ -11,9 +11,10 @@ use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
 #[cfg(feature = "compression")]
 use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
-    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
-    RequestLogConfig, RequestLogMiddleware,
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RequestLogConfig, RequestLogMiddleware,
 };
+#[cfg(feature = "rate-limit")]
+use crate::middleware::{RateLimitConfig, RateLimitMiddleware};
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
@@ -192,6 +193,7 @@ impl Rapina {
     ///     .listen("127.0.0.1:3000")
     ///     .await
     /// ```
+    #[cfg(feature = "rate-limit")]
     pub fn with_rate_limit(mut self, config: RateLimitConfig) -> Self {
         self.middlewares.add(RateLimitMiddleware::new(config));
         self

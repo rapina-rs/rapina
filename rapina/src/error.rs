@@ -267,6 +267,7 @@ impl Error {
     }
 
     /// Creates a 429 Rate Limited error.
+    #[cfg(feature = "rate-limit")]
     pub fn rate_limited(message: impl Into<String>) -> Self {
         Self::new(429, "RATE_LIMITED", message)
     }
@@ -581,6 +582,7 @@ mod tests {
         assert_eq!(err.code(), "VALIDATION_ERROR");
     }
 
+    #[cfg(feature = "rate-limit")]
     #[test]
     fn test_error_rate_limited() {
         let err = Error::rate_limited("too many requests");

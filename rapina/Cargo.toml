@@ -54,7 +54,7 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
-# Rate Limiting
+# Concurrent map (used by cache + optional rate limiting)
 dashmap = "6.1.0"
 
 # SmallVec for stack-allocated path params
@@ -94,6 +94,10 @@ nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 tempfile = "3"
 
+[[example]]
+name = "middleware"
+required-features = ["compression", "rate-limit"]
+
 [[bench]]
 name = "router"
 harness = false
@@ -103,8 +107,9 @@ harness = false
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
 [features]
-default = ["compression"]
+default = ["compression", "rate-limit"]
 compression = ["flate2"]
+rate-limit = []
 database = ["sea-orm", "sea-orm-migration", "async-trait"]
 postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
 mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
