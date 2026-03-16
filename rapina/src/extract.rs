@@ -66,7 +66,7 @@ pub struct Json<T>(pub T);
 /// }
 /// ```
 ///
-/// **Three or more** — same tuple syntax, up to 5 parameters:
+/// **Three or more** — same tuple syntax:
 /// ```ignore
 /// #[get("/orgs/:org_id/teams/:team_id/members/:member_id")]
 /// async fn get_member(Path((org_id, team_id, member_id)): Path<(u64, u64, u64)>) -> String {
