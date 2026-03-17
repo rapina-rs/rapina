@@ -1680,7 +1680,7 @@ mod tests {
             primary_key: None,
         };
 
-        let cols = build_expected_columns(&entity);
+        let cols = build_expected_columns(&entity, &[]);
         let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
         // id (auto) + email + bio + created_at + updated_at
         assert_eq!(
@@ -1717,7 +1717,7 @@ mod tests {
             primary_key: None,
         };
 
-        let cols = build_expected_columns(&entity);
+        let cols = build_expected_columns(&entity, &[]);
         let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
         // id + value, no timestamps
         assert_eq!(names, vec!["id", "value"]);
@@ -1753,7 +1753,7 @@ mod tests {
             primary_key: None,
         };
 
-        let cols = build_expected_columns(&entity);
+        let cols = build_expected_columns(&entity, &[]);
         let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
         assert!(names.contains(&"author_id"));
 
@@ -1792,7 +1792,7 @@ mod tests {
             primary_key: None,
         };
 
-        let cols = build_expected_columns(&entity);
+        let cols = build_expected_columns(&entity, &[]);
         let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
         // has_many "posts" should NOT produce a column
         assert_eq!(names, vec!["id", "name"]);
@@ -1828,7 +1828,7 @@ mod tests {
             primary_key: Some(vec!["id".to_string()]),
         };
 
-        let cols = build_expected_columns(&entity);
+        let cols = build_expected_columns(&entity, &[]);
         let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
         // No auto-generated id because primary_key is Some
         assert_eq!(names, vec!["id", "name", "created_at", "updated_at"]);
