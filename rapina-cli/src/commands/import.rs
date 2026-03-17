@@ -581,24 +581,18 @@ fn generate_for_table(
 }
 
 // ---------------------------------------------------------------------------
-// Entry point
+// Shared introspection
 // ---------------------------------------------------------------------------
 
-pub fn database(
+/// Create a tokio runtime, connect to the database, and return introspected tables.
+fn introspect_tables(
     url: &str,
-    table_filter: Option<&[String]>,
     schema_name: Option<&str>,
-    force: bool,
-) -> Result<(), String> {
-    codegen::verify_rapina_project()?;
-
-    println!();
-    println!("  {} Connecting to database...", "->".bright_cyan());
-
+) -> Result<Vec<IntrospectedTable>, String> {
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("Failed to create async runtime: {}", e))?;
 
-    let tables: Vec<IntrospectedTable> = rt.block_on(async {
+    rt.block_on(async {
         if url.starts_with("postgres://") || url.starts_with("postgresql://") {
             #[cfg(feature = "import-postgres")]
             {
@@ -617,7 +611,10 @@ pub fn database(
             {
                 let schema = schema_name
                     .or_else(|| url.rsplit('/').next())
-                    .ok_or_else(|| "Could not determine database name from URL. Use --schema to specify it.".to_string())?;
+                    .ok_or_else(|| {
+                        "Could not determine database name from URL. Use --schema to specify it."
+                            .to_string()
+                    })?;
                 introspect_mysql(url, schema).await
             }
             #[cfg(not(feature = "import-mysql"))]
@@ -646,7 +643,25 @@ pub fn database(
                 url.split("://").next().unwrap_or("unknown")
             ))
         }
-    })?;
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+pub fn database(
+    url: &str,
+    table_filter: Option<&[String]>,
+    schema_name: Option<&str>,
+    force: bool,
+) -> Result<(), String> {
+    codegen::verify_rapina_project()?;
+
+    println!();
+    println!("  {} Connecting to database...", "->".bright_cyan());
+
+    let tables = introspect_tables(url, schema_name)?;
 
     let total_discovered = tables.len();
     println!("  {} Discovered {} table(s)", "✓".green(), total_discovered);
@@ -800,8 +815,38 @@ fn schema_type_to_normalized(schema_type: &str) -> Option<NormalizedType> {
     }
 }
 
+/// Determine the FK column type by looking up the referenced entity's primary key type.
+/// Falls back to I32 if the entity isn't found or has a default PK.
+fn resolve_fk_type(referenced_entity_name: &str, all_entities: &[ParsedEntity]) -> NormalizedType {
+    let referenced = all_entities
+        .iter()
+        .find(|e| e.name == referenced_entity_name);
+
+    match referenced {
+        Some(entity) => match &entity.primary_key {
+            None => NormalizedType::I32,
+            Some(pk_cols) => {
+                if let Some(pk_col) = pk_cols.first() {
+                    entity
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *pk_col)
+                        .and_then(|f| schema_type_to_normalized(&f.schema_type))
+                        .unwrap_or(NormalizedType::I32)
+                } else {
+                    NormalizedType::I32
+                }
+            }
+        },
+        None => NormalizedType::I32,
+    }
+}
+
 /// Build the list of expected columns for an entity, including auto-generated ones.
-fn build_expected_columns(entity: &ParsedEntity) -> Vec<ExpectedColumn> {
+fn build_expected_columns(
+    entity: &ParsedEntity,
+    all_entities: &[ParsedEntity],
+) -> Vec<ExpectedColumn> {
     let mut columns = Vec::new();
 
     // Auto-generated PK column (unless custom primary_key is set)
@@ -821,10 +866,10 @@ fn build_expected_columns(entity: &ParsedEntity) -> Vec<ExpectedColumn> {
         }
 
         if field.is_belongs_to {
-            // belongs_to generates a {name}_id FK column, assumed i32
+            let fk_type = resolve_fk_type(&field.schema_type, all_entities);
             columns.push(ExpectedColumn {
                 name: field.column_name.clone(),
-                expected_type: NormalizedType::I32,
+                expected_type: fk_type,
                 nullable: field.optional,
             });
         } else if let Some(norm) = schema_type_to_normalized(&field.schema_type) {
@@ -902,7 +947,7 @@ fn compute_drift(entities: &[ParsedEntity], db_tables: &[IntrospectedTable]) -> 
                 missing_tables.push(entity.table_name.clone());
             }
             Some(db_table) => {
-                let drift = compare_table(entity, db_table);
+                let drift = compare_table(entity, db_table, entities);
                 if !drift.is_empty() {
                     drifted_tables.push(drift);
                 }
@@ -918,8 +963,12 @@ fn compute_drift(entities: &[ParsedEntity], db_tables: &[IntrospectedTable]) -> 
 }
 
 /// Compare a single entity against its DB table.
-fn compare_table(entity: &ParsedEntity, db_table: &IntrospectedTable) -> TableDrift {
-    let expected = build_expected_columns(entity);
+fn compare_table(
+    entity: &ParsedEntity,
+    db_table: &IntrospectedTable,
+    all_entities: &[ParsedEntity],
+) -> TableDrift {
+    let expected = build_expected_columns(entity, all_entities);
     let expected_map: HashMap<&str, &ExpectedColumn> =
         expected.iter().map(|c| (c.name.as_str(), c)).collect();
     let db_col_map: HashMap<&str, &IntrospectedColumn> = db_table
@@ -1100,61 +1149,7 @@ pub fn database_diff(
 
     println!("  {} Connecting to database...", "→".bright_cyan());
 
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("Failed to create async runtime: {}", e))?;
-
-    let tables: Vec<IntrospectedTable> = rt.block_on(async {
-        if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-            #[cfg(feature = "import-postgres")]
-            {
-                let schema = schema_name.unwrap_or("public");
-                introspect_postgres(url, schema).await
-            }
-            #[cfg(not(feature = "import-postgres"))]
-            {
-                let _ = schema_name;
-                Err("Postgres support requires the import-postgres feature. \
-                     Reinstall with: cargo install rapina-cli --features import-postgres"
-                    .to_string())
-            }
-        } else if url.starts_with("mysql://") || url.starts_with("mariadb://") {
-            #[cfg(feature = "import-mysql")]
-            {
-                let schema = schema_name
-                    .or_else(|| url.rsplit('/').next())
-                    .ok_or_else(|| {
-                        "Could not determine database name from URL. Use --schema to specify it."
-                            .to_string()
-                    })?;
-                introspect_mysql(url, schema).await
-            }
-            #[cfg(not(feature = "import-mysql"))]
-            {
-                let _ = schema_name;
-                Err("MySQL support requires the import-mysql feature. \
-                     Reinstall with: cargo install rapina-cli --features import-mysql"
-                    .to_string())
-            }
-        } else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
-            #[cfg(feature = "import-sqlite")]
-            {
-                let _ = schema_name;
-                introspect_sqlite(url).await
-            }
-            #[cfg(not(feature = "import-sqlite"))]
-            {
-                let _ = schema_name;
-                Err("SQLite support requires the import-sqlite feature. \
-                     Reinstall with: cargo install rapina-cli --features import-sqlite"
-                    .to_string())
-            }
-        } else {
-            Err(format!(
-                "Unsupported database URL scheme. Expected postgres://, mysql://, or sqlite:// -- got {:?}",
-                url.split("://").next().unwrap_or("unknown")
-            ))
-        }
-    })?;
+    let tables = introspect_tables(url, schema_name)?;
 
     let total = tables.len();
     let db_tables = filter_tables_for_diff(tables, table_filter);
@@ -2172,5 +2167,98 @@ mod tests {
         let result = filter_tables_for_diff(tables, Some(&filter));
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "users");
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_fk_type
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_fk_type_default_pk() {
+        assert_eq!(resolve_fk_type("Unknown", &[]), NormalizedType::I32);
+    }
+
+    #[test]
+    fn test_resolve_fk_type_uuid_pk() {
+        use super::super::entity_parser::{ParsedEntity, ParsedField};
+
+        let event = ParsedEntity {
+            name: "Event".to_string(),
+            table_name: "events".to_string(),
+            fields: vec![ParsedField {
+                name: "id".to_string(),
+                column_name: "id".to_string(),
+                schema_type: "Uuid".to_string(),
+                optional: false,
+                is_belongs_to: false,
+                is_has_many: false,
+            }],
+            has_created_at: false,
+            has_updated_at: false,
+            primary_key: Some(vec!["id".to_string()]),
+        };
+
+        assert_eq!(resolve_fk_type("Event", &[event]), NormalizedType::Uuid);
+    }
+
+    #[test]
+    fn test_drift_belongs_to_uuid_pk() {
+        use super::super::entity_parser::{ParsedEntity, ParsedField};
+
+        let event = ParsedEntity {
+            name: "Event".to_string(),
+            table_name: "events".to_string(),
+            fields: vec![ParsedField {
+                name: "id".to_string(),
+                column_name: "id".to_string(),
+                schema_type: "Uuid".to_string(),
+                optional: false,
+                is_belongs_to: false,
+                is_has_many: false,
+            }],
+            has_created_at: false,
+            has_updated_at: false,
+            primary_key: Some(vec!["id".to_string()]),
+        };
+        let ticket = ParsedEntity {
+            name: "Ticket".to_string(),
+            table_name: "tickets".to_string(),
+            fields: vec![ParsedField {
+                name: "event".to_string(),
+                column_name: "event_id".to_string(),
+                schema_type: "Event".to_string(),
+                optional: false,
+                is_belongs_to: true,
+                is_has_many: false,
+            }],
+            has_created_at: false,
+            has_updated_at: false,
+            primary_key: None,
+        };
+        let entities = vec![event, ticket];
+
+        let db_table = IntrospectedTable {
+            name: "tickets".to_string(),
+            columns: vec![
+                IntrospectedColumn {
+                    name: "id".to_string(),
+                    col_type: NormalizedType::I32,
+                    is_nullable: false,
+                },
+                IntrospectedColumn {
+                    name: "event_id".to_string(),
+                    col_type: NormalizedType::Uuid,
+                    is_nullable: false,
+                },
+            ],
+            primary_key_columns: vec!["id".to_string()],
+            foreign_keys: vec![],
+        };
+
+        let drift = compare_table(&entities[1], &db_table, &entities);
+        assert!(
+            drift.type_mismatches.is_empty(),
+            "UUID FK should not produce a type mismatch"
+        );
     }
 }

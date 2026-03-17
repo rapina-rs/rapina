@@ -436,9 +436,11 @@ fn extract_until_angle_close(text: &str) -> (String, &str) {
 /// Convert PascalCase to snake_case.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
         if c.is_uppercase() {
-            if i > 0 {
+            let next_is_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+            if i > 0 && (next_is_lower || !chars[i - 1].is_uppercase()) {
                 result.push('_');
             }
             result.push(c.to_lowercase().next().unwrap());
@@ -461,7 +463,10 @@ mod tests {
     fn test_snake_case_simple() {
         assert_eq!(to_snake_case("User"), "user");
         assert_eq!(to_snake_case("BlogPost"), "blog_post");
-        assert_eq!(to_snake_case("HTMLParser"), "h_t_m_l_parser");
+        assert_eq!(to_snake_case("HTMLParser"), "html_parser");
+        assert_eq!(to_snake_case("APIToken"), "api_token");
+        assert_eq!(to_snake_case("SimpleXMLParser"), "simple_xml_parser");
+        assert_eq!(to_snake_case("ID"), "id");
     }
 
     // -----------------------------------------------------------------------
