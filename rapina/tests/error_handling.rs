@@ -146,7 +146,6 @@ async fn test_error_422_validation() {
     assert_eq!(json["detail"], "validation failed");
 }
 
-#[cfg(feature = "rate-limit")]
 #[tokio::test]
 async fn test_error_429_rate_limited() {
     let app = Rapina::new()

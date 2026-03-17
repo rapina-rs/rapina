@@ -55,7 +55,7 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
 # Concurrent map (used by cache + optional rate limiting)
-dashmap = "6.1.0"
+dashmap = { version = "6.1.0", optional = true }
 
 # SmallVec for stack-allocated path params
 smallvec = "1"
@@ -109,7 +109,7 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 [features]
 default = ["compression", "rate-limit"]
 compression = ["flate2"]
-rate-limit = []
+rate-limit = ["dashmap"]
 database = ["sea-orm", "sea-orm-migration", "async-trait"]
 postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
 mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
