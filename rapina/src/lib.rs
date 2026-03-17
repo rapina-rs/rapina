@@ -93,6 +93,8 @@ pub mod error;
 pub mod extract;
 pub mod handler;
 pub mod introspection;
+#[cfg(feature = "database")]
+pub mod jobs;
 #[cfg(feature = "metrics")]
 pub mod metrics;
 pub mod middleware;
@@ -132,6 +134,8 @@ pub mod prelude {
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
     pub use crate::introspection::RouteInfo;
+    #[cfg(feature = "database")]
+    pub use crate::jobs::{JobRow, JobStatus};
     pub use crate::middleware::{
         KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
     };

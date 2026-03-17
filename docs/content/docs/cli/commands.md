@@ -275,6 +275,20 @@ This creates a timestamped migration file in `src/migrations/` and updates `mod.
 
 > **Note:** `rapina add resource` already generates a pre-filled migration. Use `rapina migrate new` when you need a migration that isn't tied to a new resource (e.g., adding a column, creating an index).
 
+## rapina jobs init
+
+Set up the background jobs migration in your project:
+
+```bash
+rapina jobs init
+```
+
+This adds the framework's `create_rapina_jobs` migration to `src/migrations/mod.rs`. If the file doesn't exist, it creates one. If the migration is already configured, the command is a no-op.
+
+The migration creates the `rapina_jobs` table used by the background jobs system. It uses a zero timestamp prefix so it always runs before your application migrations. See [Background Jobs](/docs/core-concepts/background-jobs/) for the full table schema and types.
+
+> **Note:** The jobs migration requires PostgreSQL. It uses `gen_random_uuid()` and partial indexes, which are not available in MySQL or SQLite.
+
 ## rapina openapi export
 
 Export the OpenAPI specification to a file:
