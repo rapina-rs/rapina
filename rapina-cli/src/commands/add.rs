@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use colored::Colorize;
 
 use super::codegen::{self, FieldInfo};
@@ -92,59 +94,11 @@ fn validate_resource_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn print_next_steps(singular: &str, plural: &str, pascal: &str) {
+fn print_next_steps(pascal: &str) {
     println!();
     println!("  {}:", "Next steps".bright_yellow());
     println!();
-    println!(
-        "  1. Add the module declaration to {}:",
-        "src/main.rs".cyan()
-    );
-    println!();
-    println!("     mod {};", plural);
-    println!("     mod entity;");
-    println!("     mod migrations;");
-    println!();
-    println!("  2. Register the routes in your {}:", "Router".cyan());
-    println!();
-    println!(
-        "     use {plural}::handlers::{{list_{plural}, get_{singular}, create_{singular}, update_{singular}, delete_{singular}}};",
-        plural = plural,
-        singular = singular,
-    );
-    println!();
-    println!("     let router = Router::new()");
-    println!(
-        "         .get(\"/{plural}\", list_{plural})",
-        plural = plural
-    );
-    println!(
-        "         .get(\"/{plural}/:id\", get_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .post(\"/{plural}\", create_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .put(\"/{plural}/:id\", update_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .delete(\"/{plural}/:id\", delete_{singular});",
-        plural = plural,
-        singular = singular,
-    );
-    println!();
-    println!(
-        "  3. Enable the database feature in {}:",
-        "Cargo.toml".cyan()
-    );
-    println!();
-    println!("     rapina = {{ version = \"...\", features = [\"postgres\"] }}");
+    println!("  1. Run {} to verify", "cargo build".cyan());
     println!();
     println!(
         "  Resource {} created successfully!",
@@ -184,7 +138,10 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     codegen::update_entity_file(pascal, &fields, None, None, false)?;
     codegen::create_migration_file(plural, pascal_plural, &fields, pk_type)?;
 
-    print_next_steps(singular, plural, pascal);
+    if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
+        eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
+    }
+    print_next_steps(pascal);
 
     Ok(())
 }

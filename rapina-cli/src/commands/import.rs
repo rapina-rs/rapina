@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use colored::Colorize;
 
@@ -675,6 +676,12 @@ pub fn database(
         imported.push((table.name.clone(), pascal));
     }
 
+    // Auto-wire mod declarations into src/main.rs
+    let plural_names: Vec<&str> = imported.iter().map(|(name, _)| name.as_str()).collect();
+    if let Err(e) = codegen::wire_main_rs(&plural_names, Path::new(".")) {
+        eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
+    }
+
     // Summary
     println!();
     println!(
@@ -691,9 +698,7 @@ pub fn database(
     println!("  {}:", "Next steps".bright_yellow());
     println!();
     println!("  1. Review generated files in {}", "src/".cyan());
-    println!("  2. Add module declarations to {}", "src/main.rs".cyan());
-    println!("  3. Register routes in your Router");
-    println!("  4. Run {} to verify", "cargo build".cyan());
+    println!("  2. Run {} to verify", "cargo build".cyan());
     println!();
 
     Ok(())
