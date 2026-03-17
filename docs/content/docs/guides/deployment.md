@@ -21,7 +21,7 @@ If your app uses a database, make sure the correct feature flag is enabled in yo
 
 ```toml
 [dependencies]
-rapina = { version = "0.9.0", features = ["postgres"] }
+rapina = { version = "0.10.0", features = ["postgres"] }
 ```
 
 Available database features: `postgres`, `mysql`, `sqlite`.
@@ -83,34 +83,14 @@ RUST_LOG=myapp=debug   # debug logs for your crate, info for everything else
 
 ## Health Check Endpoint
 
-Rapina does not ship a built-in health check route. Add one as a regular route:
-
-```rust
-use rapina::prelude::*;
-
-#[get("/health")]
-async fn health_check() -> StatusCode {
-    StatusCode::OK
-}
-```
-
-If you use authentication, mark the health route as public so load balancers can reach it without a token:
+Rapina ships a built-in health check at `GET /__rapina/health`. Enable it with:
 
 ```rust
 Rapina::new()
-    .with_auth(auth_config)
-    .public_route("GET", "/health")
+    .with_health_check(true)
 ```
 
-Or use the `#[public]` attribute macro on the handler:
-
-```rust
-#[get("/health")]
-#[public]
-async fn health_check() -> StatusCode {
-    StatusCode::OK
-}
-```
+The endpoint returns `200 OK` and is automatically public (no authentication required). Point your load balancer or orchestrator at `/__rapina/health`.
 
 ---
 
@@ -286,7 +266,7 @@ primary_region = "iad"
     type = "http"
     interval = "10s"
     timeout = "2s"
-    path = "/health"
+    path = "/__rapina/health"
 ```
 
 Deploy with the Fly CLI:
@@ -303,7 +283,7 @@ fly deploy
 1. Build and push your Docker image to ECR
 2. Create a task definition referencing the image
 3. Pass environment variables via the task definition or AWS Secrets Manager
-4. Configure an ALB target group with a health check on `/health`
+4. Configure an ALB target group with a health check on `/__rapina/health`
 5. Set the ECS service desired count for availability
 
 ### Bare Metal / VPS
@@ -363,7 +343,7 @@ Enable Prometheus metrics for monitoring:
 
 ```toml
 [dependencies]
-rapina = { version = "0.9.0", features = ["metrics"] }
+rapina = { version = "0.10.0", features = ["metrics"] }
 ```
 
 ```rust
@@ -424,12 +404,6 @@ struct AppConfig {
     port: u16,
 }
 
-#[get("/health")]
-#[public]
-async fn health_check() -> StatusCode {
-    StatusCode::OK
-}
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     load_dotenv();
@@ -438,6 +412,7 @@ async fn main() -> std::io::Result<()> {
     let addr = format!("{}:{}", config.host, config.port);
 
     Rapina::new()
+        .with_health_check(true)
         .with_tracing(TracingConfig::new().json().level(tracing::Level::INFO))
         .middleware(TraceIdMiddleware::new())
         .middleware(RequestLogMiddleware::new())
