@@ -57,6 +57,14 @@ mod schema;
 /// #[get("/users")]
 /// async fn list_users() -> Json<Vec<User>> { /* ... */ }
 ///
+/// // Single path parameter:
+/// #[get("/users/:id")]
+/// async fn get_user(id: Path<u64>) -> Json<User> { /* ... */ }
+///
+/// // Multiple path parameters — tuple, positional (left to right in pattern):
+/// #[get("/orgs/:org_id/teams/:team_id")]
+/// async fn get_team(Path((org_id, team_id)): Path<(u64, u64)>) -> Json<Team> { /* ... */ }
+///
 /// // With a group prefix (registers at /api/users):
 /// #[get("/users", group = "/api")]
 /// async fn list_users() -> Json<Vec<User>> { /* ... */ }
@@ -243,16 +251,16 @@ fn route_macro_core(
         if args.len() == 1 {
             // Single arg: pass request directly to FromRequest
             let arg = &args[0];
-            if let FnArg::Typed(pat_type) = arg
-                && let Pat::Ident(pat_ident) = &*pat_type.pat
-            {
-                let arg_name = &pat_ident.ident;
+            if let FnArg::Typed(pat_type) = arg {
+                let pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
+                let tmp = syn::Ident::new("__rapina_arg_0", proc_macro2::Span::call_site());
                 quote! {
-                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                    let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                         Ok(v) => v,
                         Err(e) => return rapina::response::IntoResponse::into_response(e),
                     };
+                    let #pat = #tmp;
                     let __rapina_result #return_type_annotation = (async #inner_block).await;
                     let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
                     #cache_header_injection
@@ -265,33 +273,39 @@ fn route_macro_core(
             // Multiple args: all but last use FromRequestParts, last uses FromRequest
             let mut parts_extractions = Vec::new();
 
-            for arg in &args[..args.len() - 1] {
-                if let FnArg::Typed(pat_type) = arg
-                    && let Pat::Ident(pat_ident) = &*pat_type.pat
-                {
-                    let arg_name = &pat_ident.ident;
+            for (i, arg) in args[..args.len() - 1].iter().enumerate() {
+                if let FnArg::Typed(pat_type) = arg {
+                    let pat = &pat_type.pat;
                     let arg_type = &pat_type.ty;
+                    let tmp = syn::Ident::new(
+                        &format!("__rapina_arg_{}", i),
+                        proc_macro2::Span::call_site(),
+                    );
                     parts_extractions.push(quote! {
-                        let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
+                        let #tmp = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
                             Ok(v) => v,
                             Err(e) => return rapina::response::IntoResponse::into_response(e),
                         };
+                        let #pat = #tmp;
                     });
                 }
             }
 
             let last_arg = args.last().unwrap();
-            let last_extraction = if let FnArg::Typed(pat_type) = last_arg
-                && let Pat::Ident(pat_ident) = &*pat_type.pat
-            {
-                let arg_name = &pat_ident.ident;
+            let last_extraction = if let FnArg::Typed(pat_type) = last_arg {
+                let pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
+                let tmp = syn::Ident::new(
+                    &format!("__rapina_arg_{}", args.len() - 1),
+                    proc_macro2::Span::call_site(),
+                );
                 quote! {
                     let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
-                    let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                    let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                         Ok(v) => v,
                         Err(e) => return rapina::response::IntoResponse::into_response(e),
                     };
+                    let #pat = #tmp;
                 }
             } else {
                 unreachable!("handler argument must be a typed pattern")

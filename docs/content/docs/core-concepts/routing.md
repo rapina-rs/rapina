@@ -203,6 +203,50 @@ async fn get_product(slug: Path<String>) -> Result<Json<Product>> {
 
 If parsing fails (e.g., non-numeric value for `u64`), Rapina returns a `400 Bad Request` with error details.
 
+### Multiple Path Parameters
+
+When a route has more than one dynamic segment, use a tuple inside `Path<(T1, T2, ...)>`. The parameters are bound in the order they appear in the URL:
+
+```rust
+// Two parameters
+#[get("/orgs/:org_id/repos/:repo_id")]
+async fn get_repo(Path((org_id, repo_id)): Path<(u64, u64)>) -> String {
+    format!("org={} repo={}", org_id, repo_id)
+}
+
+// Three parameters
+#[get("/orgs/:org_id/repos/:repo_id/issues/:issue_id")]
+async fn get_issue(Path((org_id, repo_id, issue_id)): Path<(u64, u64, u64)>) -> String {
+    format!("org={} repo={} issue={}", org_id, repo_id, issue_id)
+}
+
+// Mixed types
+#[get("/projects/:project_id/tasks/:task_name")]
+async fn get_task(Path((project_id, task_name)): Path<(u32, String)>) -> String {
+    format!("project={} task={}", project_id, task_name)
+}
+```
+
+Each segment is parsed independently — if any segment fails to parse, Rapina returns a `400 Bad Request`.
+
+### Struct Parameters
+
+For routes with many parameters, or when you want named access, use a struct with `#[derive(Deserialize)]`. Parameters are matched by field name:
+
+```rust
+#[derive(Deserialize)]
+struct MemberParams {
+    org_id: u64,
+    team_id: u64,
+    member_id: u64,
+}
+
+#[get("/orgs/:org_id/teams/:team_id/members/:member_id")]
+async fn get_member(Path(p): Path<MemberParams>) -> String {
+    format!("org={} team={} member={}", p.org_id, p.team_id, p.member_id)
+}
+```
+
 ## Route Matching
 
 Routes are matched in the order they are added. More specific routes should be defined before generic ones:
