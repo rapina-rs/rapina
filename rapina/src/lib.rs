@@ -168,6 +168,8 @@ pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;
+#[doc(hidden)]
+pub use openapi::openapi_schema_for;
 
 #[cfg(feature = "websocket")]
 pub use futures_util;
