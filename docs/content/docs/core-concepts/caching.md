@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
 }
 ```
 
-The `ttl` parameter is in seconds. Only GET requests are cached. `create_product` doesn't need `#[cache]` — successful POSTs automatically invalidate the related GET cache.
+The `ttl` parameter is in seconds. Only GET requests are cached. `create_product` doesn't need `#[cache]` — successful POSTs automatically invalidate the related GET cache. [Streaming responses](@/docs/core-concepts/streaming.md) are never cached, even if the route has `#[cache(ttl = N)]`.
 
 ---
 

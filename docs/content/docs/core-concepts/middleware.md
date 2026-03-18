@@ -78,7 +78,7 @@ CompressionConfig::default()
 CompressionConfig::new(512, 9)  // min 512 bytes, maximum compression
 ```
 
-Compression is skipped when the client does not send `Accept-Encoding: gzip` or `deflate`, the response already has a `Content-Encoding` header, the `Content-Type` is not compressible (e.g. `image/png`), or the body is smaller than `min_size`. `Vary: Accept-Encoding` is added automatically for correct proxy caching.
+Compression is skipped when the client does not send `Accept-Encoding: gzip` or `deflate`, the response already has a `Content-Encoding` header, the `Content-Type` is not compressible (e.g. `image/png`), the body is smaller than `min_size`, or the response is a [streaming response](@/docs/core-concepts/streaming.md). `Vary: Accept-Encoding` is added automatically for correct proxy caching.
 
 ---
 
