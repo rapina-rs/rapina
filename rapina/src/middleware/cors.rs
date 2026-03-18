@@ -7,7 +7,7 @@ use http::{HeaderValue, Method, Request, Response, StatusCode, header};
 use hyper::body::Incoming;
 
 use crate::context::RequestContext;
-use crate::response::BoxBody;
+use crate::response::{BoxBody, empty_body};
 
 use super::{BoxFuture, Middleware, Next};
 
@@ -138,7 +138,7 @@ impl CorsMiddleware {
 
         builder = builder.header(header::VARY, "Origin");
 
-        builder.body(BoxBody::default()).unwrap()
+        builder.body(empty_body()).unwrap()
     }
 
     fn add_cors_headers(&self, response: &mut Response<BoxBody>, origin: &Option<HeaderValue>) {
@@ -367,7 +367,7 @@ mod tests {
     fn empty_response() -> Response<BoxBody> {
         Response::builder()
             .status(StatusCode::OK)
-            .body(BoxBody::default())
+            .body(empty_body())
             .unwrap()
     }
 

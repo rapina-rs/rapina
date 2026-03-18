@@ -1,6 +1,6 @@
 use rapina::prelude::*;
 use rapina::database::Db;
-use rapina::response::BoxBody;
+use rapina::response::{BoxBody, empty_body};
 
 use super::dto::{CreateUrlRequest, CreateUrlResponse, DeleteUrlResponse};
 use super::error::UrlsError;
@@ -30,7 +30,7 @@ pub async fn redirect(db: Db, code: Path<String>) -> Result<http::Response<BoxBo
     let response = http::Response::builder()
         .status(http::StatusCode::FOUND)
         .header("Location", &item.long_url)
-        .body(BoxBody::default())
+        .body(empty_body())
         .unwrap();
 
     Ok(response)

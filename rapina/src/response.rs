@@ -3,8 +3,12 @@
 //! This module defines the [`IntoResponse`] trait which allows various types
 //! to be converted into HTTP responses.
 
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use bytes::Bytes;
 use http::{Response, StatusCode, header::CONTENT_TYPE};
+use http_body::Frame;
 use http_body_util::Full;
 
 pub(crate) const APPLICATION_JSON: &str = "application/json";
@@ -14,8 +18,60 @@ pub(crate) const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 pub(crate) const PROMETHEUS_TEXT_FORMAT: &str = "text/plain; version=0.0.4; charset=utf-8";
 const TEXT_PLAIN_UTF8: &str = "text/plain; charset=utf-8";
 
+/// Error type for streaming response bodies.
+pub type BoxBodyError = Box<dyn std::error::Error + Send + Sync>;
+
 /// The body type used for HTTP responses.
-pub type BoxBody = Full<Bytes>;
+///
+/// A type-erased body that supports both buffered (`Full<Bytes>`) and streaming
+/// body types behind a single trait object. Only requires `Send` (not `Sync`)
+/// so that `Pin<Box<dyn Stream + Send>>` based bodies work.
+pub struct BoxBody {
+    inner: Pin<Box<dyn http_body::Body<Data = Bytes, Error = BoxBodyError> + Send>>,
+}
+
+impl BoxBody {
+    /// Creates a new `BoxBody` from any body implementing `http_body::Body`.
+    pub fn new<B>(body: B) -> Self
+    where
+        B: http_body::Body<Data = Bytes, Error = BoxBodyError> + Send + 'static,
+    {
+        Self {
+            inner: Box::pin(body),
+        }
+    }
+}
+
+impl http_body::Body for BoxBody {
+    type Data = Bytes;
+    type Error = BoxBodyError;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        self.inner.as_mut().poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+/// Wraps a `Full<Bytes>` into a `BoxBody`.
+pub fn full_body(body: Full<Bytes>) -> BoxBody {
+    use http_body_util::BodyExt;
+    BoxBody::new(body.map_err(|never| match never {}))
+}
+
+/// Creates an empty `BoxBody`.
+pub fn empty_body() -> BoxBody {
+    full_body(Full::new(Bytes::new()))
+}
 
 /// Trait for types that can be converted into an HTTP response.
 ///
@@ -55,7 +111,7 @@ impl IntoResponse for &str {
         Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
-            .body(Full::new(Bytes::from(self.to_owned())))
+            .body(full_body(Full::new(Bytes::from(self.to_owned()))))
             .unwrap()
     }
 }
@@ -65,17 +121,14 @@ impl IntoResponse for String {
         Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
-            .body(Full::new(Bytes::from(self.to_owned())))
+            .body(full_body(Full::new(Bytes::from(self.to_owned()))))
             .unwrap()
     }
 }
 
 impl IntoResponse for StatusCode {
     fn into_response(self) -> Response<BoxBody> {
-        Response::builder()
-            .status(self)
-            .body(Full::new(Bytes::new()))
-            .unwrap()
+        Response::builder().status(self).body(empty_body()).unwrap()
     }
 }
 
@@ -84,7 +137,7 @@ impl IntoResponse for (StatusCode, String) {
         Response::builder()
             .status(self.0)
             .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
-            .body(Full::new(Bytes::from(self.1)))
+            .body(full_body(Full::new(Bytes::from(self.1))))
             .unwrap()
     }
 }
@@ -179,7 +232,7 @@ mod tests {
     fn test_response_into_response_identity() {
         let original = Response::builder()
             .status(StatusCode::ACCEPTED)
-            .body(Full::new(Bytes::from("test")))
+            .body(full_body(Full::new(Bytes::from("test"))))
             .unwrap();
 
         let response = original.into_response();

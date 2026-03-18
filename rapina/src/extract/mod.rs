@@ -23,7 +23,7 @@ pub use multipart::{Field, Multipart};
 
 use crate::context::RequestContext;
 use crate::error::Error;
-use crate::response::{APPLICATION_JSON, BoxBody, FORM_CONTENT_TYPE, IntoResponse};
+use crate::response::{APPLICATION_JSON, BoxBody, FORM_CONTENT_TYPE, IntoResponse, full_body};
 use crate::state::AppState;
 use http::header::CONTENT_TYPE;
 
@@ -456,7 +456,7 @@ impl<T: serde::Serialize> IntoResponse for (http::StatusCode, Json<T>) {
         http::Response::builder()
             .status(self.0)
             .header(CONTENT_TYPE, APPLICATION_JSON)
-            .body(http_body_util::Full::new(Bytes::from(body)))
+            .body(full_body(http_body_util::Full::new(Bytes::from(body))))
             .unwrap()
     }
 }

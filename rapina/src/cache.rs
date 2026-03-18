@@ -32,7 +32,7 @@ use hyper::body::Incoming;
 
 use crate::context::RequestContext;
 use crate::middleware::{BoxFuture, Middleware, Next};
-use crate::response::BoxBody;
+use crate::response::{BoxBody, empty_body, full_body};
 
 /// Internal header injected by the `#[cache(ttl = N)]` macro.
 /// The middleware reads this to determine caching behavior, then strips it.
@@ -255,6 +255,15 @@ impl Middleware for CacheMiddleware {
                 // Cache miss — run handler
                 let response = next.run(req).await;
 
+                // Skip caching for streaming responses
+                if response
+                    .extensions()
+                    .get::<crate::streaming::StreamingMarker>()
+                    .is_some()
+                {
+                    return response;
+                }
+
                 // Check if handler wants caching
                 if let Some(ttl) = extract_ttl_header(&response) {
                     let (parts, body) = response.into_parts();
@@ -263,7 +272,7 @@ impl Middleware for CacheMiddleware {
                         Err(_) => {
                             return Response::builder()
                                 .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(Full::new(Bytes::new()))
+                                .body(empty_body())
                                 .unwrap();
                         }
                     };
@@ -288,7 +297,8 @@ impl Middleware for CacheMiddleware {
                         .await;
 
                     // Return response without the internal header, with MISS marker
-                    let mut response = Response::from_parts(parts, Full::new(body_bytes));
+                    let mut response =
+                        Response::from_parts(parts, full_body(Full::new(body_bytes)));
                     response.headers_mut().remove(CACHE_TTL_HEADER);
                     response
                         .headers_mut()
@@ -362,7 +372,7 @@ fn build_response_from_cache(cached: CachedResponse, status: &'static str) -> Re
         }
     }
 
-    let mut response = builder.body(Full::new(cached.body)).unwrap();
+    let mut response = builder.body(full_body(Full::new(cached.body))).unwrap();
 
     response
         .headers_mut()

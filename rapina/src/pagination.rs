@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 use crate::database::DbError;
 use crate::error::Error;
 use crate::extract::{FromRequestParts, PathParams};
-use crate::response::{BoxBody, IntoResponse};
+use crate::response::{BoxBody, IntoResponse, full_body};
 use crate::state::AppState;
 
 const DEFAULT_PER_PAGE: u64 = 20;
@@ -198,7 +198,7 @@ impl<T: Serialize> IntoResponse for Paginated<T> {
         http::Response::builder()
             .status(http::StatusCode::OK)
             .header("content-type", "application/json")
-            .body(Full::new(Bytes::from(body)))
+            .body(full_body(Full::new(Bytes::from(body))))
             .unwrap()
     }
 }

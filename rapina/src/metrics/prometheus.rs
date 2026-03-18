@@ -9,7 +9,7 @@ use prometheus::{
 };
 
 use crate::extract::PathParams;
-use crate::response::{BoxBody, PROMETHEUS_TEXT_FORMAT};
+use crate::response::{BoxBody, PROMETHEUS_TEXT_FORMAT, empty_body, full_body};
 use crate::state::AppState;
 use http::header::CONTENT_TYPE;
 
@@ -98,12 +98,12 @@ pub async fn metrics_handler(
             Response::builder()
                 .status(StatusCode::OK)
                 .header(CONTENT_TYPE, PROMETHEUS_TEXT_FORMAT)
-                .body(Full::new(Bytes::from(body)))
+                .body(full_body(Full::new(Bytes::from(body))))
                 .unwrap()
         }
         None => Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(Full::new(Bytes::new()))
+            .body(empty_body())
             .unwrap(),
     }
 }

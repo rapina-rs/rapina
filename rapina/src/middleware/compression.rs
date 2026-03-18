@@ -9,7 +9,7 @@ use hyper::Request;
 use hyper::body::Incoming;
 
 use crate::context::RequestContext;
-use crate::response::{APPLICATION_JSON, BoxBody};
+use crate::response::{APPLICATION_JSON, BoxBody, empty_body, full_body};
 
 use super::{BoxFuture, Middleware, Next};
 
@@ -153,6 +153,15 @@ impl Middleware for CompressionMiddleware {
 
             let response = next.run(req).await;
 
+            // Skip compression for streaming responses
+            if response
+                .extensions()
+                .get::<crate::streaming::StreamingMarker>()
+                .is_some()
+            {
+                return response;
+            }
+
             let algorithm = match algorithm {
                 Some(alg)
                     if !Self::is_already_encoded(&response)
@@ -168,25 +177,26 @@ impl Middleware for CompressionMiddleware {
             let (parts, body) = response.into_parts();
             let body_bytes = match body.collect().await {
                 Ok(collected) => collected.to_bytes(),
-                Err(_) => return Response::from_parts(parts, Full::new(Bytes::new())),
+                Err(_) => return Response::from_parts(parts, empty_body()),
             };
 
             if body_bytes.len() < self.config.min_size {
-                return Response::from_parts(parts, Full::new(body_bytes));
+                return Response::from_parts(parts, full_body(Full::new(body_bytes)));
             }
 
             let level = Compression::new(self.config.level);
             let compressed = match algorithm.compress(&body_bytes, level) {
                 Ok(data) => data,
-                Err(_) => return Response::from_parts(parts, Full::new(body_bytes)),
+                Err(_) => return Response::from_parts(parts, full_body(Full::new(body_bytes))),
             };
 
             // not worth it
             if compressed.len() >= body_bytes.len() {
-                return Response::from_parts(parts, Full::new(body_bytes));
+                return Response::from_parts(parts, full_body(Full::new(body_bytes)));
             }
 
-            let mut response = Response::from_parts(parts, Full::new(Bytes::from(compressed)));
+            let mut response =
+                Response::from_parts(parts, full_body(Full::new(Bytes::from(compressed))));
             response.headers_mut().insert(
                 header::CONTENT_ENCODING,
                 HeaderValue::from_static(algorithm.content_encoding()),

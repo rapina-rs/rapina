@@ -38,7 +38,7 @@ use tokio_tungstenite::tungstenite;
 use crate::error::Error;
 use crate::extract::FromRequest;
 use crate::extract::PathParams;
-use crate::response::BoxBody;
+use crate::response::{BoxBody, full_body};
 use crate::state::AppState;
 
 type WsStream = WebSocketStream<TokioIo<Upgraded>>;
@@ -64,6 +64,7 @@ impl FromRequest for WebSocketUpgrade {
         }
         let (response, websocket) = hyper_tungstenite::upgrade(&mut req, None)
             .map_err(|e| Error::internal(format!("WebSocket upgrade failed: {e}")))?;
+        let response = response.map(full_body);
         Ok(Self {
             response,
             websocket,

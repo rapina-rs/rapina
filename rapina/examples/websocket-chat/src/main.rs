@@ -3,6 +3,7 @@
 use bytes::Bytes;
 use http_body_util::Full;
 use rapina::prelude::*;
+use rapina::response::{BoxBody, full_body};
 use rapina::websocket::{Message, WebSocket, WebSocketUpgrade};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -13,7 +14,7 @@ struct ChatRoom {
 
 #[get("/ws")]
 #[public]
-async fn chat(upgrade: WebSocketUpgrade, room: State<ChatRoom>) -> rapina::http::Response<Full<Bytes>> {
+async fn chat(upgrade: WebSocketUpgrade, room: State<ChatRoom>) -> rapina::http::Response<BoxBody> {
     upgrade.on_upgrade(|socket| handle_connection(socket, room.into_inner()))
 }
 
@@ -57,7 +58,7 @@ async fn main() -> std::io::Result<()> {
         .router(Router::new().route(Method::GET, "/", |_, _, _| async {
             rapina::http::Response::builder()
                 .header("content-type", "text/html")
-                .body(Full::new(Bytes::from(include_str!("index.html"))))
+                .body(full_body(Full::new(Bytes::from(include_str!("index.html")))))
                 .unwrap()
         }))
         .discover()
