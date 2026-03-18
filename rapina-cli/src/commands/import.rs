@@ -493,21 +493,10 @@ fn detect_timestamps(table: &IntrospectedTable) -> Option<&'static str> {
 // Per-table generation
 // ---------------------------------------------------------------------------
 
-fn generate_for_table(
-    table: &IntrospectedTable,
-    _relationships: &HashMap<String, Vec<RelationshipInfo>>,
-    force: bool,
-) -> Result<(), String> {
-    let singular = codegen::singularize(&table.name);
-    let plural = &table.name;
-    let pascal = codegen::to_pascal_case(&singular);
-    let pascal_plural = codegen::to_pascal_case(plural);
-
+/// Build all scalar fields for a table (including FK columns), for use by
+/// migration and feature-module generation which need the raw database columns.
+fn build_all_scalar_fields(table: &IntrospectedTable) -> (Vec<codegen::FieldInfo>, usize) {
     let is_composite_pk = table.primary_key_columns.len() > 1;
-
-    // For composite PK, skip only timestamps. PK columns become regular fields.
-    // For single PK, skip id if it's i32 (default) and timestamps.
-    // If single PK is NOT i32 (e.g. Uuid), don't skip it, so it can be marked as PK in codegen.
     let is_default_pk = !is_composite_pk
         && table
             .columns
@@ -527,7 +516,6 @@ fn generate_for_table(
         if skip_columns.contains(&col.name.as_str()) {
             continue;
         }
-
         match normalized_to_field_info(&col.name, &col.col_type, col.is_nullable) {
             Some(fi) => fields.push(fi),
             None => {
@@ -545,40 +533,123 @@ fn generate_for_table(
         }
     }
 
-    let timestamps = detect_timestamps(table);
+    (fields, skipped)
+}
 
-    let primary_key = if is_composite_pk {
-        Some(table.primary_key_columns.clone())
-    } else if !is_default_pk {
-        // Special case: single PK that is NOT the default i32 "id"
+/// Build an EntityBlock for use in the combined schema! block, replacing FK
+/// columns with BelongsTo fields and appending HasMany fields.
+fn build_entity_block(
+    table: &IntrospectedTable,
+    relationships: &HashMap<String, Vec<RelationshipInfo>>,
+) -> Result<codegen::EntityBlock, String> {
+    let singular = codegen::singularize(&table.name);
+    let pascal = codegen::to_pascal_case(&singular);
+
+    let is_composite_pk = table.primary_key_columns.len() > 1;
+    let is_default_pk = !is_composite_pk
+        && table
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.col_type == NormalizedType::I32);
+
+    let skip_columns: Vec<&str> = if is_composite_pk || !is_default_pk {
+        vec!["created_at", "updated_at"]
+    } else {
+        vec!["id", "created_at", "updated_at"]
+    };
+
+    // Collect FK column names so we can skip them as scalar fields
+    let fk_columns: std::collections::HashSet<String> = relationships
+        .get(&table.name)
+        .map(|rels| {
+            rels.iter()
+                .filter(|r| matches!(r.kind, RelationKind::BelongsTo))
+                .map(|r| format!("{}_id", r.field_name))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut fields = Vec::new();
+    let mut skipped = 0;
+
+    for col in &table.columns {
+        if skip_columns.contains(&col.name.as_str()) {
+            continue;
+        }
+        // Skip FK columns — they'll be replaced by BelongsTo fields
+        if fk_columns.contains(&col.name) {
+            continue;
+        }
+        match normalized_to_field_info(&col.name, &col.col_type, col.is_nullable) {
+            Some(fi) => fields.push(fi),
+            None => {
+                if let NormalizedType::Unmappable(ref type_name) = col.col_type {
+                    eprintln!(
+                        "    {} column {:?}.{:?} ({}) has no schema! equivalent -- skipped",
+                        "warn:".yellow(),
+                        table.name,
+                        col.name,
+                        type_name
+                    );
+                }
+                skipped += 1;
+            }
+        }
+    }
+
+    // Build relationship fields
+    let mut relations = Vec::new();
+    if let Some(rels) = relationships.get(&table.name) {
+        for rel in rels {
+            let kind = match &rel.kind {
+                RelationKind::BelongsTo => {
+                    let fk_col_name = format!("{}_id", rel.field_name);
+                    let is_nullable = table
+                        .columns
+                        .iter()
+                        .find(|c| c.name == fk_col_name)
+                        .map(|c| c.is_nullable)
+                        .unwrap_or(false);
+                    if is_nullable {
+                        codegen::RelationFieldKind::OptionalBelongsTo
+                    } else {
+                        codegen::RelationFieldKind::BelongsTo
+                    }
+                }
+                RelationKind::HasMany => codegen::RelationFieldKind::HasMany,
+            };
+            relations.push(codegen::RelationFieldInfo {
+                name: rel.field_name.clone(),
+                target_entity: rel.related_pascal.clone(),
+                kind,
+            });
+        }
+    }
+
+    let timestamps = detect_timestamps(table).map(|s| s.to_string());
+    let primary_key = if is_composite_pk || !is_default_pk {
         Some(table.primary_key_columns.clone())
     } else {
         None
     };
 
-    let pk_type = if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
-        match &pk_col.col_type {
-            NormalizedType::Uuid => "Uuid",
-            _ => "i32",
-        }
-    } else {
-        "i32"
-    };
-
-    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
-    codegen::create_migration_file(plural, &pascal_plural, &fields, pk_type)?;
-    codegen::create_feature_module(&singular, plural, &pascal, &fields, pk_type, force)?;
-
     println!(
-        "  {} Imported table {:?} as {} ({} columns, {} skipped)",
+        "  {} Imported table {:?} as {} ({} columns, {} relations, {} skipped)",
         "✓".green(),
         table.name,
         pascal.bright_cyan(),
         fields.len(),
+        relations.len(),
         skipped
     );
 
-    Ok(())
+    Ok(codegen::EntityBlock {
+        pascal_name: pascal,
+        fields,
+        relations,
+        timestamps,
+        primary_key,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -667,14 +738,38 @@ pub fn database(
     }
 
     let relationships = resolve_relationships(&tables);
+    let mut entity_blocks = Vec::new();
     let mut imported = Vec::new();
 
     for table in &tables {
         let singular = codegen::singularize(&table.name);
+        let plural = &table.name;
         let pascal = codegen::to_pascal_case(&singular);
-        generate_for_table(table, &relationships, force)?;
+        let pascal_plural = codegen::to_pascal_case(plural);
+
+        let block = build_entity_block(table, &relationships)?;
+        entity_blocks.push(block);
+
+        // Migration and feature module still use all scalar fields (including FK columns)
+        let (all_fields, _) = build_all_scalar_fields(table);
+
+        let pk_type = if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
+            match &pk_col.col_type {
+                NormalizedType::Uuid => "Uuid",
+                _ => "i32",
+            }
+        } else {
+            "i32"
+        };
+
+        codegen::create_migration_file(plural, &pascal_plural, &all_fields, pk_type)?;
+        codegen::create_feature_module(&singular, plural, &pascal, &all_fields, pk_type, force)?;
+
         imported.push((table.name.clone(), pascal));
     }
+
+    // Write all entities into a single combined schema! block
+    codegen::write_combined_entity_file(&entity_blocks, force)?;
 
     // Auto-wire mod declarations into src/main.rs
     let plural_names: Vec<&str> = imported.iter().map(|(name, _)| name.as_str()).collect();
@@ -1037,6 +1132,158 @@ mod tests {
         assert_eq!(user_rels[0].field_name, "posts");
         assert_eq!(user_rels[0].related_pascal, "Post");
         assert!(matches!(user_rels[0].kind, RelationKind::HasMany));
+    }
+
+    #[test]
+    fn test_build_entity_block_replaces_fk_with_belongs_to() {
+        let tables = vec![
+            IntrospectedTable {
+                name: "users".into(),
+                columns: vec![IntrospectedColumn {
+                    name: "id".into(),
+                    col_type: NormalizedType::I32,
+                    is_nullable: false,
+                }],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![],
+            },
+            IntrospectedTable {
+                name: "posts".into(),
+                columns: vec![
+                    IntrospectedColumn {
+                        name: "id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "title".into(),
+                        col_type: NormalizedType::Str,
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "user_id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: false,
+                    },
+                ],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![IntrospectedForeignKey {
+                    columns: vec!["user_id".into()],
+                    referenced_table: "users".into(),
+                    referenced_columns: vec!["id".into()],
+                }],
+            },
+        ];
+
+        let rels = resolve_relationships(&tables);
+        let block = build_entity_block(&tables[1], &rels).unwrap();
+
+        // Should NOT have user_id as a scalar field
+        assert!(!block.fields.iter().any(|f| f.name == "user_id"));
+        // Should have title as a scalar field
+        assert!(block.fields.iter().any(|f| f.name == "title"));
+        // Should have a BelongsTo relation
+        assert_eq!(block.relations.len(), 1);
+        assert_eq!(block.relations[0].name, "user");
+        assert_eq!(block.relations[0].target_entity, "User");
+        assert!(matches!(
+            block.relations[0].kind,
+            codegen::RelationFieldKind::BelongsTo
+        ));
+    }
+
+    #[test]
+    fn test_build_entity_block_nullable_fk_becomes_optional() {
+        let tables = vec![
+            IntrospectedTable {
+                name: "users".into(),
+                columns: vec![IntrospectedColumn {
+                    name: "id".into(),
+                    col_type: NormalizedType::I32,
+                    is_nullable: false,
+                }],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![],
+            },
+            IntrospectedTable {
+                name: "posts".into(),
+                columns: vec![
+                    IntrospectedColumn {
+                        name: "id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "user_id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: true,
+                    },
+                ],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![IntrospectedForeignKey {
+                    columns: vec!["user_id".into()],
+                    referenced_table: "users".into(),
+                    referenced_columns: vec!["id".into()],
+                }],
+            },
+        ];
+
+        let rels = resolve_relationships(&tables);
+        let block = build_entity_block(&tables[1], &rels).unwrap();
+
+        assert!(matches!(
+            block.relations[0].kind,
+            codegen::RelationFieldKind::OptionalBelongsTo
+        ));
+    }
+
+    #[test]
+    fn test_build_entity_block_has_many_on_referenced_side() {
+        let tables = vec![
+            IntrospectedTable {
+                name: "users".into(),
+                columns: vec![IntrospectedColumn {
+                    name: "id".into(),
+                    col_type: NormalizedType::I32,
+                    is_nullable: false,
+                }],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![],
+            },
+            IntrospectedTable {
+                name: "posts".into(),
+                columns: vec![
+                    IntrospectedColumn {
+                        name: "id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "user_id".into(),
+                        col_type: NormalizedType::I32,
+                        is_nullable: false,
+                    },
+                ],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![IntrospectedForeignKey {
+                    columns: vec!["user_id".into()],
+                    referenced_table: "users".into(),
+                    referenced_columns: vec!["id".into()],
+                }],
+            },
+        ];
+
+        let rels = resolve_relationships(&tables);
+        let block = build_entity_block(&tables[0], &rels).unwrap();
+
+        // Users should have a HasMany relation to Post
+        assert_eq!(block.relations.len(), 1);
+        assert_eq!(block.relations[0].name, "posts");
+        assert_eq!(block.relations[0].target_entity, "Post");
+        assert!(matches!(
+            block.relations[0].kind,
+            codegen::RelationFieldKind::HasMany
+        ));
     }
 
     #[cfg(feature = "import-postgres")]

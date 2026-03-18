@@ -10,6 +10,27 @@ pub(crate) struct FieldInfo {
     pub nullable: bool,
 }
 
+pub(crate) struct RelationFieldInfo {
+    pub name: String,
+    /// e.g., "User", "Post"
+    pub target_entity: String,
+    pub kind: RelationFieldKind,
+}
+
+pub(crate) enum RelationFieldKind {
+    BelongsTo,
+    OptionalBelongsTo,
+    HasMany,
+}
+
+pub(crate) struct EntityBlock {
+    pub pascal_name: String,
+    pub fields: Vec<FieldInfo>,
+    pub relations: Vec<RelationFieldInfo>,
+    pub timestamps: Option<String>,
+    pub primary_key: Option<Vec<String>>,
+}
+
 pub(crate) fn to_pascal_case(s: &str) -> String {
     s.split('_')
         .map(|part| {
@@ -448,6 +469,98 @@ schema! {{
         attrs = attrs,
         fields = schema_fields.join("\n"),
     )
+}
+
+pub(crate) fn generate_combined_schema_block(entities: &[EntityBlock]) -> String {
+    let mut entity_sections = Vec::new();
+
+    for entity in entities {
+        let mut attrs = String::new();
+
+        if let Some(ref pk_cols) = entity.primary_key {
+            attrs.push_str(&format!("\n    #[primary_key({})]", pk_cols.join(", ")));
+        }
+
+        if let Some(ref ts) = entity.timestamps {
+            attrs.push_str(&format!("\n    #[timestamps({})]", ts));
+        }
+
+        // Scalar fields
+        let mut field_lines: Vec<String> = entity
+            .fields
+            .iter()
+            .map(|f| format!("        {}: {},", f.name, f.schema_type))
+            .collect();
+
+        // Relationship fields
+        for rel in &entity.relations {
+            let line = match rel.kind {
+                RelationFieldKind::BelongsTo => {
+                    format!("        {}: {},", rel.name, rel.target_entity)
+                }
+                RelationFieldKind::OptionalBelongsTo => {
+                    format!("        {}: Option<{}>,", rel.name, rel.target_entity)
+                }
+                RelationFieldKind::HasMany => {
+                    format!("        {}: Vec<{}>,", rel.name, rel.target_entity)
+                }
+            };
+            field_lines.push(line);
+        }
+
+        entity_sections.push(format!(
+            "{attrs}    {pascal} {{\n{fields}\n    }}",
+            attrs = attrs,
+            pascal = entity.pascal_name,
+            fields = field_lines.join("\n"),
+        ));
+    }
+
+    format!("\nschema! {{\n{}\n}}\n", entity_sections.join("\n\n"))
+}
+
+pub(crate) fn write_combined_entity_file(
+    entities: &[EntityBlock],
+    force: bool,
+) -> Result<(), String> {
+    write_combined_entity_file_in(entities, force, Path::new("src/entity.rs"))
+}
+
+fn write_combined_entity_file_in(
+    entities: &[EntityBlock],
+    force: bool,
+    entity_path: &Path,
+) -> Result<(), String> {
+    let schema_block = generate_combined_schema_block(entities);
+
+    if entity_path.exists() {
+        let mut content = fs::read_to_string(entity_path)
+            .map_err(|e| format!("Failed to read entity.rs: {}", e))?;
+
+        if force {
+            for entity in entities {
+                content = remove_schema_block(&content, &entity.pascal_name);
+            }
+        }
+
+        let needs_import =
+            !content.contains("use rapina::prelude::*") && !content.contains("use rapina::schema");
+        let prefix = if needs_import {
+            "use rapina::schema;\n"
+        } else {
+            ""
+        };
+
+        let updated = format!("{}{}{}", prefix, content.trim_end(), schema_block);
+        fs::write(entity_path, updated).map_err(|e| format!("Failed to write entity.rs: {}", e))?;
+    } else {
+        let content = format!("use rapina::prelude::*;\n{}", schema_block);
+        fs::write(entity_path, content)
+            .map_err(|e| format!("Failed to create entity.rs: {}", e))?;
+    }
+
+    println!("  {} Updated {}", "✓".green(), "src/entity.rs".cyan());
+    Ok(())
 }
 
 pub(crate) fn generate_migration(
@@ -1371,5 +1484,161 @@ schema! {
         let result = remove_schema_block(content, "UsersRole");
         assert!(!result.contains("UsersRole"));
         assert!(!result.contains("schema!"));
+    }
+
+    #[test]
+    fn test_generate_combined_schema_block_with_relationships() {
+        let entities = vec![
+            EntityBlock {
+                pascal_name: "User".to_string(),
+                fields: vec![FieldInfo {
+                    name: "email".to_string(),
+                    rust_type: "String".to_string(),
+                    schema_type: "String".to_string(),
+                    column_method: String::new(),
+                    nullable: false,
+                }],
+                relations: vec![RelationFieldInfo {
+                    name: "posts".to_string(),
+                    target_entity: "Post".to_string(),
+                    kind: RelationFieldKind::HasMany,
+                }],
+                timestamps: None,
+                primary_key: None,
+            },
+            EntityBlock {
+                pascal_name: "Post".to_string(),
+                fields: vec![FieldInfo {
+                    name: "title".to_string(),
+                    rust_type: "String".to_string(),
+                    schema_type: "String".to_string(),
+                    column_method: String::new(),
+                    nullable: false,
+                }],
+                relations: vec![RelationFieldInfo {
+                    name: "author".to_string(),
+                    target_entity: "User".to_string(),
+                    kind: RelationFieldKind::BelongsTo,
+                }],
+                timestamps: None,
+                primary_key: None,
+            },
+        ];
+
+        let block = generate_combined_schema_block(&entities);
+        assert!(block.contains("schema! {"));
+        assert!(block.contains("User {"));
+        assert!(block.contains("email: String,"));
+        assert!(block.contains("posts: Vec<Post>,"));
+        assert!(block.contains("Post {"));
+        assert!(block.contains("title: String,"));
+        assert!(block.contains("author: User,"));
+        // Only one schema! block
+        assert_eq!(block.matches("schema! {").count(), 1);
+    }
+
+    #[test]
+    fn test_generate_combined_schema_block_optional_belongs_to() {
+        let entities = vec![EntityBlock {
+            pascal_name: "Comment".to_string(),
+            fields: vec![FieldInfo {
+                name: "body".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "Text".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            }],
+            relations: vec![RelationFieldInfo {
+                name: "author".to_string(),
+                target_entity: "User".to_string(),
+                kind: RelationFieldKind::OptionalBelongsTo,
+            }],
+            timestamps: None,
+            primary_key: None,
+        }];
+
+        let block = generate_combined_schema_block(&entities);
+        assert!(block.contains("author: Option<User>,"));
+    }
+
+    #[test]
+    fn test_generate_combined_schema_block_no_relations() {
+        let entities = vec![EntityBlock {
+            pascal_name: "Setting".to_string(),
+            fields: vec![FieldInfo {
+                name: "key".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            }],
+            relations: vec![],
+            timestamps: Some("none".to_string()),
+            primary_key: None,
+        }];
+
+        let block = generate_combined_schema_block(&entities);
+        assert!(block.contains("Setting {"));
+        assert!(block.contains("key: String,"));
+        assert!(block.contains("#[timestamps(none)]"));
+        assert!(!block.contains("Vec<"));
+        assert!(!block.contains("Option<"));
+    }
+
+    #[test]
+    fn test_write_combined_entity_file_creates_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+
+        let entities = vec![EntityBlock {
+            pascal_name: "User".to_string(),
+            fields: vec![FieldInfo {
+                name: "email".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            }],
+            relations: vec![],
+            timestamps: None,
+            primary_key: None,
+        }];
+
+        write_combined_entity_file_in(&entities, false, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        assert!(content.contains("use rapina::prelude::*;"));
+        assert!(content.contains("schema! {"));
+        assert!(content.contains("User {"));
+    }
+
+    #[test]
+    fn test_write_combined_entity_file_force_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+        fs::write(
+            &entity_path,
+            "use rapina::prelude::*;\n\nschema! {\n    User {\n        name: String,\n    }\n}\n",
+        )
+        .unwrap();
+
+        let entities = vec![EntityBlock {
+            pascal_name: "User".to_string(),
+            fields: vec![FieldInfo {
+                name: "email".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            }],
+            relations: vec![],
+            timestamps: None,
+            primary_key: None,
+        }];
+
+        write_combined_entity_file_in(&entities, true, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        assert_eq!(content.matches("User {").count(), 1);
+        assert!(content.contains("email: String,"));
+        assert!(!content.contains("name: String,"));
     }
 }
