@@ -58,6 +58,7 @@ async fn main() -> std::io::Result<()> {
     Rapina::new()
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
+        .with_health_check(true)
         .with_database(DatabaseConfig::new("sqlite://app.db?mode=rwc"))
         .await?
         .run_migrations::<migrations::Migrator>()

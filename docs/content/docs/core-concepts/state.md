@@ -182,6 +182,70 @@ The default timeout is 30 seconds. After the timeout, remaining connections are 
 
 ---
 
+## Health Checks
+
+Enable built-in health endpoints with `.with_health_check(true)`:
+
+```rust
+Rapina::new()
+    .with_health_check(true)
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+This registers three endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /__rapina/health` | Alias for `/ready` — simple setups and load balancers |
+| `GET /__rapina/health/live` | Kubernetes liveness probe — always `200` |
+| `GET /__rapina/health/ready` | Kubernetes readiness probe — runs all checks |
+
+Point your Kubernetes probes at the dedicated endpoints:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /__rapina/health/live
+    port: 3000
+
+readinessProbe:
+  httpGet:
+    path: /__rapina/health/ready
+    port: 3000
+```
+
+The liveness probe **never** checks external dependencies — a DB outage should pull the pod from the load balancer (readiness failure), not restart it (liveness failure).
+
+Register custom checks for Redis, external APIs, or any dependency:
+
+```rust
+Rapina::new()
+    .with_health_check(true)
+    .add_health_check("redis", || async {
+        redis_ping().await.is_ok()
+    })
+    .add_health_check("stripe", || async {
+        stripe_ping().await.is_ok()
+    })
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+When all checks pass the response is `{"status": "ok"}`. When any check fails, the status is `503` and the body identifies which checks failed:
+
+```json
+{
+  "status": "error",
+  "checks": {
+    "db": "ok",
+    "redis": "error"
+  }
+}
+```
+
+---
+
 ## Going Further
 
 - [Database](@/docs/core-concepts/database.md) — `.with_database()`, the `Db` extractor, and migrations
@@ -215,12 +279,6 @@ struct AppConfig {
 #[public]
 async fn login(body: Json<LoginRequest>) -> Result<Json<TokenResponse>> {
     // validate credentials and issue JWT...
-}
-
-#[get("/health")]
-#[public]
-async fn health() -> &'static str {
-    "ok"
 }
 
 // Protected routes
