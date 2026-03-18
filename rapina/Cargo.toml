@@ -61,7 +61,10 @@ dashmap = "6.1.0"
 smallvec = "1"
 
 # Compression (optional)
-flate2 =  { version = "1.1", optional = true }
+flate2 = { version = "1.1", optional = true }
+
+# Multipart (optional)
+multer = { version = "3.0", optional = true }
 
 # Our macros
 rapina-macros = { version = "0.10.0", path = "../rapina-macros/" }
@@ -102,6 +105,10 @@ harness = false
 [target.'cfg(windows)'.dev-dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
+[[example]]
+name = "multipart"
+required-features = ["multipart"]
+
 [features]
 default = ["compression"]
 compression = ["flate2"]
@@ -111,4 +118,5 @@ mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
 cache-redis = ["redis"]
+multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]

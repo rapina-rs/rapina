@@ -56,6 +56,8 @@
 //! - [`State`](extract::State) - Access application state
 //! - [`Context`](extract::Context) - Access request context with trace_id
 //! - [`Validated`](extract::Validated) - Validate extracted data
+//! - [`Multipart`](extract::Multipart) - Parse multipart form data (e.g. file uploads)
+
 //!
 //! ## Middleware
 //!
@@ -92,6 +94,7 @@ pub mod discovery;
 pub mod error;
 pub mod extract;
 pub mod handler;
+pub mod health;
 pub mod introspection;
 #[cfg(feature = "database")]
 pub mod jobs;
@@ -133,6 +136,8 @@ pub mod prelude {
     pub use crate::context::RequestContext;
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
     pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
+    #[cfg(feature = "multipart")]
+    pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
     pub use crate::jobs::{JobRow, JobStatus};
