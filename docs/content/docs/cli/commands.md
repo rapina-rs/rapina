@@ -287,7 +287,9 @@ Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-o, --output <FILE>` | Output file | openapi.json |
+| `-o, --output <FILE>` | Output file | stdout |
+| `-p, --port <PORT>` | Port to connect to (`$RAPINA_PORT`, `$SERVER_PORT`) | 3000 |
+| `--host <HOST>` | Host to connect to | 127.0.0.1 |
 
 ## rapina openapi check
 
