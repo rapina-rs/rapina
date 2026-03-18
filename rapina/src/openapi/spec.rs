@@ -458,8 +458,8 @@ mod tests {
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
         let json = serde_json::to_value(&spec).unwrap();
-        let opts_schema = &json["paths"]["/items"]["post"]["responses"]["200"]["content"]
-            ["application/json"]["schema"]["properties"]["opts"];
+        let opts_schema = &json["paths"]["/items"]["post"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["properties"]["opts"];
 
         assert!(
             !opts_schema.is_boolean(),
