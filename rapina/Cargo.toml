@@ -38,7 +38,13 @@ validator = { version = "0.20.0", features = ["derive"] }
 
 # Observability
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "registry"] }
+
+# OpenTelemetry (optional — enabled by `telemetry` feature)
+opentelemetry = { version = "0.28", optional = true }
+opentelemetry_sdk = { version = "0.28", optional = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.28", optional = true, features = ["grpc-tonic", "http-proto"] }
+tracing-opentelemetry = { version = "0.29", optional = true }
 
 uuid = { version = "1", features = ["v4"] }
 # FIXME: move behind a `snapshot` feature flag
@@ -120,3 +126,4 @@ metrics = ["prometheus"]
 cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
+telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "tracing-opentelemetry"]

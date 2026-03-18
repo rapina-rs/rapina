@@ -18,6 +18,8 @@ mod rate_limit;
 mod request_log;
 mod timeout;
 mod trace_id;
+#[cfg(feature = "telemetry")]
+mod traceparent;
 
 pub use body_limit::BodyLimitMiddleware;
 #[cfg(feature = "compression")]
@@ -27,6 +29,8 @@ pub use rate_limit::{KeyExtractor, RateLimitConfig, RateLimitMiddleware};
 pub use request_log::{RequestLogConfig, RequestLogMiddleware};
 pub use timeout::TimeoutMiddleware;
 pub use trace_id::{TRACE_ID_HEADER, TraceIdMiddleware};
+#[cfg(feature = "telemetry")]
+pub use traceparent::TraceparentMiddleware;
 
 use std::future::Future;
 use std::pin::Pin;

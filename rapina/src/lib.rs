@@ -13,6 +13,7 @@
 //! - **Structured errors** - Standardized error responses with `trace_id` for debugging
 //! - **Validation** - Built-in request validation using the `validator` crate
 //! - **Observability** - Integrated tracing for structured logging
+//! - **Telemetry** - OpenTelemetry OTLP trace export (optional `telemetry` feature)
 //!
 //! ## Quick Start
 //!
@@ -136,10 +137,14 @@ pub mod prelude {
     #[cfg(feature = "multipart")]
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
+    #[cfg(feature = "telemetry")]
+    pub use crate::middleware::TraceparentMiddleware;
     pub use crate::middleware::{
         KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
     };
     pub use crate::observability::TracingConfig;
+    #[cfg(feature = "telemetry")]
+    pub use crate::observability::{OtlpProtocol, SamplerConfig, TelemetryConfig};
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     #[cfg(feature = "websocket")]

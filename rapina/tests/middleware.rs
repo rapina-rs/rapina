@@ -546,3 +546,115 @@ async fn test_trace_id_middleware_preserves_incoming_trace_id() {
     let header_value = response.headers().get(TRACE_ID_HEADER).unwrap();
     assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
 }
+
+#[cfg(feature = "telemetry")]
+mod traceparent_tests {
+    use rapina::middleware::TraceparentMiddleware;
+    use rapina::prelude::*;
+    use rapina::testing::TestClient;
+
+    #[get("/tp-ping")]
+    async fn ping() -> &'static str {
+        "pong"
+    }
+
+    #[tokio::test]
+    async fn test_traceparent_echoed_in_response() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .middleware(TraceparentMiddleware::new())
+            .router(Router::new().get("/tp-ping", ping));
+
+        let client = TestClient::new(app).await;
+        let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        let response = client
+            .get("/tp-ping")
+            .header("traceparent", traceparent)
+            .send()
+            .await;
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response
+                .headers()
+                .get("traceparent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            traceparent
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_traceparent_header_when_not_provided() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .middleware(TraceparentMiddleware::new())
+            .router(Router::new().get("/tp-ping", ping));
+
+        let client = TestClient::new(app).await;
+        let response = client.get("/tp-ping").send().await;
+
+        assert_eq!(response.status(), 200);
+        assert!(response.headers().get("traceparent").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_traceparent_ignored() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .middleware(TraceparentMiddleware::new())
+            .router(Router::new().get("/tp-ping", ping));
+
+        let client = TestClient::new(app).await;
+        let response = client
+            .get("/tp-ping")
+            .header("traceparent", "invalid-header-value")
+            .send()
+            .await;
+
+        assert_eq!(response.status(), 200);
+        assert!(response.headers().get("traceparent").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_traceparent_coexists_with_trace_id() {
+        use rapina::middleware::TraceIdMiddleware;
+
+        let app = Rapina::new()
+            .with_introspection(false)
+            .middleware(TraceIdMiddleware::new())
+            .middleware(TraceparentMiddleware::new())
+            .router(Router::new().get("/tp-ping", ping));
+
+        let client = TestClient::new(app).await;
+        let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        let response = client
+            .get("/tp-ping")
+            .header("traceparent", traceparent)
+            .header("x-trace-id", "custom-id-123")
+            .send()
+            .await;
+
+        assert_eq!(response.status(), 200);
+        // Both headers should be present
+        assert_eq!(
+            response
+                .headers()
+                .get("traceparent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            traceparent
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-trace-id")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "custom-id-123"
+        );
+    }
+}

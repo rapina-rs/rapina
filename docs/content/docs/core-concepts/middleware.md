@@ -243,6 +243,40 @@ async fn handler(ctx: Context) -> String {
 }
 ```
 
+### W3C Traceparent (requires `telemetry` feature)
+
+Propagates W3C `traceparent` headers for distributed tracing with OpenTelemetry-compatible backends (Jaeger, Datadog, etc.).
+
+- Parses incoming `traceparent` headers and creates child spans linked to the upstream trace
+- Echoes the `traceparent` header back in the response
+- Works independently of `TraceIdMiddleware` — both can be used simultaneously
+
+```rust
+use rapina::middleware::TraceparentMiddleware;
+
+Rapina::new()
+    .with_telemetry(TelemetryConfig::new("http://jaeger:4317", "my-api"))
+    .middleware(TraceparentMiddleware::new())
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+`TelemetryConfig` supports both gRPC (port 4317, default) and HTTP/protobuf (port 4318) transports:
+
+```rust
+// gRPC (default)
+TelemetryConfig::new("http://collector:4317", "my-api")
+
+// HTTP/protobuf
+TelemetryConfig::new("http://collector:4318", "my-api").http()
+
+// With custom sampling
+TelemetryConfig::new("http://collector:4317", "my-api").sample_rate(0.5)
+```
+
+A shutdown hook is automatically registered to flush pending spans when the server shuts down.
+
 ---
 
 ## Custom Middleware
@@ -403,6 +437,7 @@ Response ←  [A]  ←  [B]  ←  [C]  ←  Handler
 | Middleware | Position | Reason |
 |------------|----------|--------|
 | Trace ID | First | All downstream logs carry the request ID |
+| Traceparent | After Trace ID | Links spans to upstream distributed traces |
 | Request Log | After Trace ID | Captures the trace ID in the log span |
 | CORS | Before rate limit | Preflights are answered before consuming any quota |
 | Rate limit | Before auth | No JWT work done for clients that will be blocked |

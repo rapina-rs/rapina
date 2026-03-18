@@ -299,6 +299,39 @@ impl Rapina {
         self
     }
 
+    /// Configures OpenTelemetry OTLP trace export.
+    ///
+    /// Sets up a tracing pipeline that exports spans to the configured OTLP
+    /// endpoint. A shutdown hook is automatically registered to flush pending
+    /// spans on graceful shutdown.
+    ///
+    /// Requires the `telemetry` feature.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::prelude::*;
+    ///
+    /// Rapina::new()
+    ///     .with_telemetry(TelemetryConfig {
+    ///         endpoint: "http://jaeger:4317".into(),
+    ///         service_name: "my-api".into(),
+    ///         sample_rate: 1.0,
+    ///     })
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "telemetry")]
+    pub fn with_telemetry(self, config: crate::observability::TelemetryConfig) -> Self {
+        let provider = config.init();
+        self.on_shutdown(move || async move {
+            if let Err(e) = provider.shutdown() {
+                eprintln!("OpenTelemetry shutdown error: {e}");
+            }
+        })
+    }
+
     /// Enables or disables the introspection endpoint.
     ///
     /// When enabled, a `GET /.__rapina/routes` endpoint is registered
