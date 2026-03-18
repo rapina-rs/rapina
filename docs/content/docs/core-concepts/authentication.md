@@ -43,12 +43,6 @@ Mark routes that don't require authentication with `#[public]`:
 
 ```rust
 #[public]
-#[get("/health")]
-async fn health() -> &'static str {
-    "ok"
-}
-
-#[public]
 #[post("/login")]
 async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
     // Authenticate and return token
@@ -60,10 +54,11 @@ With `.discover()`, `#[public]` routes are automatically registered as public â€
 ```rust
 Rapina::new()
     .with_auth(auth_config)
-    .public_route("GET", "/health")
     .public_route("POST", "/login")
     // ...
 ```
+
+The built-in health check endpoints (`/__rapina/health`, `/__rapina/health/live`, `/__rapina/health/ready`) are always public when enabled â€” no `.public_route()` call needed.
 
 ## Protected Routes
 

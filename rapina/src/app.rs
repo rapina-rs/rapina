@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
+use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
 use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
@@ -55,6 +56,10 @@ pub struct Rapina {
     pub(crate) middlewares: MiddlewareStack,
     /// Whether introspection is enabled.
     pub(crate) introspection: bool,
+    /// Whether health check endpoint is enabled
+    pub(crate) health_check: bool,
+    /// Custom health checks
+    pub(crate) health_registry: HealthRegistry,
     /// Whether metrics is enabled.
     pub(crate) metrics: bool,
     /// Whether OpenAPI is enabled
@@ -90,6 +95,8 @@ impl Rapina {
             state: AppState::new(),
             middlewares: MiddlewareStack::new(),
             introspection: cfg!(debug_assertions),
+            health_check: false,
+            health_registry: HealthRegistry::new(),
             metrics: false,
             openapi: false,
             openapi_title: "API".to_string(),
@@ -282,7 +289,6 @@ impl Rapina {
     /// ```ignore
     /// Rapina::new()
     ///     .with_auth(auth_config)
-    ///     .public_route("GET", "/health")
     ///     .public_route("POST", "/login")
     ///     .router(router)
     ///     .listen("127.0.0.1:3000")
@@ -307,6 +313,34 @@ impl Rapina {
     /// Introspection is enabled by default in debug builds.
     pub fn with_introspection(mut self, enabled: bool) -> Self {
         self.introspection = enabled;
+        self
+    }
+
+    /// Enables or disables the built-in health check endpoints.
+    ///
+    /// When enabled, registers readiness and liveness health check endpoints:
+    /// - `GET /__rapina/health` — alias for readiness, for simple setups and load balancers
+    /// - `GET /__rapina/health/live` — liveness probe, always returns `200 OK`
+    /// - `GET /__rapina/health/ready` — readiness probe, runs DB and custom checks
+    ///
+    /// Health check is disabled by default.
+    pub fn with_health_check(mut self, enabled: bool) -> Self {
+        self.health_check = enabled;
+        self
+    }
+
+    /// Registers a custom health check function.
+    ///
+    /// The function is called on every `GET /__rapina/health` request.
+    /// Return `true` if healthy, `false` if not.
+    ///
+    /// Requires `.with_health_check(true)` to be set.
+    pub fn add_health_check<F, Fut>(mut self, name: &'static str, f: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = bool> + Send + 'static,
+    {
+        self.health_registry.add(name, f);
         self
     }
 
@@ -582,6 +616,16 @@ impl Rapina {
             self.router = self
                 .router
                 .get_named("/__rapina/routes", "list_routes", list_routes);
+        }
+
+        if self.health_check {
+            let registry = std::mem::take(&mut self.health_registry);
+            self.state = self.state.with(registry);
+            self.router = self
+                .router
+                .get_named("/__rapina/health", "health_check", health_check)
+                .get_named("/__rapina/health/live", "liveness_check", liveness_check)
+                .get_named("/__rapina/health/ready", "readiness_check", readiness_check);
         }
 
         #[cfg(feature = "metrics")]
