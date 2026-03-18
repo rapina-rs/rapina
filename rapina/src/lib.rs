@@ -90,6 +90,7 @@ pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
 pub mod database;
+pub(crate) mod date_cache;
 pub mod discovery;
 pub mod error;
 pub mod extract;
@@ -144,7 +145,7 @@ pub mod prelude {
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     #[cfg(feature = "websocket")]
     pub use crate::relay::{Relay, RelayConfig, RelayEvent};
-    pub use crate::response::IntoResponse;
+    pub use crate::response::{IntoResponse, StaticStr};
     pub use crate::router::Router;
 
     pub use http::{Method, StatusCode};
