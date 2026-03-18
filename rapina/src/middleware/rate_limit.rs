@@ -192,7 +192,7 @@ impl Middleware for RateLimitMiddleware {
 
             if let Some(retry_after) = self.check_rate_limit(&key) {
                 let mut response = Error::rate_limited("too many requests")
-                    .with_trace_id(&ctx.trace_id)
+                    .with_trace_id(ctx.trace_id())
                     .into_response();
 
                 response

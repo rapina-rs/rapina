@@ -425,7 +425,7 @@ async fn test_context_trace_id() {
             Router::new().route(http::Method::GET, "/trace", |req, _, _| async move {
                 use rapina::context::RequestContext;
                 let ctx = req.extensions().get::<RequestContext>().unwrap();
-                format!("Trace ID length: {}", ctx.trace_id.len())
+                format!("Trace ID length: {}", ctx.trace_id().len())
             }),
         );
 

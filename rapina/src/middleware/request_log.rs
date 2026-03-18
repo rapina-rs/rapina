@@ -132,7 +132,7 @@ impl Middleware for RequestLogMiddleware {
     ) -> BoxFuture<'a, Response<BoxBody>> {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
-        let trace_id = ctx.trace_id.clone();
+        let trace_id = ctx.trace_id().to_owned();
         let verbose =
             self.config.log_headers || self.config.log_query_params || self.config.log_body_size;
 
