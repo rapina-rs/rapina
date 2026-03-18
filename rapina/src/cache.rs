@@ -181,6 +181,12 @@ pub enum CacheConfig {
     /// Redis-backed cache (requires `cache-redis` feature).
     #[cfg(feature = "cache-redis")]
     Redis { url: String },
+    /// Redis-backed cache with TLS (requires `cache-redis-tls` feature).
+    #[cfg(feature = "cache-redis-tls")]
+    RedisTls {
+        url: String,
+        tls: crate::cache_redis::RedisTlsConfig,
+    },
 }
 
 impl CacheConfig {
@@ -197,6 +203,17 @@ impl CacheConfig {
         }
     }
 
+    /// Creates a Redis cache configuration with TLS.
+    ///
+    /// The URL must use the `rediss://` scheme.
+    #[cfg(feature = "cache-redis-tls")]
+    pub fn redis_tls(url: &str, tls: crate::cache_redis::RedisTlsConfig) -> Self {
+        CacheConfig::RedisTls {
+            url: url.to_string(),
+            tls,
+        }
+    }
+
     /// Builds the cache backend from this configuration.
     pub async fn build(self) -> Result<Arc<dyn CacheBackend>, std::io::Error> {
         match self {
@@ -207,6 +224,15 @@ impl CacheConfig {
                     .await
                     .map_err(|e| {
                         std::io::Error::other(format!("Redis connection failed: {}", e))
+                    })?;
+                Ok(Arc::new(backend))
+            }
+            #[cfg(feature = "cache-redis-tls")]
+            CacheConfig::RedisTls { url, tls } => {
+                let backend = crate::cache_redis::RedisCache::connect_tls(&url, tls)
+                    .await
+                    .map_err(|e| {
+                        std::io::Error::other(format!("Redis TLS connection failed: {}", e))
                     })?;
                 Ok(Arc::new(backend))
             }
@@ -537,6 +563,14 @@ mod tests {
     fn test_cache_config_in_memory() {
         let config = CacheConfig::in_memory(500);
         assert!(matches!(config, CacheConfig::InMemory { max_entries: 500 }));
+    }
+
+    #[cfg(feature = "cache-redis-tls")]
+    #[test]
+    fn test_cache_config_redis_tls() {
+        let tls = crate::cache_redis::RedisTlsConfig::new().ca_cert_path("/path/to/ca.pem");
+        let config = CacheConfig::redis_tls("rediss://redis.internal:6380", tls);
+        assert!(matches!(config, CacheConfig::RedisTls { .. }));
     }
 
     #[test]

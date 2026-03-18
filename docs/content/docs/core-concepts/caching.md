@@ -134,6 +134,51 @@ Rapina::new()
 
 Keys in Redis look like `rapina:GET:/products?page=1&sort=name`. The `rapina:` prefix prevents collisions if you share a Redis instance with other applications.
 
+#### Redis with TLS
+
+For environments that require custom CA certificates or mutual TLS (internal PKI, mTLS), enable the `cache-redis-tls` feature:
+
+```toml
+[dependencies]
+rapina = { version = "0.10", features = ["cache-redis-tls"] }
+```
+
+```rust
+use rapina::cache::CacheConfig;
+use rapina::RedisTlsConfig;
+
+// Custom CA certificate
+let tls = RedisTlsConfig::new()
+    .ca_cert_path("certs/ca.pem");
+
+// Mutual TLS (client certificate authentication)
+let tls = RedisTlsConfig::new()
+    .ca_cert_path("certs/ca.pem")
+    .client_cert_path("certs/client.pem")
+    .client_key_path("certs/client-key.pem");
+
+Rapina::new()
+    .with_cache(CacheConfig::redis_tls("rediss://redis.internal:6380", tls)).await?
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+The URL **must** use the `rediss://` scheme (double s) for TLS connections.
+
+You can also configure TLS from environment variables:
+
+```rust
+// Reads REDIS_CA_CERT, REDIS_CLIENT_CERT, REDIS_CLIENT_KEY
+let tls = RedisTlsConfig::from_env();
+```
+
+| Variable | Description |
+|----------|-------------|
+| `REDIS_CA_CERT` | Path to CA certificate PEM file |
+| `REDIS_CLIENT_CERT` | Path to client certificate PEM file |
+| `REDIS_CLIENT_KEY` | Path to client private key PEM file |
+
 #### Key prefix customization
 
 If you're running multiple Rapina services against the same Redis, use `RedisCache` directly to set a custom prefix:

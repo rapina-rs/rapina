@@ -86,6 +86,8 @@ pub mod auth;
 pub mod cache;
 #[cfg(feature = "cache-redis")]
 pub mod cache_redis;
+#[cfg(feature = "cache-redis-tls")]
+pub use cache_redis::RedisTlsConfig;
 pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
