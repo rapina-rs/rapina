@@ -110,6 +110,7 @@ pub mod response;
 pub mod router;
 pub mod server;
 pub mod state;
+pub mod streaming;
 pub mod test;
 pub mod testing;
 #[cfg(feature = "websocket")]
@@ -144,8 +145,9 @@ pub mod prelude {
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     #[cfg(feature = "websocket")]
     pub use crate::relay::{Relay, RelayConfig, RelayEvent};
-    pub use crate::response::IntoResponse;
+    pub use crate::response::{IntoResponse, empty_body, full_body};
     pub use crate::router::Router;
+    pub use crate::streaming::{SseEvent, SseResponse, StreamResponse};
 
     pub use http::{Method, StatusCode};
     pub use schemars::JsonSchema;
