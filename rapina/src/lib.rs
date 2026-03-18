@@ -94,6 +94,7 @@ pub mod discovery;
 pub mod error;
 pub mod extract;
 pub mod handler;
+pub mod health;
 pub mod introspection;
 #[cfg(feature = "metrics")]
 pub mod metrics;

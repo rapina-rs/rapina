@@ -33,26 +33,11 @@ pub struct MessageResponse {
     message: String,
 }
 
-#[derive(Serialize, JsonSchema)]
-pub struct HealthResponse {
-    status: String,
-    version: String,
-}
-
 #[get("/")]
 #[public]
 pub async fn hello() -> Json<MessageResponse> {
     Json(MessageResponse {
         message: "Hello from Rapina!".to_string(),
-    })
-}
-
-#[get("/health")]
-#[public]
-pub async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
 
@@ -70,6 +55,7 @@ pub async fn build_app() -> std::io::Result<(Rapina, String)> {
         .with_cache(CacheConfig::in_memory(config.cache_capacity))
         .await?
         .middleware(RequestLogMiddleware::new())
+        .with_health_check(true)
         .with_database(db_config)
         .await?
         .run_migrations::<migrations::Migrator>()
