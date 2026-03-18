@@ -41,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 uuid = { version = "1", features = ["v4"] }
+httpdate = "1"
 # FIXME: move behind a `snapshot` feature flag
 regex = "1"
 rust_decimal = "1"
