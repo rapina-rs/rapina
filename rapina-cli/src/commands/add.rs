@@ -394,6 +394,21 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_dto_sea_orm_date_import() {
+        let fields = vec![FieldInfo {
+            name: "birthday".to_string(),
+            rust_type: "Date".to_string(),
+            schema_type: "Date".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let content = codegen::generate_dto("Person", &fields);
+
+        assert!(content.contains("use rapina::sea_orm::prelude::{Date};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
     fn test_generate_dto_mixed_types_imports() {
         let fields = vec![
             FieldInfo {
