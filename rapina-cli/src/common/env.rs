@@ -31,7 +31,8 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn clear_port_vars() {
-        // SAFETY: tests run single-threaded via --test-threads=1.
+        // SAFETY: ENV_LOCK serializes all env-mutating tests in this module,
+        // ensuring no two tests race on these vars simultaneously.
         unsafe {
             std::env::remove_var("RAPINA_PORT");
             std::env::remove_var("SERVER_PORT");
