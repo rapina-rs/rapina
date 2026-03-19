@@ -71,6 +71,11 @@ enum Commands {
         #[command(subcommand)]
         command: MigrateCommands,
     },
+    /// Background jobs management
+    Jobs {
+        #[command(subcommand)]
+        command: JobsCommands,
+    },
     /// Run health checks on your API
     Doctor {
         /// Port to listen on
@@ -147,6 +152,12 @@ enum MigrateCommands {
         /// Name of the migration (e.g., create_users)
         name: String,
     },
+}
+
+#[derive(Subcommand)]
+enum JobsCommands {
+    /// Set up the background jobs migration in your project
+    Init,
 }
 
 #[derive(Subcommand)]
@@ -325,6 +336,15 @@ fn main() {
         Some(Commands::Routes { host, port }) => {
             let config = commands::routes::RoutesConfig { host, port };
             if let Err(e) = commands::routes::execute(config) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Jobs { command }) => {
+            let result = match command {
+                JobsCommands::Init => commands::jobs::init(),
+            };
+            if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }

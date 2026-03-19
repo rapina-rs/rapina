@@ -35,12 +35,6 @@ struct MessageResponse {
     message: String,
 }
 
-#[derive(Serialize, JsonSchema)]
-struct HealthResponse {
-    status: String,
-    version: String,
-}
-
 #[get("/")]
 async fn hello() -> Json<MessageResponse> {
     Json(MessageResponse {
@@ -48,23 +42,15 @@ async fn hello() -> Json<MessageResponse> {
     })
 }
 
-#[get("/health")]
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })
-}
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let router = Router::new()
-        .get("/", hello)
-        .get("/health", health);
+        .get("/", hello);
 
     Rapina::new()
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
+        .with_health_check(true)
         .router(router)
         .listen("127.0.0.1:3000")
         .await
@@ -81,9 +67,8 @@ mod tests {
     fn test_generate_main_rs_has_hello_route() {
         let content = generate_main_rs();
         assert!(content.contains("#[get(\"/\")]"));
-        assert!(content.contains("#[get(\"/health\")]"));
         assert!(content.contains("async fn hello()"));
-        assert!(content.contains("async fn health()"));
+        assert!(content.contains("with_health_check(true)"));
         assert!(content.contains("Rapina::new()"));
     }
 }

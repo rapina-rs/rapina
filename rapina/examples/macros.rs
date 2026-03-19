@@ -58,11 +58,6 @@ async fn hello(config: State<AppConfig>) -> String {
     format!("Hello from {}!", config.app_name)
 }
 
-#[get("/health")]
-async fn health() -> StatusCode {
-    StatusCode::OK
-}
-
 #[get("/users/:id")]
 async fn get_user(id: Path<u64>) -> Result<Json<User>> {
     let id = *id;
@@ -108,13 +103,13 @@ async fn main() -> std::io::Result<()> {
 
     let router = Router::new()
         .get("/", hello)
-        .get("/health", health)
         .get("/users/:id", get_user)
         .get("/me", get_me)
         .post("/users", create_user);
 
     Rapina::new()
         .openapi("Rapina Test", "1.0.0")
+        .with_health_check(true)
         .state(config)
         .router(router)
         .listen(&addr)
