@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 /// Per-request context passed through the middleware stack and into handlers.
@@ -11,7 +11,7 @@ use std::time::Instant;
 /// the UUID v4 allocation entirely.
 #[derive(Debug, Clone)]
 pub struct RequestContext {
-    trace_id: OnceLock<String>,
+    trace_id: Arc<OnceLock<String>>,
     /// Timestamp recorded when the request context was created, used to
     /// calculate request duration.
     pub start_time: Instant,
@@ -20,13 +20,13 @@ pub struct RequestContext {
 impl RequestContext {
     pub fn new() -> Self {
         Self {
-            trace_id: OnceLock::new(),
+            trace_id: Arc::new(OnceLock::new()),
             start_time: Instant::now(),
         }
     }
 
     pub fn with_trace_id(trace_id: String) -> Self {
-        let cell = OnceLock::new();
+        let cell = Arc::new(OnceLock::new());
         let _ = cell.set(trace_id);
         Self {
             trace_id: cell,
@@ -95,11 +95,11 @@ mod tests {
     }
 
     #[test]
-    fn test_clone() {
+    fn test_clone_shares_trace_id() {
         let ctx1 = RequestContext::new();
-        // Access trace_id to initialize it before cloning
-        let _ = ctx1.trace_id();
         let ctx2 = ctx1.clone();
+        // Arc<OnceLock> ensures both sides share the same cell,
+        // so whichever initializes first wins.
         assert_eq!(ctx1.trace_id(), ctx2.trace_id());
     }
 

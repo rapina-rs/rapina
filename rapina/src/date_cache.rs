@@ -17,7 +17,7 @@ pub(crate) struct DateHeaderCache {
 fn format_date_header() -> HeaderValue {
     let now = SystemTime::now();
     let formatted = httpdate::HttpDate::from(now).to_string();
-    // SAFETY: httpdate always produces valid ASCII
+    // httpdate always produces valid ASCII, so this never panics
     HeaderValue::from_str(&formatted).unwrap()
 }
 
