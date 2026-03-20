@@ -2442,6 +2442,7 @@ dependencies = [
  "futures-util",
  "http",
  "http-body-util",
+ "httpdate",
  "hyper",
  "hyper-tungstenite",
  "hyper-util",
