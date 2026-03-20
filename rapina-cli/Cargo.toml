@@ -72,6 +72,8 @@ import-sqlite = [
     "sqlx/sqlite",
 ]
 import-openapi = ["dep:openapiv3", "dep:serde_yaml_ng"]
+jobs = ["dep:sea-orm", "dep:tokio", "dep:dotenvy"]
+jobs-postgres = ["jobs", "sea-orm/sqlx-postgres"]
 
 [dev-dependencies]
 tempfile = "3.27.0"
