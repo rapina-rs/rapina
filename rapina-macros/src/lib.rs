@@ -203,7 +203,7 @@ fn route_macro_core(
         if let Some(inner_type) = extract_json_inner_type(return_type) {
             quote! {
                 fn response_schema() -> Option<serde_json::Value> {
-                    Some(serde_json::to_value(rapina::schemars::schema_for!(#inner_type)).unwrap())
+                    Some(rapina::openapi_schema_for::<#inner_type>())
                 }
             }
         } else {
@@ -883,9 +883,9 @@ mod tests {
         let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
-        // Check response_schema method is generated with schema_for!
+        // Check response_schema method is generated with openapi_schema_for
         assert!(output_str.contains("fn response_schema"));
-        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("rapina :: openapi_schema_for"));
         assert!(output_str.contains("UserResponse"));
     }
 
@@ -902,7 +902,7 @@ mod tests {
         let output_str = output.to_string();
 
         assert!(output_str.contains("fn response_schema"));
-        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("rapina :: openapi_schema_for"));
         assert!(output_str.contains("UserResponse"));
     }
 
@@ -938,7 +938,7 @@ mod tests {
 
         // Check response_schema method is NOT generated for non-Json types
         assert!(!output_str.contains("fn response_schema"));
-        assert!(!output_str.contains("schema_for"));
+        assert!(!output_str.contains("openapi_schema_for"));
     }
 
     #[test]

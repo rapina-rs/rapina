@@ -335,18 +335,40 @@ pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
         .map(|f| format!("    pub {}: Option<{}>,", f.name, f.rust_type))
         .collect();
 
-    // Detect non-primitive types that need imports from sea_orm prelude
-    let needs_sea_orm_import = fields.iter().any(|f| {
-        matches!(
-            f.rust_type.as_str(),
-            "Uuid" | "DateTimeUtc" | "Date" | "Decimal" | "Json"
-        )
-    });
+    // Build type-specific imports instead of sea_orm glob.
+    // Uuid and Decimal must come from their original crates (not sea_orm re-exports)
+    // because the sea_orm re-exports don't implement JsonSchema.
+    let needs_uuid = fields.iter().any(|f| f.rust_type == "Uuid");
+    let needs_decimal = fields.iter().any(|f| f.rust_type == "Decimal");
 
-    let extra_import = if needs_sea_orm_import {
-        "use rapina::sea_orm::prelude::*;\n"
+    let sea_orm_types: Vec<&str> = fields
+        .iter()
+        .filter_map(|f| match f.rust_type.as_str() {
+            "DateTimeUtc" | "Date" | "Json" => Some(f.rust_type.as_str()),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut extra_imports = Vec::new();
+    if needs_uuid {
+        extra_imports.push("use rapina::uuid::Uuid;".to_string());
+    }
+    if needs_decimal {
+        extra_imports.push("use rapina::rust_decimal::Decimal;".to_string());
+    }
+    if !sea_orm_types.is_empty() {
+        extra_imports.push(format!(
+            "use rapina::sea_orm::prelude::{{{}}};",
+            sea_orm_types.join(", ")
+        ));
+    }
+
+    let extra_import = if extra_imports.is_empty() {
+        String::new()
     } else {
-        ""
+        format!("{}\n", extra_imports.join("\n"))
     };
 
     format!(
@@ -760,6 +782,190 @@ fn create_feature_module_in(
     );
 
     Ok(())
+}
+
+/// Inserts `mod <name>;` declarations into `src/main.rs` for any modules not
+/// already declared. Silently returns Ok if main.rs does not exist.
+pub(crate) fn wire_main_rs(modules: &[&str], project_root: &Path) -> Result<(), String> {
+    let main_path = project_root.join("src").join("main.rs");
+    if !main_path.exists() {
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&main_path).map_err(|e| format!("Failed to read main.rs: {e}"))?;
+
+    // Filter out modules already declared.
+    let new_modules: Vec<&str> = modules
+        .iter()
+        .copied()
+        .filter(|m| {
+            !content.lines().any(|l| {
+                l.trim_start().starts_with("mod ")
+                    && l.trim_end().ends_with(';')
+                    && l.contains(&format!("mod {m};"))
+            })
+        })
+        .collect();
+
+    if new_modules.is_empty() {
+        return Ok(());
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Find the index of the last `mod ...;` line.
+    let last_mod_idx = lines
+        .iter()
+        .rposition(|l| l.trim_start().starts_with("mod ") && l.trim_end().ends_with(';'));
+
+    let insertion_line = match last_mod_idx {
+        Some(idx) => idx + 1,
+        None => {
+            // No existing mod declarations — insert before `fn main` or `#[tokio::main]`.
+            lines
+                .iter()
+                .position(|l| l.contains("fn main") || l.contains("#[tokio::main]"))
+                .unwrap_or(lines.len())
+        }
+    };
+
+    let mut result = lines[..insertion_line].join("\n");
+    if !result.ends_with('\n') {
+        result.push('\n');
+    }
+    for m in &new_modules {
+        result.push_str(&format!("mod {m};\n"));
+    }
+    if insertion_line < lines.len() {
+        result.push_str(&lines[insertion_line..].join("\n"));
+        if content.ends_with('\n') {
+            result.push('\n');
+        }
+    }
+
+    fs::write(&main_path, &result).map_err(|e| format!("Failed to write main.rs: {e}"))?;
+
+    for m in &new_modules {
+        println!(
+            "  {} Wired {} in {}",
+            "✓".green(),
+            format!("mod {m};").cyan(),
+            "src/main.rs".cyan()
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_main(dir: &TempDir, content: &str) -> std::path::PathBuf {
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let path = src.join("main.rs");
+        std::fs::write(&path, content).unwrap();
+        dir.path().to_path_buf()
+    }
+
+    #[test]
+    fn inserts_after_last_mod() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+use rapina::prelude::*;
+
+mod entity;
+mod migrations;
+
+#[tokio::main]
+async fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod todos;"));
+        let mod_pos = content.find("mod todos;").unwrap();
+        let main_pos = content.find("#[tokio::main]").unwrap();
+        assert!(mod_pos < main_pos);
+    }
+
+    #[test]
+    fn skips_duplicate() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+mod entity;
+mod todos;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert_eq!(content.matches("mod todos;").count(), 1);
+    }
+
+    #[test]
+    fn inserts_multiple_modules() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+mod entity;
+mod migrations;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["users", "posts"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod users;"));
+        assert!(content.contains("mod posts;"));
+    }
+
+    #[test]
+    fn no_main_rs_is_silent() {
+        let dir = TempDir::new().unwrap();
+        let result = wire_main_rs(&["todos"], dir.path());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_existing_mods_inserts_before_fn_main() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+use rapina::prelude::*;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod todos;"));
+        let mod_pos = content.find("mod todos;").unwrap();
+        let main_pos = content.find("fn main()").unwrap();
+        assert!(mod_pos < main_pos);
+    }
+
+    #[test]
+    fn no_double_blank_line() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(&dir, "mod entity;\nmod migrations;\n\nfn main() {}\n");
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(
+            !content.contains("\n\n\n"),
+            "triple newline found (double blank line)"
+        );
+    }
 }
 
 #[cfg(test)]

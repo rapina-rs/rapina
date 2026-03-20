@@ -31,12 +31,14 @@ curl http://127.0.0.1:3000/
 ```
 
 ```bash
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3000/__rapina/health
 ```
 
 ```json
 {"status": "ok"}
 ```
+
+The health endpoint is enabled by `.with_health_check(true)` in `main.rs`. See [Health Checks](@/docs/core-concepts/state.md#health-checks) for database and custom checks.
 
 Check what routes are available:
 
@@ -46,7 +48,6 @@ rapina routes
 
 ```
 GET    /         [public]
-GET    /health   [public]
 ```
 
 ## What the CLI Created
