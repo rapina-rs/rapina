@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::spanned::Spanned;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
 /// Parsed route macro attribute: `"/path"` or `"/path", group = "/prefix"`.
@@ -559,6 +560,278 @@ fn relay_macro_impl(
                 match_prefix: #match_prefix_str,
                 handler_name: #func_name_str,
                 handle: #wrapper_name,
+            }
+        }
+    }
+}
+
+/// Defines a background job handler.
+///
+/// Annotate an `async fn` to register it as a background job. The first
+/// argument is always the payload type (must implement `Serialize +
+/// DeserializeOwned`). Remaining arguments are dependency-injected from
+/// `AppState` — `State<T>` and `Db` are the supported extractors.
+///
+/// Optionally configure the queue and retry limit:
+///
+/// ```text
+/// #[job(queue = "emails", max_retries = 5)]
+/// ```
+///
+/// Defaults: `queue = "default"`, `max_retries = 3`.
+///
+/// # What the macro generates
+///
+/// Given:
+///
+/// ```rust,ignore
+/// #[job(queue = "emails")]
+/// async fn send_welcome_email(
+///     payload: WelcomeEmailPayload,
+///     mailer: State<Mailer>,
+/// ) -> JobResult { ... }
+/// ```
+///
+/// The macro generates a helper function with the same name and visibility:
+///
+/// ```rust,ignore
+/// fn send_welcome_email(payload: WelcomeEmailPayload) -> JobRequest {
+///     JobRequest { job_type: "send_welcome_email", queue: "emails", ... }
+/// }
+/// ```
+///
+/// The `Jobs` extractor and `enqueue()` API for dispatching jobs from handlers
+/// are planned for a follow-up release.
+///
+/// The handler is also registered via `inventory` for runtime dispatch —
+/// no manual registration needed.
+///
+/// # Feature requirement
+///
+/// Requires the `database` feature. The generated types (`JobRequest`,
+/// `JobDescriptor`) live in `rapina::jobs`, which is gated behind that feature.
+///
+/// # DI limitations
+///
+/// Only `State<T>` and `Db` work in job handlers. Request-bound extractors
+/// (`Context`, `Headers`, `Path`, `CurrentUser`) will fail at runtime.
+#[proc_macro_attribute]
+pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
+    job_macro_impl(attr.into(), item.into()).into()
+}
+
+struct JobAttr {
+    queue: String,
+    max_retries: i32,
+}
+
+impl Default for JobAttr {
+    fn default() -> Self {
+        Self {
+            queue: "default".to_string(),
+            max_retries: 3,
+        }
+    }
+}
+
+impl syn::parse::Parse for JobAttr {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut attr = JobAttr::default();
+
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            input.parse::<syn::Token![=]>()?;
+
+            if ident == "queue" {
+                let lit: syn::LitStr = input.parse()?;
+                let q = lit.value();
+                if q.is_empty() {
+                    return Err(syn::Error::new(lit.span(), "queue name must not be empty"));
+                }
+                attr.queue = q;
+            } else if ident == "max_retries" {
+                let lit: syn::LitInt = input.parse()?;
+                let val: i32 = lit.base10_parse()?;
+                if val < 0 {
+                    return Err(syn::Error::new(lit.span(), "max_retries must be >= 0"));
+                }
+                attr.max_retries = val;
+            } else if ident == "timeout" {
+                // Consume the value so the error points at the attribute name, not EOF.
+                let _: syn::LitStr = input.parse()?;
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "#[job(timeout = ...)] is not yet supported — coming in a future release",
+                ));
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    format!(
+                        "unknown #[job] attribute `{ident}` — supported: `queue`, `max_retries`"
+                    ),
+                ));
+            }
+
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            }
+        }
+
+        Ok(attr)
+    }
+}
+
+fn job_macro_impl(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let job_attr: JobAttr = match syn::parse2(attr) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
+
+    let func: ItemFn = match syn::parse2(item) {
+        Ok(f) => f,
+        Err(e) => return e.to_compile_error(),
+    };
+
+    // Must be async — the handle wrapper calls the impl with .await.
+    if func.sig.asyncness.is_none() {
+        return syn::Error::new(
+            func.sig.fn_token.span,
+            "#[job] must be applied to an async function",
+        )
+        .to_compile_error();
+    }
+
+    // Generic parameters can't be monomorphized into a fn pointer for inventory.
+    if !func.sig.generics.params.is_empty() {
+        return syn::Error::new(
+            func.sig.generics.params.first().unwrap().span(),
+            "#[job] does not support generic type parameters — the payload type must be concrete",
+        )
+        .to_compile_error();
+    }
+
+    let func_name = &func.sig.ident;
+    let func_name_str = func_name.to_string();
+    let func_vis = &func.vis;
+
+    let impl_fn_name = syn::Ident::new(
+        &format!("__rapina_job_impl_{}", func_name_str),
+        proc_macro2::Span::call_site(),
+    );
+    let handle_fn_name = syn::Ident::new(
+        &format!("__rapina_job_handle_{}", func_name_str),
+        proc_macro2::Span::call_site(),
+    );
+
+    let queue_str = &job_attr.queue;
+    let max_retries = job_attr.max_retries;
+
+    let args: Vec<_> = func.sig.inputs.iter().collect();
+
+    if args.is_empty() {
+        return syn::Error::new(
+            func.sig.ident.span(),
+            "#[job] requires at least one argument (the payload type)",
+        )
+        .to_compile_error();
+    }
+
+    // First arg is the payload — extract its type for the helper signature and
+    // for the serde_json::from_value call in the handle wrapper.
+    let payload_type = match &args[0] {
+        FnArg::Typed(pat_type) => &pat_type.ty,
+        FnArg::Receiver(r) => {
+            return syn::Error::new(
+                r.self_token.span,
+                "#[job] cannot be applied to a method — use a free function",
+            )
+            .to_compile_error();
+        }
+    };
+
+    // Remaining args are DI extractors (State<T>, Db, etc.).
+    let mut extractor_extractions = Vec::new();
+    let mut di_call_args = Vec::new();
+
+    for (i, arg) in args[1..].iter().enumerate() {
+        if let FnArg::Typed(pat_type) = arg {
+            let arg_type = &pat_type.ty;
+            let tmp = syn::Ident::new(
+                &format!("__rapina_di_{}", i),
+                proc_macro2::Span::call_site(),
+            );
+            extractor_extractions.push(quote! {
+                let #tmp = <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(
+                    &__rapina_parts, &__rapina_params, &__rapina_state
+                ).await?;
+            });
+            di_call_args.push(quote! { #tmp });
+        }
+    }
+
+    let impl_inputs = &func.sig.inputs;
+    let impl_output = &func.sig.output;
+    let func_block = &func.block;
+    let func_attrs = &func.attrs;
+
+    quote! {
+        // Original handler body, renamed to an internal function. Only called
+        // by the handle wrapper below — never exposed directly.
+        #(#func_attrs)*
+        #[doc(hidden)]
+        async fn #impl_fn_name(#impl_inputs) #impl_output
+        #func_block
+
+        // DI wrapper registered in inventory. Deserializes the JSON payload,
+        // creates synthetic request parts for extractor compatibility, injects
+        // dependencies from AppState, then calls the impl function.
+        //
+        // Only State<T> and Db work here — they source data from AppState
+        // directly and ignore the synthetic parts.
+        #[doc(hidden)]
+        fn #handle_fn_name(
+            __rapina_payload_raw: rapina::serde_json::Value,
+            __rapina_state: std::sync::Arc<rapina::state::AppState>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = rapina::jobs::JobResult> + Send>>
+        {
+            Box::pin(async move {
+                let __rapina_payload_typed: #payload_type =
+                    match rapina::serde_json::from_value(__rapina_payload_raw) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Err(rapina::error::Error::internal(format!(
+                                "failed to deserialize job payload for '{}': {e}",
+                                #func_name_str
+                            )));
+                        }
+                    };
+                let (__rapina_parts, _) = rapina::http::Request::new(()).into_parts();
+                let __rapina_params = rapina::extract::PathParams::new();
+                #(#extractor_extractions)*
+                #impl_fn_name(__rapina_payload_typed, #(#di_call_args),*).await
+            })
+        }
+
+        // Helper function with the same name and visibility as the original.
+        // Call this to build a JobRequest for jobs.enqueue().
+        #func_vis fn #func_name(payload: #payload_type) -> rapina::jobs::JobRequest {
+            rapina::jobs::JobRequest {
+                job_type: #func_name_str,
+                payload: rapina::serde_json::to_value(payload).expect(
+                    "job payload serialization failed — ensure all fields are JSON-compatible",
+                ),
+                queue: #queue_str,
+                max_retries: #max_retries,
+            }
+        }
+
+        rapina::inventory::submit! {
+            rapina::jobs::JobDescriptor {
+                job_type: #func_name_str,
+                handle: #handle_fn_name,
             }
         }
     }
