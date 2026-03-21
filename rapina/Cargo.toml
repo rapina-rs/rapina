@@ -41,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 uuid = { version = "1", features = ["v4"] }
+httpdate = "1"
 # FIXME: move behind a `snapshot` feature flag
 regex = "1"
 rust_decimal = "1"
@@ -92,7 +93,7 @@ futures-util = { version = "0.3", optional = true, default-features = false, fea
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
-matchit = "0.8"
+matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 tempfile = "3"

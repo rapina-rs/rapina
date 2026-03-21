@@ -61,7 +61,7 @@ impl Middleware for TraceIdMiddleware {
                 req.extensions_mut().insert(new_ctx);
                 id
             } else {
-                ctx.trace_id.clone()
+                ctx.trace_id().to_owned()
             };
 
             let mut response = next.run(req).await;

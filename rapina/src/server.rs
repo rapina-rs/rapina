@@ -13,6 +13,7 @@ use hyper_util::server::graceful::GracefulShutdown;
 use tokio::net::TcpListener;
 
 use crate::context::RequestContext;
+use crate::date_cache::DateHeaderCache;
 use crate::middleware::MiddlewareStack;
 use crate::router::Router;
 use crate::state::AppState;
@@ -38,6 +39,7 @@ pub(crate) async fn serve(
     let router = Arc::new(router);
     let state = Arc::new(state);
     let middlewares = Arc::new(middlewares);
+    let date_cache = DateHeaderCache::start();
     let listener = TcpListener::bind(addr).await?;
     let graceful = GracefulShutdown::new();
     let mut ctrl_c = pin!(tokio::signal::ctrl_c());
@@ -68,16 +70,21 @@ pub(crate) async fn serve(
                 let state = state.clone();
                 let middlewares = middlewares.clone();
 
+                let date_cache = date_cache.clone();
                 let service = service_fn(move |mut req: Request<Incoming>| {
                     let router = router.clone();
                     let state = state.clone();
                     let middlewares = middlewares.clone();
+                    let date_cache = date_cache.clone();
 
                     let ctx = RequestContext::new();
                     req.extensions_mut().insert(ctx.clone());
 
                     async move {
-                        let response = middlewares.execute(req, &router, &state, &ctx).await;
+                        let mut response = middlewares.execute(req, &router, &state, &ctx).await;
+                        response
+                            .headers_mut()
+                            .insert(http::header::DATE, date_cache.header_value());
                         Ok::<_, std::convert::Infallible>(response)
                     }
                 });
@@ -352,5 +359,45 @@ mod tests {
             result.unwrap().unwrap().is_ok(),
             "server should exit cleanly after SIGTERM"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_date_header_present_on_response() {
+        let port = free_port().await;
+
+        let router = Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" });
+
+        let handle = tokio::spawn(serve(
+            router,
+            AppState::new(),
+            MiddlewareStack::new(),
+            format!("127.0.0.1:{}", port).parse().unwrap(),
+            Duration::from_secs(5),
+            vec![],
+        ));
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let response = http_get(port, "/").await;
+        assert!(response.contains("200"), "server should respond with 200");
+        assert!(
+            response.to_lowercase().contains("date:"),
+            "response should contain a Date header, got: {}",
+            response
+        );
+        assert!(
+            response.contains("GMT"),
+            "Date header should contain GMT timezone, got: {}",
+            response
+        );
+
+        #[cfg(unix)]
+        unix_tests::send_sigint();
+
+        #[cfg(windows)]
+        windows_tests::send_ctrl_break();
+
+        let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
     }
 }
