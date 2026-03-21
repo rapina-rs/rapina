@@ -24,7 +24,7 @@ notify = { version = "8", default-features = false, features = [
 notify-debouncer-mini = "0.4"
 sea-orm = { version = "1", features = ["runtime-tokio-rustls"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
-dotenvy = { version = "0.15", optional = true }
+dotenvy = "0.15"
 ctrlc = "3"
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
@@ -39,7 +39,7 @@ serde_yaml_ng = { version = "0.10", optional = true }
 
 [features]
 default = []
-seed = ["dep:sea-orm", "dep:tokio", "dep:dotenvy", "dep:fastrand", "dep:uuid"]
+seed = ["dep:sea-orm", "dep:tokio", "dep:fastrand", "dep:uuid"]
 seed-postgres = ["seed", "sea-orm/sqlx-postgres"]
 seed-mysql = ["seed", "sea-orm/sqlx-mysql"]
 seed-sqlite = ["seed", "sea-orm/sqlx-sqlite"]
