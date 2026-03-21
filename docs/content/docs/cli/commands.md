@@ -297,11 +297,15 @@ Export the OpenAPI specification to a file:
 rapina openapi export -o openapi.json
 ```
 
+> When no output file is given, the spec is written to stdout.
+
 Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-o, --output <FILE>` | Output file | openapi.json |
+| `-o, --output <FILE>` | Output file | stdout |
+| `-p, --port <PORT>` | Port to connect to (reads `$RAPINA_PORT`, falling back to `$SERVER_PORT`) | 3000 |
+| `--host <HOST>` | Host to connect to | 127.0.0.1 |
 
 ## rapina openapi check
 

@@ -197,8 +197,6 @@ fn verify_seeds_dir(seeds_path: &Path) -> Result<(), String> {
 // -- Database --
 
 async fn connect_to_db() -> Result<DatabaseConnection, String> {
-    dotenvy::dotenv().ok();
-
     let database_url = std::env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL environment variable is not set".to_string())?;
 

@@ -184,7 +184,7 @@ Internal routes under `/__rapina/` are excluded from the generated spec, so the 
 
 ## CLI Tools
 
-The `rapina` CLI ships three subcommands for working with OpenAPI specs. All three require a running development server and accept `--host` (default `127.0.0.1`) and `--port` / `-p` (default `3000`, also reads `$SERVER_PORT`).
+The `rapina` CLI ships three subcommands for working with OpenAPI specs. All three require a running development server and accept `--host` (default `127.0.0.1`) and `--port` / `-p` (default `3000`, also reads `$RAPINA_PORT` or `$SERVER_PORT`).
 
 ### Export
 

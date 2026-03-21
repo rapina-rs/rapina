@@ -199,7 +199,7 @@ enum OpenapiCommands {
         #[arg(short, long)]
         output: Option<String>,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -211,7 +211,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -226,7 +226,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -235,6 +235,11 @@ enum OpenapiCommands {
 }
 
 fn main() {
+    // Load .env file if present (before clap parses, so env vars are available).
+    dotenvy::dotenv().ok();
+    // Propagate SERVER_PORT / PORT → RAPINA_PORT for backwards compat.
+    common::env::propagate_port_env();
+
     let cli = Cli::parse();
 
     match cli.command {
