@@ -150,6 +150,18 @@ pub struct Components {
     pub schemas: BTreeMap<String, serde_json::Value>,
 }
 
+/// Generate a JSON Schema for type `T` using OpenAPI 3.0-compatible settings.
+///
+/// This uses `SchemaSettings::openapi3()` which replaces boolean schemas
+/// (`true`/`false`) with object equivalents (`{}`/`{"not": {}}`) that are
+/// valid in OpenAPI 3.0.x.
+pub fn openapi_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
+    let schema = schemars::generate::SchemaSettings::openapi3()
+        .into_generator()
+        .into_root_schema_for::<T>();
+    serde_json::to_value(schema).unwrap()
+}
+
 /// Create the standard Rapina error response schema
 fn error_response_schema() -> serde_json::Value {
     serde_json::json!({
@@ -387,6 +399,75 @@ mod tests {
         assert_eq!(
             get_op.responses.get("409").unwrap().description,
             "Email already taken"
+        );
+    }
+
+    #[test]
+    fn test_openapi_schema_for_serde_json_value() {
+        let schema = openapi_schema_for::<serde_json::Value>();
+        // Must be an object schema, not boolean true
+        assert!(
+            schema.is_object(),
+            "serde_json::Value schema should be an object, got: {schema}"
+        );
+        assert!(
+            !schema.is_boolean(),
+            "serde_json::Value schema should not be boolean"
+        );
+    }
+
+    #[test]
+    fn test_openapi_schema_for_option_serde_json_value() {
+        let schema = openapi_schema_for::<Option<serde_json::Value>>();
+        assert!(schema.is_object());
+    }
+
+    #[test]
+    fn test_openapi_schema_for_struct_with_value_field() {
+        #[derive(schemars::JsonSchema)]
+        struct TestDto {
+            #[allow(dead_code)]
+            opts: Option<serde_json::Value>,
+        }
+        let schema = openapi_schema_for::<TestDto>();
+        let properties = schema.get("properties").unwrap();
+        let opts = properties.get("opts").unwrap();
+        assert!(
+            opts.is_object(),
+            "opts field schema should be an object, got: {opts}"
+        );
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_value_response_schema() {
+        #[derive(schemars::JsonSchema)]
+        struct DtoWithValue {
+            #[allow(dead_code)]
+            data: String,
+            #[allow(dead_code)]
+            opts: Option<serde_json::Value>,
+        }
+        let schema = openapi_schema_for::<DtoWithValue>();
+        let routes = vec![RouteInfo::new(
+            "POST",
+            "/items",
+            "create_item",
+            Some(schema),
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let json = serde_json::to_value(&spec).unwrap();
+        let opts_schema = &json["paths"]["/items"]["post"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["properties"]["opts"];
+
+        assert!(
+            !opts_schema.is_boolean(),
+            "opts should not be a boolean schema, got: {opts_schema}"
+        );
+        assert!(
+            opts_schema.is_object(),
+            "opts should be an object schema, got: {opts_schema}"
         );
     }
 

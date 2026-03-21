@@ -343,6 +343,128 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_dto_uuid_decimal_imports() {
+        let fields = vec![
+            FieldInfo {
+                name: "id".to_string(),
+                rust_type: "Uuid".to_string(),
+                schema_type: "Uuid".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "price".to_string(),
+                rust_type: "Decimal".to_string(),
+                schema_type: "Decimal".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+        ];
+        let content = codegen::generate_dto("Product", &fields);
+
+        // Must use original crate paths, not sea_orm re-exports
+        assert!(content.contains("use rapina::uuid::Uuid;"));
+        assert!(content.contains("use rapina::rust_decimal::Decimal;"));
+        // Must NOT use the glob import
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_sea_orm_types_import() {
+        let fields = vec![
+            FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "DateTimeUtc".to_string(),
+                schema_type: "DateTime".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "metadata".to_string(),
+                rust_type: "Json".to_string(),
+                schema_type: "Json".to_string(),
+                column_method: String::new(),
+                nullable: true,
+            },
+        ];
+        let content = codegen::generate_dto("Event", &fields);
+
+        assert!(content.contains("use rapina::sea_orm::prelude::{DateTimeUtc, Json};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_sea_orm_date_import() {
+        let fields = vec![FieldInfo {
+            name: "birthday".to_string(),
+            rust_type: "Date".to_string(),
+            schema_type: "Date".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let content = codegen::generate_dto("Person", &fields);
+
+        assert!(content.contains("use rapina::sea_orm::prelude::{Date};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_mixed_types_imports() {
+        let fields = vec![
+            FieldInfo {
+                name: "id".to_string(),
+                rust_type: "Uuid".to_string(),
+                schema_type: "Uuid".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "amount".to_string(),
+                rust_type: "Decimal".to_string(),
+                schema_type: "Decimal".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "DateTimeUtc".to_string(),
+                schema_type: "DateTime".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "name".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+        ];
+        let content = codegen::generate_dto("Order", &fields);
+
+        assert!(content.contains("use rapina::uuid::Uuid;"));
+        assert!(content.contains("use rapina::rust_decimal::Decimal;"));
+        assert!(content.contains("use rapina::sea_orm::prelude::{DateTimeUtc};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_primitives_no_extra_imports() {
+        let fields = vec![FieldInfo {
+            name: "name".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let content = codegen::generate_dto("Simple", &fields);
+
+        assert!(!content.contains("sea_orm"));
+        assert!(!content.contains("uuid"));
+        assert!(!content.contains("rust_decimal"));
+    }
+
+    #[test]
     fn test_generate_error() {
         let content = codegen::generate_error("User");
 

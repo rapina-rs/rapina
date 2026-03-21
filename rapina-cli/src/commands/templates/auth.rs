@@ -41,12 +41,6 @@ fn generate_main_rs() -> String {
 use rapina::prelude::*;
 use rapina::middleware::RequestLogMiddleware;
 
-#[public]
-#[get("/health")]
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "healthy" }))
-}
-
 #[get("/me")]
 async fn me(user: CurrentUser) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "id": user.id }))
@@ -59,7 +53,6 @@ async fn main() -> std::io::Result<()> {
     let auth_config = AuthConfig::from_env().expect("JWT_SECRET is required");
 
     let router = Router::new()
-        .get("/health", health)
         .post("/auth/register", auth::register)
         .post("/auth/login", auth::login)
         .get("/me", me);
@@ -68,7 +61,7 @@ async fn main() -> std::io::Result<()> {
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
         .with_auth(auth_config.clone())
-        .public_route("GET", "/health")
+        .with_health_check(true)
         .public_route("POST", "/auth/register")
         .public_route("POST", "/auth/login")
         .state(auth_config)
@@ -145,8 +138,7 @@ mod tests {
     #[test]
     fn test_generate_main_rs_marks_public_routes() {
         let content = generate_main_rs();
-        assert!(content.contains("#[public]"));
-        assert!(content.contains("public_route(\"GET\", \"/health\")"));
+        assert!(content.contains("with_health_check(true)"));
         assert!(content.contains("public_route(\"POST\", \"/auth/register\")"));
         assert!(content.contains("public_route(\"POST\", \"/auth/login\")"));
     }
