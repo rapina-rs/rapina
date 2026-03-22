@@ -83,8 +83,26 @@ mod tests {
     #[test]
     fn test_route_registry_with_routes() {
         let routes = vec![
-            RouteInfo::new("GET", "/users", "list_users", None, Vec::new()),
-            RouteInfo::new("POST", "/users", "create_user", None, Vec::new()),
+            RouteInfo::new(
+                "GET",
+                "/users",
+                "list_users",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "POST",
+                "/users",
+                "create_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
         ];
         let registry = RouteRegistry::with_routes(routes);
         assert_eq!(registry.routes().len(), 2);
@@ -92,7 +110,16 @@ mod tests {
 
     #[test]
     fn test_route_registry_clone() {
-        let routes = vec![RouteInfo::new("GET", "/", "index", None, Vec::new())];
+        let routes = vec![RouteInfo::new(
+            "GET",
+            "/",
+            "index",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        )];
         let registry = RouteRegistry::with_routes(routes);
         let cloned = registry.clone();
         assert_eq!(registry.routes().len(), cloned.routes().len());
@@ -101,8 +128,26 @@ mod tests {
     #[test]
     fn test_route_registry_routes_content() {
         let routes = vec![
-            RouteInfo::new("GET", "/health", "health_check", None, Vec::new()),
-            RouteInfo::new("POST", "/users", "create_user", None, Vec::new()),
+            RouteInfo::new(
+                "GET",
+                "/health",
+                "health_check",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "POST",
+                "/users",
+                "create_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
         ];
         let registry = RouteRegistry::with_routes(routes);
 

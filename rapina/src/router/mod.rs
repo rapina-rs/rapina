@@ -24,10 +24,42 @@ type BoxFuture = Pin<Box<dyn Future<Output = Response<BoxBody>> + Send>>;
 type HandlerFn =
     Box<dyn Fn(Request<Incoming>, PathParams, Arc<AppState>) -> BoxFuture + Send + Sync>;
 
+/// Configuration for a route including metadata for introspection.
+pub struct RouteConfig {
+    /// The handler name for introspection and documentation.
+    pub handler_name: String,
+    /// JSON schema for the response body.
+    pub response_schema: Option<serde_json::Value>,
+    /// JSON schema for the request body.
+    pub request_schema: Option<serde_json::Value>,
+    /// Content type for the request body.
+    pub request_content_type: Option<&'static str>,
+    /// Whether the request body is required (true) or optional (false).
+    pub request_body_required: Option<bool>,
+    /// Error responses this handler may return.
+    pub error_responses: Vec<ErrorVariant>,
+}
+
+impl Default for RouteConfig {
+    fn default() -> Self {
+        Self {
+            handler_name: "handler".to_string(),
+            response_schema: None,
+            request_schema: None,
+            request_content_type: None,
+            request_body_required: None,
+            error_responses: Vec::new(),
+        }
+    }
+}
+
 pub(crate) struct Route {
     pub(crate) pattern: String,
     pub(crate) handler_name: String,
     pub(crate) response_schema: Option<serde_json::Value>,
+    pub(crate) request_schema: Option<serde_json::Value>,
+    pub(crate) request_content_type: Option<&'static str>,
+    pub(crate) request_body_required: Option<bool>,
     pub(crate) error_responses: Vec<ErrorVariant>,
     handler: HandlerFn,
 }
@@ -75,16 +107,14 @@ impl Router {
         }
     }
 
-    /// Adds a route with the given HTTP method, pattern, and handler name.
+    /// Adds a route with the given HTTP method, pattern, and configuration.
     ///
     /// The handler name is used for route introspection and documentation.
     pub fn route_named<F, Fut, Out>(
         mut self,
         method: Method,
         pattern: &str,
-        handler_name: &str,
-        response_schema: Option<serde_json::Value>,
-        error_responses: Vec<ErrorVariant>,
+        config: RouteConfig,
         handler: F,
     ) -> Self
     where
@@ -104,9 +134,12 @@ impl Router {
 
         let route = Route {
             pattern: pattern.to_string(),
-            handler_name: handler_name.to_string(),
-            response_schema,
-            error_responses,
+            handler_name: config.handler_name,
+            response_schema: config.response_schema,
+            request_schema: config.request_schema,
+            request_content_type: config.request_content_type,
+            request_body_required: config.request_body_required,
+            error_responses: config.error_responses,
             handler,
         };
 
@@ -124,7 +157,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", None, Vec::new(), handler)
+        self.route_named(method, pattern, RouteConfig::default(), handler)
     }
 
     /// Adds a GET route with a handler name.
@@ -137,9 +170,10 @@ impl Router {
         self.route_named(
             Method::GET,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -154,9 +188,10 @@ impl Router {
         self.route_named(
             Method::POST,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -166,9 +201,14 @@ impl Router {
         self.route_named(
             Method::GET,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -181,9 +221,14 @@ impl Router {
         self.route_named(
             Method::POST,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -201,9 +246,10 @@ impl Router {
         self.route_named(
             Method::PUT,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -213,9 +259,14 @@ impl Router {
         self.route_named(
             Method::PUT,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -233,9 +284,10 @@ impl Router {
         self.route_named(
             Method::PATCH,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -245,9 +297,14 @@ impl Router {
         self.route_named(
             Method::PATCH,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -265,9 +322,10 @@ impl Router {
         self.route_named(
             Method::DELETE,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -277,9 +335,14 @@ impl Router {
         self.route_named(
             Method::DELETE,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -316,6 +379,9 @@ impl Router {
                     &route.pattern,
                     &route.handler_name,
                     route.response_schema.clone(),
+                    route.request_schema.clone(),
+                    route.request_content_type,
+                    route.request_body_required,
                     route.error_responses.clone(),
                 )
             })
@@ -620,9 +686,10 @@ mod tests {
         let router = Router::new().route_named(
             Method::PUT,
             "/users/:id",
-            "update_user",
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: "update_user".to_string(),
+                ..Default::default()
+            },
             |_req, _params, _state| async { StatusCode::OK },
         );
 
