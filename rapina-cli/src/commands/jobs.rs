@@ -232,6 +232,7 @@ async fn connect_to_db() -> Result<DatabaseConnection, String> {
 
 /// Truncate a string to `max` visible characters, appending "..." if it exceeds
 /// the limit. Safe for multi-byte UTF-8 — never splits a codepoint.
+#[cfg(feature = "jobs")]
 fn truncate_chars(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
