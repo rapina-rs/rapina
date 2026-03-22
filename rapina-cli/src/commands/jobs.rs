@@ -248,7 +248,7 @@ fn truncate_chars(s: &str, max: usize) -> String {
     format!("{}...", &s[..end])
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "jobs"))]
 mod tests {
     use super::*;
 
