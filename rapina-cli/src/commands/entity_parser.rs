@@ -28,7 +28,6 @@ pub struct ParsedEntity {
 
 /// A field extracted from an entity definition.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ParsedField {
     /// Field name as written in schema!
     pub name: String,
@@ -81,6 +80,9 @@ pub fn parse_entity_source(content: &str) -> Result<Vec<ParsedEntity>, String> {
 }
 
 /// Extract the text content of all `schema! { ... }` blocks.
+///
+/// NOTE: brace matching is done on raw text. Unbalanced braces inside
+/// inline comments or string literals will produce wrong results.
 fn extract_schema_blocks(content: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let mut lines = content.lines().peekable();

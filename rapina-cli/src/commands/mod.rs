@@ -4,6 +4,7 @@ pub mod add;
 pub(crate) mod codegen;
 pub mod dev;
 pub mod doctor;
+#[cfg(feature = "import")]
 pub(crate) mod entity_parser;
 #[cfg(feature = "import")]
 pub mod import;

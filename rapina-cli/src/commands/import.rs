@@ -1151,9 +1151,17 @@ pub fn database_diff(
 
     let tables = introspect_tables(url, schema_name)?;
 
+    if entities.is_empty() {
+        return Err("No entities found in src/entity.rs — nothing to diff".to_string());
+    }
+
     let total = tables.len();
     let db_tables = filter_tables_for_diff(tables, table_filter);
     println!("  {} Discovered {} table(s)", "✓".green(), total);
+
+    if db_tables.is_empty() {
+        return Err("No tables found in database — nothing to diff".to_string());
+    }
 
     let report = compute_drift(&entities, &db_tables);
     print_drift_report(&report);
@@ -2071,6 +2079,40 @@ mod tests {
             missing_tables: vec![],
         };
         assert!(!report.has_drift());
+    }
+
+    /// Empty entities + real tables → every table appears untracked (false positive).
+    /// `database_diff` guards against this with an early return.
+    #[test]
+    fn test_drift_empty_entities_reports_all_untracked() {
+        let entities: Vec<ParsedEntity> = vec![];
+        let tables = vec![make_table(
+            "users",
+            vec![
+                ("id", NormalizedType::I32, false),
+                ("email", NormalizedType::Str, false),
+            ],
+        )];
+
+        let report = compute_drift(&entities, &tables);
+        assert!(report.has_drift());
+        assert_eq!(report.untracked_tables, vec!["users"]);
+    }
+
+    /// Real entities + empty tables → every entity appears missing (false positive).
+    /// `database_diff` guards against this with an early return.
+    #[test]
+    fn test_drift_empty_tables_reports_all_missing() {
+        let entities = vec![make_entity(
+            "User",
+            "users",
+            vec![("email", "String", false)],
+        )];
+        let tables: Vec<IntrospectedTable> = vec![];
+
+        let report = compute_drift(&entities, &tables);
+        assert!(report.has_drift());
+        assert_eq!(report.missing_tables, vec!["users"]);
     }
 
     #[test]
