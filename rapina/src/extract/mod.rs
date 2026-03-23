@@ -7,12 +7,19 @@ use bytes::Bytes;
 use http::Request;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
-use serde::de::DeserializeOwned;
+use serde::de::{self, DeserializeOwned, DeserializeSeed, MapAccess, SeqAccess, Visitor};
+use smallvec::SmallVec;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::Arc;
 use validator::Validate;
+
+#[cfg(feature = "multipart")]
+pub mod multipart;
+#[cfg(feature = "multipart")]
+pub use multipart::{Field, Multipart};
 
 use crate::context::RequestContext;
 use crate::error::Error;
@@ -44,21 +51,35 @@ use http::header::CONTENT_TYPE;
 #[derive(Debug)]
 pub struct Json<T>(pub T);
 
-/// Extracts a single path parameter from the URL.
+/// Extracts path parameters from the URL.
 ///
-/// Parses a path segment into the specified type `T`.
-/// Returns 400 Bad Request if parsing fails.
+/// Supports three extraction modes:
 ///
-/// # Examples
-///
+/// **Single parameter** — parses one `:param` into any type that implements `FromStr`:
 /// ```ignore
-/// use rapina::prelude::*;
-///
 /// #[get("/users/:id")]
 /// async fn get_user(id: Path<u64>) -> String {
-///     format!("User ID: {}", *id) // deref to access value of Path
+///     format!("User ID: {}", *id)
 /// }
 /// ```
+///
+/// **Tuple** — extracts multiple parameters in declaration order (left to right in the pattern):
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id")]
+/// async fn get_team(Path((org_id, team_id)): Path<(u64, u64)>) -> String {
+///     format!("org={} team={}", org_id, team_id)
+/// }
+/// ```
+///
+/// **Three or more** — same tuple syntax:
+/// ```ignore
+/// #[get("/orgs/:org_id/teams/:team_id/members/:member_id")]
+/// async fn get_member(Path((org_id, team_id, member_id)): Path<(u64, u64, u64)>) -> String {
+///     format!("org={} team={} member={}", org_id, team_id, member_id)
+/// }
+/// ```
+///
+/// Returns 400 Bad Request if a parameter is missing or cannot be parsed.
 #[derive(Debug)]
 pub struct Path<T>(pub T);
 
@@ -160,23 +181,26 @@ pub struct Cookie<T>(pub T);
 /// Provides access to shared application state that was registered
 /// with [`Rapina::state`](crate::app::Rapina::state).
 ///
+/// The inner value is wrapped in an `Arc<T>`, so extraction is always
+/// a cheap atomic reference-count bump rather than a deep clone.
+/// This also removes the `Clone` requirement on `T`.
+///
 /// # Examples
 ///
 /// ```ignore
 /// use rapina::prelude::*;
 ///
-/// #[derive(Clone)]
 /// struct AppConfig {
 ///     db_url: String,
 /// }
 ///
 /// #[get("/config")]
 /// async fn get_config(state: State<AppConfig>) -> String {
-///     state.db_url
+///     state.db_url.clone()
 /// }
 /// ```
-#[derive(Debug)]
-pub struct State<T>(pub T);
+#[derive(Debug, Clone)]
+pub struct State<T>(pub Arc<T>);
 
 /// Provides access to the request context.
 ///
@@ -222,13 +246,88 @@ pub struct Context(pub RequestContext);
 #[derive(Debug)]
 pub struct Validated<T>(pub T);
 
-/// Type alias for path parameters extracted from the URL.
-pub type PathParams = HashMap<String, String>;
+/// Path parameters extracted from the URL during route matching.
+///
+/// Stores up to 4 parameters on the stack without heap allocation.
+/// Uses linear search which outperforms HashMap for the small N
+/// typical of REST APIs (1-3 path parameters).
+#[derive(Debug, Clone, Default)]
+pub struct PathParams {
+    entries: SmallVec<[(Cow<'static, str>, String); 4]>,
+}
+
+impl PathParams {
+    pub fn new() -> Self {
+        Self {
+            entries: SmallVec::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&String> {
+        self.entries
+            .iter()
+            .find(|(k, _)| k.as_ref() == key)
+            .map(|(_, v)| v)
+    }
+
+    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+        if let Some(entry) = self.entries.iter_mut().find(|(k, _)| k.as_ref() == key) {
+            let old = std::mem::replace(&mut entry.1, value);
+            Some(old)
+        } else {
+            self.entries.push((Cow::Owned(key), value));
+            None
+        }
+    }
+
+    /// Push a static key without checking for duplicates.
+    ///
+    /// Used by the trie during route matching where param names are
+    /// leaked to `&'static str` at freeze time and the same key is never
+    /// inserted twice in a single lookup. Zero allocation for the key,
+    /// and skips the linear scan that `insert()` does.
+    pub(crate) fn push(&mut self, key: &'static str, value: String) {
+        self.entries.push((Cow::Borrowed(key), value));
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<String> {
+        if let Some(pos) = self.entries.iter().position(|(k, _)| k.as_ref() == key) {
+            Some(self.entries.swap_remove(pos).1)
+        } else {
+            None
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &String)> {
+        self.entries.iter().map(|(k, v)| (k.as_ref(), v))
+    }
+}
+
+impl FromIterator<(String, String)> for PathParams {
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
+        Self {
+            entries: iter.into_iter().map(|(k, v)| (Cow::Owned(k), v)).collect(),
+        }
+    }
+}
 
 /// Trait for extractors that consume the request body.
 ///
 /// Implement this trait for extractors that need access to the full request,
-/// including the body. Only one body-consuming extractor can be used per handler.
+/// including the body. Only one body-consuming extractor can be used per handler,
+/// and it **must be the last parameter** in the handler function signature.
 pub trait FromRequest: Sized {
     /// Extract the value from the request.
     fn from_request(
@@ -242,7 +341,8 @@ pub trait FromRequest: Sized {
 ///
 /// Implement this trait for extractors that don't need the request body,
 /// such as path parameters, query strings, or headers.
-/// Multiple parts-only extractors can be used in a single handler.
+/// Multiple parts-only extractors can be used in a single handler
+/// and must appear before any body-consuming extractor.
 pub trait FromRequestParts: Sized + Send {
     /// Extract the value from request parts.
     fn from_request_parts(
@@ -300,8 +400,8 @@ impl<T> Cookie<T> {
 }
 
 impl<T> State<T> {
-    /// Consumes the extractor and returns the inner value.
-    pub fn into_inner(self) -> T {
+    /// Consumes the extractor and returns the inner `Arc<T>`.
+    pub fn into_inner(self) -> Arc<T> {
         self.0
     }
 }
@@ -314,7 +414,7 @@ impl Context {
 
     /// Returns the trace ID for this request.
     pub fn trace_id(&self) -> &str {
-        &self.0.trace_id
+        self.0.trace_id()
     }
 
     /// Returns the elapsed time since the request started.
@@ -433,19 +533,19 @@ impl<T: DeserializeOwned + Validate + Send> FromRequest for Validated<Form<T>> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> FromRequestParts for State<T> {
+impl<T: Send + Sync + 'static> FromRequestParts for State<T> {
     async fn from_request_parts(
         _parts: &http::request::Parts,
         _params: &PathParams,
         state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let value = state.get::<T>().ok_or_else(|| {
+        let arc = state.get_arc::<T>().ok_or_else(|| {
             Error::internal(format!(
                 "State not registered for type '{}'. Did you forget to call .state()?",
                 std::any::type_name::<T>()
             ))
         })?;
-        Ok(State(value.clone()))
+        Ok(State(arc))
     }
 }
 
@@ -530,32 +630,250 @@ impl<T: DeserializeOwned + Send> FromRequestParts for Cookie<T> {
     }
 }
 
-impl<T: FromStr + Send> FromRequestParts for Path<T>
-where
-    T::Err: std::fmt::Display,
-{
+// ── PathParamsDeserializer ────────────────────────────────────────────────────
+//
+// Teaches serde how to read from PathParams so a single
+// `impl<T: DeserializeOwned> FromRequestParts for Path<T>` can handle:
+//   - Path<u64> / Path<String>  → first param value
+//   - Path<(u64, String)>       → params in insertion order (SeqAccess)
+//   - Path<MyStruct>            → params by field name (MapAccess)
+
+#[derive(Debug)]
+struct PathDeError(String);
+
+impl fmt::Display for PathDeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PathDeError {}
+
+impl de::Error for PathDeError {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        PathDeError(msg.to_string())
+    }
+}
+
+struct PathParamsDeserializer<'de>(&'de PathParams);
+
+impl<'de> PathParamsDeserializer<'de> {
+    fn first_str(&self) -> Result<&'de str, PathDeError> {
+        self.0
+            .iter()
+            .next()
+            .map(|(_, v)| v.as_str())
+            .ok_or_else(|| {
+                de::Error::custom(
+                    "Missing path parameter. Ensure your route pattern includes a parameter like /:id",
+                )
+            })
+    }
+}
+
+// Generates scalar deserialize methods for PathParamsDeserializer by delegating
+// to StrDeserializer, which holds the actual parse logic.
+macro_rules! delegate_scalar {
+    ($($method:ident),+ $(,)?) => {
+        $(fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+            StrDeserializer(self.first_str()?).$method(visitor)
+        })+
+    };
+}
+
+impl<'de> de::Deserializer<'de> for PathParamsDeserializer<'de> {
+    type Error = PathDeError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        match self.0.len() {
+            0 => Err(de::Error::custom("missing path parameter")),
+            1 => visitor.visit_str(self.first_str()?),
+            _ => self.deserialize_seq(visitor),
+        }
+    }
+
+    delegate_scalar! {
+        deserialize_bool,
+        deserialize_i8, deserialize_i16, deserialize_i32, deserialize_i64, deserialize_i128,
+        deserialize_u8, deserialize_u16, deserialize_u32, deserialize_u64, deserialize_u128,
+        deserialize_f32, deserialize_f64,
+        deserialize_str, deserialize_string, deserialize_identifier,
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        StrDeserializer(self.first_str()?).deserialize_option(visitor)
+    }
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        StrDeserializer(self.first_str()?).deserialize_newtype_struct(name, visitor)
+    }
+
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_seq(PathParamsSeqAccess {
+            iter: self.0.entries.iter(),
+        })
+    }
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_seq(visitor)
+    }
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_seq(visitor)
+    }
+    fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_map(PathParamsMapAccess {
+            iter: self.0.entries.iter(),
+            pending_value: None,
+        })
+    }
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        self.deserialize_map(visitor)
+    }
+
+    serde::forward_to_deserialize_any! {
+        char bytes byte_buf unit unit_struct enum ignored_any
+    }
+}
+
+// Iterates param values in insertion order (for tuples).
+struct PathParamsSeqAccess<'de> {
+    iter: std::slice::Iter<'de, (Cow<'static, str>, String)>,
+}
+
+impl<'de> SeqAccess<'de> for PathParamsSeqAccess<'de> {
+    type Error = PathDeError;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, PathDeError> {
+        match self.iter.next() {
+            None => Ok(None),
+            Some((_, val)) => seed.deserialize(StrDeserializer(val.as_str())).map(Some),
+        }
+    }
+}
+
+// Iterates param key-value pairs (for structs).
+struct PathParamsMapAccess<'de> {
+    iter: std::slice::Iter<'de, (Cow<'static, str>, String)>,
+    pending_value: Option<&'de str>,
+}
+
+impl<'de> MapAccess<'de> for PathParamsMapAccess<'de> {
+    type Error = PathDeError;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, PathDeError> {
+        match self.iter.next() {
+            None => Ok(None),
+            Some((key, val)) => {
+                self.pending_value = Some(val.as_str());
+                seed.deserialize(StrDeserializer(key.as_ref())).map(Some)
+            }
+        }
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(
+        &mut self,
+        seed: V,
+    ) -> Result<V::Value, PathDeError> {
+        let val = self
+            .pending_value
+            .take()
+            .ok_or_else(|| de::Error::custom("next_value called before next_key"))?;
+        seed.deserialize(StrDeserializer(val))
+    }
+}
+
+// Deserializes a single &str into any primitive — used by SeqAccess and MapAccess.
+struct StrDeserializer<'de>(&'de str);
+
+// Generates parse-and-visit methods for StrDeserializer.
+macro_rules! parse_scalar {
+    ($($method:ident => $visit:ident: $ty:ty),+ $(,)?) => {
+        $(fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+            visitor.$visit(self.0.parse::<$ty>().map_err(de::Error::custom)?)
+        })+
+    };
+}
+
+impl<'de> de::Deserializer<'de> for StrDeserializer<'de> {
+    type Error = PathDeError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+
+    parse_scalar! {
+        deserialize_bool  => visit_bool:  bool,
+        deserialize_i8    => visit_i8:    i8,
+        deserialize_i16   => visit_i16:   i16,
+        deserialize_i32   => visit_i32:   i32,
+        deserialize_i64   => visit_i64:   i64,
+        deserialize_i128  => visit_i128:  i128,
+        deserialize_u8    => visit_u8:    u8,
+        deserialize_u16   => visit_u16:   u16,
+        deserialize_u32   => visit_u32:   u32,
+        deserialize_u64   => visit_u64:   u64,
+        deserialize_u128  => visit_u128:  u128,
+        deserialize_f32   => visit_f32:   f32,
+        deserialize_f64   => visit_f64:   f64,
+    }
+
+    fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+    fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_string(self.0.to_owned())
+    }
+    fn deserialize_identifier<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_str(self.0)
+    }
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, PathDeError> {
+        visitor.visit_some(self)
+    }
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, PathDeError> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    serde::forward_to_deserialize_any! {
+        char bytes byte_buf unit unit_struct seq tuple tuple_struct
+        map struct enum ignored_any
+    }
+}
+
+impl<T: DeserializeOwned + Send> FromRequestParts for Path<T> {
     async fn from_request_parts(
         _parts: &http::request::Parts,
         params: &PathParams,
         _state: &Arc<AppState>,
     ) -> Result<Self, Error> {
-        let (param_name, value) = params.iter().next().ok_or_else(|| {
-            Error::bad_request(
-                "Missing path parameter. Ensure your route pattern includes a parameter like /:id",
-            )
-        })?;
-
-        let parsed = value.parse::<T>().map_err(|e| {
-            Error::bad_request(format!(
-                "Path parameter '{}' must be a valid {}, got '{}': {}",
-                param_name,
-                std::any::type_name::<T>(),
-                value,
-                e
-            ))
-        })?;
-
-        Ok(Path(parsed))
+        T::deserialize(PathParamsDeserializer(params))
+            .map(Path)
+            .map_err(|e| Error::bad_request(e.to_string()))
     }
 }
 
@@ -578,7 +896,7 @@ pub fn extract_path_params(pattern: &str, path: &str) -> Option<PathParams> {
         return None;
     }
 
-    let mut params = HashMap::new();
+    let mut params = PathParams::new();
 
     for (pattern_part, path_part) in pattern_parts.iter().zip(path_parts.iter()) {
         if let Some(param_name) = pattern_part.strip_prefix(':') {
@@ -602,7 +920,13 @@ macro_rules! impl_deref {
     };
 }
 
-impl_deref!(State);
+impl<T> Deref for State<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl_deref!(Json);
 impl_deref!(Path);
 impl_deref!(Query);
@@ -763,7 +1087,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
+        assert_eq!(err.status(), 400);
     }
 
     // Headers extractor tests
@@ -823,7 +1147,7 @@ mod tests {
 
         let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 400);
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 
     #[tokio::test]
@@ -859,7 +1183,6 @@ mod tests {
     // State extractor tests
     #[tokio::test]
     async fn test_state_extractor_success() {
-        #[derive(Clone)]
         struct AppConfig {
             name: String,
         }
@@ -871,12 +1194,12 @@ mod tests {
 
         let result = State::<AppConfig>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().0.name, "test-app");
+        assert_eq!(result.unwrap().name, "test-app");
     }
 
     #[tokio::test]
     async fn test_state_extractor_not_found() {
-        #[derive(Clone, Debug)]
+        #[derive(Debug)]
         struct MissingState;
 
         let state = empty_state();
@@ -885,7 +1208,7 @@ mod tests {
         let result =
             State::<MissingState>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status, 500);
+        assert_eq!(result.unwrap_err().status(), 500);
     }
 
     // into_inner tests
@@ -922,15 +1245,16 @@ mod tests {
 
     #[test]
     fn test_state_into_inner() {
-        let state = State("value".to_string());
-        assert_eq!(state.into_inner(), "value");
+        let state = State(Arc::new("value".to_string()));
+        let arc = state.into_inner();
+        assert_eq!(*arc, "value");
     }
 
     #[test]
     fn test_context_into_inner() {
         let ctx = crate::context::RequestContext::with_trace_id("test".to_string());
         let context = Context(ctx);
-        assert_eq!(context.into_inner().trace_id, "test");
+        assert_eq!(context.into_inner().trace_id(), "test");
     }
 
     #[test]
@@ -992,7 +1316,7 @@ mod tests {
 
     #[test]
     fn test_state_deref() {
-        let state = State("value".to_string());
+        let state = State(Arc::new("value".to_string()));
         assert_eq!(*state, "value");
     }
 
@@ -1032,7 +1356,7 @@ mod tests {
             name: "state test".to_string(),
         };
 
-        let state = State(data.clone());
+        let state = State(Arc::new(data.clone()));
         assert_eq!(state.name, data.name);
     }
 
@@ -1057,7 +1381,7 @@ mod tests {
         let ctx = Context(crate::context::RequestContext::with_trace_id(
             "test".to_string(),
         ));
-        assert_eq!(ctx.trace_id, "test");
+        assert_eq!(ctx.trace_id(), "test");
     }
 
     #[test]
@@ -1148,8 +1472,8 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
-        assert!(err.message.contains("session_id"));
+        assert_eq!(err.status(), 400);
+        assert!(err.message().contains("session_id"));
     }
 
     #[tokio::test]
@@ -1173,5 +1497,96 @@ mod tests {
     fn test_cookie_into_inner() {
         let cookie = Cookie("session".to_string());
         assert_eq!(cookie.into_inner(), "session");
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_two_params() {
+        let p = params(&[("org_id", "10"), ("team_id", "42")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (10, 42));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_three_params() {
+        let p = params(&[("org_id", "1"), ("team_id", "2"), ("member_id", "3")]);
+        let result = Path::<(u64, u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, (1, 2, 3));
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_missing_param() {
+        let p = params(&[("org_id", "1")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_tuple_bad_parse() {
+        let p = params(&[("org_id", "not_a_number"), ("team_id", "2")]);
+        let result = Path::<(u64, u64)>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_struct_params() {
+        #[derive(serde::Deserialize)]
+        struct OrgParams {
+            org_id: u64,
+            team_id: u64,
+        }
+
+        let p = params(&[("org_id", "10"), ("team_id", "42")]);
+        let result = Path::<OrgParams>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let Path(v) = result.unwrap();
+        assert_eq!(v.org_id, 10);
+        assert_eq!(v.team_id, 42);
+    }
+
+    #[tokio::test]
+    async fn test_path_struct_bad_parse() {
+        #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
+        struct OrgParams {
+            org_id: u64,
+            team_id: u64,
+        }
+
+        let p = params(&[("org_id", "not_a_number"), ("team_id", "42")]);
+        let result = Path::<OrgParams>::from_request_parts(
+            &TestRequest::get("/").into_parts().0,
+            &p,
+            &empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 }

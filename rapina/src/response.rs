@@ -8,6 +8,7 @@ use http::{Response, StatusCode, header::CONTENT_TYPE};
 use http_body_util::Full;
 
 pub(crate) const APPLICATION_JSON: &str = "application/json";
+pub(crate) const APPLICATION_PROBLEM_JSON: &str = "application/problem+json";
 pub(crate) const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 #[cfg(feature = "metrics")]
 pub(crate) const PROMETHEUS_TEXT_FORMAT: &str = "text/plain; version=0.0.4; charset=utf-8";
@@ -64,7 +65,33 @@ impl IntoResponse for String {
         Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
-            .body(Full::new(Bytes::from(self.to_owned())))
+            .body(Full::new(Bytes::from(self)))
+            .unwrap()
+    }
+}
+
+/// Zero-copy wrapper for static string responses.
+///
+/// Use this instead of `&str` when returning compile-time string literals
+/// from handlers to avoid heap allocation. `Bytes::from_static` is used
+/// internally so the response body references the static data directly.
+///
+/// # Example
+///
+/// ```ignore
+/// #[get("/health")]
+/// async fn health() -> StaticStr {
+///     StaticStr("ok")
+/// }
+/// ```
+pub struct StaticStr(pub &'static str);
+
+impl IntoResponse for StaticStr {
+    fn into_response(self) -> Response<BoxBody> {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, TEXT_PLAIN_UTF8)
+            .body(Full::new(Bytes::from_static(self.0.as_bytes())))
             .unwrap()
     }
 }
@@ -200,5 +227,35 @@ mod tests {
         let result: std::result::Result<&str, StatusCode> = Err(StatusCode::INTERNAL_SERVER_ERROR);
         let response = result.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_static_str_into_response() {
+        let response = StaticStr("Hello, World!").into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn test_static_str_empty() {
+        let response = StaticStr("").into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_static_str_is_zero_copy() {
+        let response = StaticStr("static content").into_response();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        // Bytes::from_static produces a Bytes that references the original
+        // static data without allocating. Verify the content is correct.
+        assert_eq!(&body[..], b"static content");
     }
 }

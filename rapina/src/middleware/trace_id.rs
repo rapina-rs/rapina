@@ -9,6 +9,22 @@ use super::{BoxFuture, Middleware, Next};
 
 pub const TRACE_ID_HEADER: &str = "x-trace-id";
 
+/// Middleware that propagates a trace ID through the request/response cycle.
+///
+/// If the incoming request contains an `x-trace-id` header its value is used
+/// as the trace ID for the request context; otherwise the auto-generated UUID
+/// from [`RequestContext`] is kept. The final trace ID is echoed back to the
+/// caller via an `x-trace-id` response header, enabling distributed tracing
+/// across service boundaries.
+///
+/// [`RequestContext`]: crate::context::RequestContext
+///
+/// # Example
+///
+/// ```rust,ignore
+/// Rapina::new()
+///     .with(TraceIdMiddleware::new())
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct TraceIdMiddleware;
 
@@ -45,7 +61,7 @@ impl Middleware for TraceIdMiddleware {
                 req.extensions_mut().insert(new_ctx);
                 id
             } else {
-                ctx.trace_id.clone()
+                ctx.trace_id().to_owned()
             };
 
             let mut response = next.run(req).await;

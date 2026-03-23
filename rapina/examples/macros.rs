@@ -2,7 +2,7 @@ use rapina::extract::{FromRequestParts, State};
 use rapina::prelude::*;
 use std::sync::Arc;
 
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "APP_NAME"]
     #[default = "Rapina Demo"]
@@ -17,7 +17,7 @@ struct AppConfig {
     host: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct CreateUser {
     name: String,
     email: String,
@@ -56,11 +56,6 @@ impl FromRequestParts for CurrentUser {
 #[get("/")]
 async fn hello(config: State<AppConfig>) -> String {
     format!("Hello from {}!", config.app_name)
-}
-
-#[get("/health")]
-async fn health() -> StatusCode {
-    StatusCode::OK
 }
 
 #[get("/users/:id")]
@@ -108,13 +103,13 @@ async fn main() -> std::io::Result<()> {
 
     let router = Router::new()
         .get("/", hello)
-        .get("/health", health)
         .get("/users/:id", get_user)
         .get("/me", get_me)
         .post("/users", create_user);
 
     Rapina::new()
         .openapi("Rapina Test", "1.0.0")
+        .with_health_check(true)
         .state(config)
         .router(router)
         .listen(&addr)

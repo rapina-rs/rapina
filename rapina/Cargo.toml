@@ -1,6 +1,6 @@
 [package]
 name = "rapina"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
@@ -41,6 +41,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 uuid = { version = "1", features = ["v4"] }
+httpdate = "1"
+# FIXME: move behind a `snapshot` feature flag
+regex = "1"
 rust_decimal = "1"
 
 # Environtment
@@ -55,11 +58,17 @@ jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 # Rate Limiting
 dashmap = "6.1.0"
 
-# Compression
-flate2 = "1.1"
+# SmallVec for stack-allocated path params
+smallvec = "1"
+
+# Compression (optional)
+flate2 = { version = "1.1", optional = true }
+
+# Multipart (optional)
+multer = { version = "3.0", optional = true }
 
 # Our macros
-rapina-macros = { version = "0.9.0", path = "../rapina-macros/" }
+rapina-macros = { version = "0.10.0", path = "../rapina-macros/" }
 
 # Auto-discovery
 inventory = "0.3"
@@ -67,7 +76,7 @@ inventory = "0.3"
 # Database (optional)
 sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
 
-# Database migration (Optional)
+# Database migration (optional)
 sea-orm-migration = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
 async-trait = { version = "0.1", optional = true }
 
@@ -75,7 +84,7 @@ async-trait = { version = "0.1", optional = true }
 prometheus = { version = '0.13', optional = true }
 
 # Redis cache backend (optional)
-redis = { version = "0.27", optional = true, features = ["tokio-comp"] }
+redis = { version = "1.0", optional = true, features = ["tokio-comp"] }
 
 # WebSocket (optional)
 hyper-tungstenite = { version = "0.19", optional = true }
@@ -83,19 +92,32 @@ tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
+tempfile = "3"
+
+[[bench]]
+name = "router"
+harness = false
 
 # Windows specific import for graceful shutdown tests
 [target.'cfg(windows)'.dev-dependencies]
-windows = { version = "0.62.2", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
+
+[[example]]
+name = "multipart"
+required-features = ["multipart"]
 
 [features]
-default = []
+default = ["compression"]
+compression = ["flate2"]
 database = ["sea-orm", "sea-orm-migration", "async-trait"]
 postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
 mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
 cache-redis = ["redis"]
+multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]

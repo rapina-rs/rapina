@@ -5,12 +5,15 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
+use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
 use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
+#[cfg(feature = "compression")]
+use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
-    CompressionConfig, CompressionMiddleware, CorsConfig, CorsMiddleware, Middleware,
-    MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RateLimitConfig, RateLimitMiddleware,
+    RequestLogConfig, RequestLogMiddleware,
 };
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
@@ -53,6 +56,10 @@ pub struct Rapina {
     pub(crate) middlewares: MiddlewareStack,
     /// Whether introspection is enabled.
     pub(crate) introspection: bool,
+    /// Whether health check endpoint is enabled
+    pub(crate) health_check: bool,
+    /// Custom health checks
+    pub(crate) health_registry: HealthRegistry,
     /// Whether metrics is enabled.
     pub(crate) metrics: bool,
     /// Whether OpenAPI is enabled
@@ -72,6 +79,10 @@ pub struct Rapina {
     /// Relay configuration (if enabled)
     #[cfg(feature = "websocket")]
     pub(crate) relay_config: Option<crate::relay::RelayConfig>,
+    /// Whether to use RFC 7807 Problem Details for error responses (default: false)
+    pub(crate) rfc7807_errors: bool,
+    /// Custom base URI for RFC 7807 `type` field (default: "about:blank")
+    pub(crate) rfc7807_base_uri: String,
 }
 
 impl Rapina {
@@ -84,6 +95,8 @@ impl Rapina {
             state: AppState::new(),
             middlewares: MiddlewareStack::new(),
             introspection: cfg!(debug_assertions),
+            health_check: false,
+            health_registry: HealthRegistry::new(),
             metrics: false,
             openapi: false,
             openapi_title: "API".to_string(),
@@ -95,6 +108,8 @@ impl Rapina {
             shutdown_hooks: Vec::new(),
             #[cfg(feature = "websocket")]
             relay_config: None,
+            rfc7807_errors: false,
+            rfc7807_base_uri: "about:blank".to_string(),
         }
     }
 
@@ -189,7 +204,28 @@ impl Rapina {
         self
     }
 
+    /// Enables configurable request/response logging.
+    ///
+    /// Use `RequestLogConfig::verbose()` for full logging with default
+    /// redaction, or build a custom config to pick individual fields.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rapina::new()
+    ///     .with_request_log(RequestLogConfig::verbose())
+    ///     .router(router)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    pub fn with_request_log(mut self, config: RequestLogConfig) -> Self {
+        self.middlewares
+            .add(RequestLogMiddleware::with_config(config));
+        self
+    }
+
     /// Enables response compression (gzip, deflate).
+    #[cfg(feature = "compression")]
     pub fn with_compression(mut self, config: CompressionConfig) -> Self {
         self.middlewares.add(CompressionMiddleware::new(config));
         self
@@ -253,7 +289,6 @@ impl Rapina {
     /// ```ignore
     /// Rapina::new()
     ///     .with_auth(auth_config)
-    ///     .public_route("GET", "/health")
     ///     .public_route("POST", "/login")
     ///     .router(router)
     ///     .listen("127.0.0.1:3000")
@@ -278,6 +313,65 @@ impl Rapina {
     /// Introspection is enabled by default in debug builds.
     pub fn with_introspection(mut self, enabled: bool) -> Self {
         self.introspection = enabled;
+        self
+    }
+
+    /// Enables or disables the built-in health check endpoints.
+    ///
+    /// When enabled, registers readiness and liveness health check endpoints:
+    /// - `GET /__rapina/health` — alias for readiness, for simple setups and load balancers
+    /// - `GET /__rapina/health/live` — liveness probe, always returns `200 OK`
+    /// - `GET /__rapina/health/ready` — readiness probe, runs DB and custom checks
+    ///
+    /// Health check is disabled by default.
+    pub fn with_health_check(mut self, enabled: bool) -> Self {
+        self.health_check = enabled;
+        self
+    }
+
+    /// Registers a custom health check function.
+    ///
+    /// The function is called on every `GET /__rapina/health` request.
+    /// Return `true` if healthy, `false` if not.
+    ///
+    /// Requires `.with_health_check(true)` to be set.
+    pub fn add_health_check<F, Fut>(mut self, name: &'static str, f: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = bool> + Send + 'static,
+    {
+        self.health_registry.add(name, f);
+        self
+    }
+
+    /// Enables RFC 7807 Problem Details for error responses.
+    ///
+    /// When enabled, error responses use the `application/problem+json`
+    /// content type and follow the RFC 7807 structure.
+    ///
+    /// This is disabled by default for backwards compatibility.
+    pub fn enable_rfc7807_errors(mut self) -> Self {
+        self.rfc7807_errors = true;
+        self
+    }
+
+    /// Sets the base URI used for RFC 7807 `type` field.
+    ///
+    /// Error codes are appended as kebab-case path segments.
+    /// For example, with `"https://myapp.com/errors"`, a `NOT_FOUND`
+    /// error produces `"https://myapp.com/errors/not-found"`.
+    ///
+    /// Defaults to `"about:blank"` per RFC 7807 §4.2.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let app = Rapina::new()
+    ///     .enable_rfc7807_errors()
+    ///     .rfc7807_base_uri("https://myapp.com/errors");
+    /// ```
+    pub fn rfc7807_base_uri(mut self, uri: impl Into<String>) -> Self {
+        self.rfc7807_base_uri = uri.into();
         self
     }
 
@@ -449,6 +543,11 @@ impl Rapina {
     /// Both [`listen`](Self::listen) and [`TestClient::new`](crate::testing::TestClient::new)
     /// call this so the app behaves identically in tests and production.
     pub(crate) fn prepare(mut self) -> Self {
+        self.state = self.state.with(crate::error::ErrorConfig {
+            use_rfc7807: self.rfc7807_errors,
+            base_uri: self.rfc7807_base_uri.clone(),
+        });
+
         // Auto-discover routes from inventory (must run before auth middleware)
         if self.auto_discover {
             let manual_count = self.router.routes.len();
@@ -519,6 +618,16 @@ impl Rapina {
                 .get_named("/__rapina/routes", "list_routes", list_routes);
         }
 
+        if self.health_check {
+            let registry = std::mem::take(&mut self.health_registry);
+            self.state = self.state.with(registry);
+            self.router = self
+                .router
+                .get_named("/__rapina/health", "health_check", health_check)
+                .get_named("/__rapina/health/live", "liveness_check", liveness_check)
+                .get_named("/__rapina/health/ready", "readiness_check", readiness_check);
+        }
+
         #[cfg(feature = "metrics")]
         if self.metrics {
             let registry = MetricsRegistry::new();
@@ -541,6 +650,9 @@ impl Rapina {
         // Sort routes so static segments take priority over parameterized ones.
         // This prevents `/users/:id` from shadowing `/users/current`.
         self.router.sort_routes();
+
+        // Build the static route map for O(1) lookup of parameterless routes.
+        self.router.freeze();
 
         self
     }

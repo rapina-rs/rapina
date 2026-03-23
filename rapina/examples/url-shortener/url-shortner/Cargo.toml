@@ -1,0 +1,14 @@
+[package]
+name = "url-shortner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rapina = { version = "0.9.0", features = ["sqlite", "postgres", "cache-redis"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hyper = "1"
+base62 = "2"
+http = "1.4.0"
+validator = { version = "0.20", features = ["derive"] }

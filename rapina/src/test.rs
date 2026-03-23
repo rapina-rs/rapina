@@ -245,7 +245,7 @@ mod tests {
         let (parts, _) = TestRequest::get("/").into_parts();
         let ctx = parts.extensions.get::<RequestContext>();
         assert!(ctx.is_some());
-        assert!(!ctx.unwrap().trace_id.is_empty());
+        assert!(!ctx.unwrap().trace_id().is_empty());
     }
 
     #[test]
@@ -254,7 +254,7 @@ mod tests {
         let (parts, _) = TestRequest::get("/").into_parts_with_context(custom_ctx);
 
         let ctx = parts.extensions.get::<RequestContext>().unwrap();
-        assert_eq!(ctx.trace_id, "custom-trace-123");
+        assert_eq!(ctx.trace_id(), "custom-trace-123");
     }
 
     #[test]

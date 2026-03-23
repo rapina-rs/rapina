@@ -3,6 +3,9 @@
 //! The [`Router`] type collects route definitions and matches incoming
 //! requests to the appropriate handlers.
 
+mod static_map;
+mod trie;
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,7 +14,7 @@ use http::{Method, Request, Response, StatusCode};
 use hyper::body::Incoming;
 
 use crate::error::ErrorVariant;
-use crate::extract::{PathParams, extract_path_params};
+use crate::extract::PathParams;
 use crate::handler::Handler;
 use crate::introspection::RouteInfo;
 use crate::response::{BoxBody, IntoResponse};
@@ -21,18 +24,53 @@ type BoxFuture = Pin<Box<dyn Future<Output = Response<BoxBody>> + Send>>;
 type HandlerFn =
     Box<dyn Fn(Request<Incoming>, PathParams, Arc<AppState>) -> BoxFuture + Send + Sync>;
 
+/// Configuration for a route including metadata for introspection.
+pub struct RouteConfig {
+    /// The handler name for introspection and documentation.
+    pub handler_name: String,
+    /// JSON schema for the response body.
+    pub response_schema: Option<serde_json::Value>,
+    /// JSON schema for the request body.
+    pub request_schema: Option<serde_json::Value>,
+    /// Content type for the request body.
+    pub request_content_type: Option<&'static str>,
+    /// Whether the request body is required (true) or optional (false).
+    pub request_body_required: Option<bool>,
+    /// Error responses this handler may return.
+    pub error_responses: Vec<ErrorVariant>,
+}
+
+impl Default for RouteConfig {
+    fn default() -> Self {
+        Self {
+            handler_name: "handler".to_string(),
+            response_schema: None,
+            request_schema: None,
+            request_content_type: None,
+            request_body_required: None,
+            error_responses: Vec::new(),
+        }
+    }
+}
+
 pub(crate) struct Route {
     pub(crate) pattern: String,
     pub(crate) handler_name: String,
     pub(crate) response_schema: Option<serde_json::Value>,
+    pub(crate) request_schema: Option<serde_json::Value>,
+    pub(crate) request_content_type: Option<&'static str>,
+    pub(crate) request_body_required: Option<bool>,
     pub(crate) error_responses: Vec<ErrorVariant>,
     handler: HandlerFn,
 }
 
 /// The HTTP router for matching requests to handlers.
 ///
-/// Routes are matched in the order they are added. Use path parameters
-/// with the `:param` syntax.
+/// Static routes (no `:param` segments) are resolved via O(1) HashMap
+/// lookup. Dynamic routes are matched through a radix trie with
+/// O(path_depth) complexity. Static children take precedence over
+/// param children at every node, so `/users/current` always wins
+/// over `/users/:id` regardless of registration order.
 ///
 /// # Examples
 ///
@@ -55,24 +93,28 @@ pub(crate) struct Route {
 /// ```
 pub struct Router {
     pub(crate) routes: Vec<(Method, Route)>,
+    static_map: Option<static_map::StaticMap>,
+    trie: Option<trie::TrieRouter>,
 }
 
 impl Router {
     /// Creates a new empty router.
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            static_map: None,
+            trie: None,
+        }
     }
 
-    /// Adds a route with the given HTTP method, pattern, and handler name.
+    /// Adds a route with the given HTTP method, pattern, and configuration.
     ///
     /// The handler name is used for route introspection and documentation.
     pub fn route_named<F, Fut, Out>(
         mut self,
         method: Method,
         pattern: &str,
-        handler_name: &str,
-        response_schema: Option<serde_json::Value>,
-        error_responses: Vec<ErrorVariant>,
+        config: RouteConfig,
         handler: F,
     ) -> Self
     where
@@ -92,9 +134,12 @@ impl Router {
 
         let route = Route {
             pattern: pattern.to_string(),
-            handler_name: handler_name.to_string(),
-            response_schema,
-            error_responses,
+            handler_name: config.handler_name,
+            response_schema: config.response_schema,
+            request_schema: config.request_schema,
+            request_content_type: config.request_content_type,
+            request_body_required: config.request_body_required,
+            error_responses: config.error_responses,
             handler,
         };
 
@@ -112,7 +157,7 @@ impl Router {
         Fut: Future<Output = Out> + Send + 'static,
         Out: IntoResponse + 'static,
     {
-        self.route_named(method, pattern, "handler", None, Vec::new(), handler)
+        self.route_named(method, pattern, RouteConfig::default(), handler)
     }
 
     /// Adds a GET route with a handler name.
@@ -125,9 +170,10 @@ impl Router {
         self.route_named(
             Method::GET,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -142,9 +188,10 @@ impl Router {
         self.route_named(
             Method::POST,
             pattern,
-            handler_name,
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
             handler,
         )
     }
@@ -154,9 +201,14 @@ impl Router {
         self.route_named(
             Method::GET,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -169,13 +221,36 @@ impl Router {
         self.route_named(
             Method::POST,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
             },
+        )
+    }
+
+    /// Adds a PUT route with a handler name.
+    pub fn put_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::PUT,
+            pattern,
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
+            handler,
         )
     }
 
@@ -184,13 +259,74 @@ impl Router {
         self.route_named(
             Method::PUT,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
             },
+        )
+    }
+
+    /// Adds a PATCH route with a handler name.
+    pub fn patch_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::PATCH,
+            pattern,
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
+            handler,
+        )
+    }
+
+    /// Adds a PATCH route with a Handler.
+    pub fn patch<H: Handler>(self, pattern: &str, handler: H) -> Self {
+        self.route_named(
+            Method::PATCH,
+            pattern,
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
+            move |req, params, state| {
+                let h = handler.clone();
+                async move { h.call(req, params, state).await }
+            },
+        )
+    }
+
+    /// Adds a DELETE route with a handler name.
+    pub fn delete_named<F, Fut, Out>(self, pattern: &str, handler_name: &str, handler: F) -> Self
+    where
+        F: Fn(Request<Incoming>, PathParams, Arc<AppState>) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Out> + Send + 'static,
+        Out: IntoResponse + 'static,
+    {
+        self.route_named(
+            Method::DELETE,
+            pattern,
+            RouteConfig {
+                handler_name: handler_name.to_string(),
+                ..Default::default()
+            },
+            handler,
         )
     }
 
@@ -199,9 +335,14 @@ impl Router {
         self.route_named(
             Method::DELETE,
             pattern,
-            H::NAME,
-            H::response_schema(),
-            H::error_responses(),
+            RouteConfig {
+                handler_name: H::NAME.to_string(),
+                response_schema: H::response_schema(),
+                request_schema: H::request_schema(),
+                request_content_type: H::request_content_type(),
+                request_body_required: H::request_body_required(),
+                error_responses: H::error_responses(),
+            },
             move |req, params, state| {
                 let h = handler.clone();
                 async move { h.call(req, params, state).await }
@@ -238,6 +379,9 @@ impl Router {
                     &route.pattern,
                     &route.handler_name,
                     route.response_schema.clone(),
+                    route.request_schema.clone(),
+                    route.request_content_type,
+                    route.request_body_required,
                     route.error_responses.clone(),
                 )
             })
@@ -273,17 +417,60 @@ impl Router {
         self
     }
 
-    /// Handles an incoming request by matching it to a route.
-    pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
-        let method = req.method().clone();
-        let path = req.uri().path().to_string();
+    /// Resolves a route without calling the handler.
+    ///
+    /// Returns the matched route index and extracted path parameters,
+    /// or `None` if no route matches. This is the pure routing decision
+    /// isolated from the async handler call and HTTP plumbing.
+    #[doc(hidden)]
+    pub fn resolve(&self, method: &Method, path: &str) -> Option<(usize, PathParams)> {
+        if let Some(ref static_map) = self.static_map {
+            if let Some(idx) = static_map.lookup(method, path) {
+                return Some((idx, PathParams::new()));
+            }
+        }
+        if let Some(ref trie) = self.trie {
+            let mut params = PathParams::new();
+            if let Some(idx) = trie.lookup(method, path, &mut params) {
+                return Some((idx, params));
+            }
+        }
+        None
+    }
 
-        for (route_method, route) in &self.routes {
-            if *route_method != method {
+    /// Resolves a route using the old linear scan (pre-trie) algorithm.
+    ///
+    /// Iterates over all registered routes checking each pattern against the
+    /// request path. This is the O(n) baseline that the static map and trie
+    /// replaced. Exposed only for benchmark comparison.
+    #[doc(hidden)]
+    pub fn resolve_linear(&self, method: &Method, path: &str) -> Option<(usize, PathParams)> {
+        for (idx, (route_method, route)) in self.routes.iter().enumerate() {
+            if *route_method != *method {
                 continue;
             }
+            if let Some(params) = crate::extract::extract_path_params(&route.pattern, path) {
+                return Some((idx, params));
+            }
+        }
+        None
+    }
 
-            if let Some(params) = extract_path_params(&route.pattern, &path) {
+    /// Handles an incoming request by matching it to a route.
+    pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
+        // Layer 1: O(1) static map — no allocation, no cloning.
+        if let Some(ref static_map) = self.static_map {
+            if let Some(idx) = static_map.lookup(req.method(), req.uri().path()) {
+                let route = &self.routes[idx].1;
+                return (route.handler)(req, PathParams::new(), state.clone()).await;
+            }
+        }
+
+        // Layer 2: radix trie for dynamic routes — no path allocation.
+        if let Some(ref trie) = self.trie {
+            let mut params = PathParams::new();
+            if let Some(idx) = trie.lookup(req.method(), req.uri().path(), &mut params) {
+                let route = &self.routes[idx].1;
                 return (route.handler)(req, params, state.clone()).await;
             }
         }
@@ -291,15 +478,40 @@ impl Router {
         StatusCode::NOT_FOUND.into_response()
     }
 
+    /// Sorts routes and builds lookup structures for benchmarking.
+    ///
+    /// Combines `sort_routes()` and `freeze()` into a single call accessible
+    /// from benchmarks. Not part of the public API.
+    #[doc(hidden)]
+    pub fn prepare_bench(&mut self) {
+        self.sort_routes();
+        self.freeze();
+    }
+
     /// Sorts routes so static segments come before parameterized ones.
     ///
-    /// This ensures `/users/current` is matched before `/users/:id` regardless
-    /// of registration order. Uses a stable sort so routes with identical
-    /// specificity keep their original order.
+    /// Route matching is handled by the static map and radix trie, which
+    /// enforce static-before-param precedence structurally. This sort
+    /// only affects the order of routes in introspection output and
+    /// internal index numbering. Uses a stable sort so routes with
+    /// identical specificity keep their original order.
     pub(crate) fn sort_routes(&mut self) {
         self.routes.sort_by(|(_, a), (_, b)| {
             route_specificity(&a.pattern).cmp(&route_specificity(&b.pattern))
         });
+    }
+
+    /// Builds the static route map and radix trie for fast route resolution.
+    ///
+    /// Called by `prepare()` after `sort_routes()`. After this, the router
+    /// is frozen — no more routes can be added. Idempotent: calling this
+    /// multiple times is safe and only builds the structures once.
+    pub(crate) fn freeze(&mut self) {
+        if self.static_map.is_some() {
+            return;
+        }
+        self.static_map = Some(static_map::StaticMap::build(&self.routes));
+        self.trie = Some(trie::TrieRouter::build(&self.routes));
     }
 
     fn join_group_route_pattern(prefix: &str, route_path: &str) -> String {
@@ -314,6 +526,11 @@ impl Router {
             format!("{}/{}", prefix, route_path)
         }
     }
+}
+
+/// Returns `true` if the pattern contains any `:param` segments.
+pub(super) fn is_dynamic(pattern: &str) -> bool {
+    pattern.split('/').any(|seg| seg.starts_with(':'))
 }
 
 /// Returns a specificity key for a route pattern.
@@ -469,9 +686,10 @@ mod tests {
         let router = Router::new().route_named(
             Method::PUT,
             "/users/:id",
-            "update_user",
-            None,
-            Vec::new(),
+            RouteConfig {
+                handler_name: "update_user".to_string(),
+                ..Default::default()
+            },
             |_req, _params, _state| async { StatusCode::OK },
         );
 
@@ -504,6 +722,31 @@ mod tests {
         let routes = router.routes();
         assert_eq!(routes[0].method, "POST");
         assert_eq!(routes[0].handler_name, "create_item");
+    }
+
+    #[test]
+    fn test_router_put_named() {
+        let router =
+            Router::new().put_named("/items/:id", "update_item", |_req, _params, _state| async {
+                StatusCode::OK
+            });
+
+        let routes = router.routes();
+        assert_eq!(routes[0].method, "PUT");
+        assert_eq!(routes[0].handler_name, "update_item");
+    }
+
+    #[test]
+    fn test_router_delete_named() {
+        let router = Router::new().delete_named(
+            "/items/:id",
+            "delete_item",
+            |_req, _params, _state| async { StatusCode::OK },
+        );
+
+        let routes = router.routes();
+        assert_eq!(routes[0].method, "DELETE");
+        assert_eq!(routes[0].handler_name, "delete_item");
     }
 
     #[test]
@@ -553,6 +796,15 @@ mod tests {
     #[should_panic(expected = "A group's prefix pattern must start with /")]
     fn test_invalid_router_group_prefix_pattern() {
         Router::new().group("api/users", Router::new());
+    }
+
+    #[test]
+    fn test_is_dynamic() {
+        assert!(!super::is_dynamic("/health"));
+        assert!(!super::is_dynamic("/api/users"));
+        assert!(!super::is_dynamic("/api/v1:latest"));
+        assert!(super::is_dynamic("/users/:id"));
+        assert!(super::is_dynamic("/users/:id/posts/:pid"));
     }
 
     #[test]

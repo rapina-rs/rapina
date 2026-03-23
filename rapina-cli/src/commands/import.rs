@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use colored::Colorize;
 
@@ -98,6 +99,7 @@ fn map_mysql_type(col_type: &sea_schema::mysql::def::Type) -> NormalizedType {
         Type::Date => NormalizedType::Date,
         Type::Decimal(_) => NormalizedType::Decimal,
         Type::Json => NormalizedType::Json,
+        Type::Binary(s) if s.length == Some(16) => NormalizedType::Uuid,
         other => NormalizedType::Unmappable(format!("{:?}", other)),
     }
 }
@@ -173,6 +175,7 @@ fn normalized_to_field_info(
         rust_type,
         schema_type,
         column_method: format!("{}{}", column_base, null_suffix),
+        nullable: is_nullable,
     })
 }
 
@@ -370,8 +373,17 @@ fn filter_and_validate_tables(
             continue;
         }
 
-        // For single PK: must be named "id" and be i32
-        // For composite PK: all columns must be i32
+        // For single PK: must be named "id" and be i32 or Uuid
+        // For composite PK: skip for now (schema! limitation)
+        if table.primary_key_columns.len() > 1 {
+            eprintln!(
+                "  {} table {:?} skipped -- composite primary keys are not supported by schema!",
+                "warn:".yellow(),
+                table.name
+            );
+            continue;
+        }
+
         if table.primary_key_columns.len() == 1 {
             if table.primary_key_columns[0] != "id" {
                 eprintln!(
@@ -385,10 +397,10 @@ fn filter_and_validate_tables(
 
             if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
                 match &pk_col.col_type {
-                    NormalizedType::I32 => {}
+                    NormalizedType::I32 | NormalizedType::Uuid => {}
                     other => {
                         eprintln!(
-                            "  {} table {:?} skipped -- PK is {:?} (schema! requires i32)",
+                            "  {} table {:?} skipped -- PK is {:?} (schema! requires i32 or Uuid)",
                             "warn:".yellow(),
                             table.name,
                             other
@@ -495,6 +507,7 @@ fn detect_timestamps(table: &IntrospectedTable) -> Option<&'static str> {
 fn generate_for_table(
     table: &IntrospectedTable,
     _relationships: &HashMap<String, Vec<RelationshipInfo>>,
+    force: bool,
 ) -> Result<(), String> {
     let singular = codegen::singularize(&table.name);
     let plural = &table.name;
@@ -504,8 +517,15 @@ fn generate_for_table(
     let is_composite_pk = table.primary_key_columns.len() > 1;
 
     // For composite PK, skip only timestamps. PK columns become regular fields.
-    // For single PK, skip id and timestamps as before.
-    let skip_columns: Vec<&str> = if is_composite_pk {
+    // For single PK, skip id if it's i32 (default) and timestamps.
+    // If single PK is NOT i32 (e.g. Uuid), don't skip it, so it can be marked as PK in codegen.
+    let is_default_pk = !is_composite_pk
+        && table
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.col_type == NormalizedType::I32);
+
+    let skip_columns: Vec<&str> = if is_composite_pk || !is_default_pk {
         vec!["created_at", "updated_at"]
     } else {
         vec!["id", "created_at", "updated_at"]
@@ -540,13 +560,25 @@ fn generate_for_table(
 
     let primary_key = if is_composite_pk {
         Some(table.primary_key_columns.clone())
+    } else if !is_default_pk {
+        // Special case: single PK that is NOT the default i32 "id"
+        Some(table.primary_key_columns.clone())
     } else {
         None
     };
 
-    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref())?;
-    codegen::create_migration_file(plural, &pascal_plural, &fields)?;
-    codegen::create_feature_module(&singular, plural, &pascal, &fields)?;
+    let pk_type = if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
+        match &pk_col.col_type {
+            NormalizedType::Uuid => "Uuid",
+            _ => "i32",
+        }
+    } else {
+        "i32"
+    };
+
+    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
+    codegen::create_migration_file(plural, &pascal_plural, &fields, pk_type)?;
+    codegen::create_feature_module(&singular, plural, &pascal, &fields, pk_type, force)?;
 
     println!(
         "  {} Imported table {:?} as {} ({} columns, {} skipped)",
@@ -568,6 +600,7 @@ pub fn database(
     url: &str,
     table_filter: Option<&[String]>,
     schema_name: Option<&str>,
+    force: bool,
 ) -> Result<(), String> {
     codegen::verify_rapina_project()?;
 
@@ -650,8 +683,14 @@ pub fn database(
     for table in &tables {
         let singular = codegen::singularize(&table.name);
         let pascal = codegen::to_pascal_case(&singular);
-        generate_for_table(table, &relationships)?;
+        generate_for_table(table, &relationships, force)?;
         imported.push((table.name.clone(), pascal));
+    }
+
+    // Auto-wire mod declarations into src/main.rs
+    let plural_names: Vec<&str> = imported.iter().map(|(name, _)| name.as_str()).collect();
+    if let Err(e) = codegen::wire_main_rs(&plural_names, Path::new(".")) {
+        eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
     }
 
     // Summary
@@ -670,9 +709,7 @@ pub fn database(
     println!("  {}:", "Next steps".bright_yellow());
     println!();
     println!("  1. Review generated files in {}", "src/".cyan());
-    println!("  2. Add module declarations to {}", "src/main.rs".cyan());
-    println!("  3. Register routes in your Router");
-    println!("  4. Run {} to verify", "cargo build".cyan());
+    println!("  2. Run {} to verify", "cargo build".cyan());
     println!();
 
     Ok(())
@@ -883,12 +920,29 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_skips_uuid_pk() {
+    fn test_filter_accepts_uuid_pk() {
         let tables = vec![IntrospectedTable {
             name: "events".into(),
             columns: vec![IntrospectedColumn {
                 name: "id".into(),
                 col_type: NormalizedType::Uuid,
+                is_nullable: false,
+            }],
+            primary_key_columns: vec!["id".into()],
+            foreign_keys: vec![],
+        }];
+        let result = filter_and_validate_tables(tables, None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "events");
+    }
+
+    #[test]
+    fn test_filter_skips_invalid_pk_type() {
+        let tables = vec![IntrospectedTable {
+            name: "events".into(),
+            columns: vec![IntrospectedColumn {
+                name: "id".into(),
+                col_type: NormalizedType::Str, // Not i32 or Uuid
                 is_nullable: false,
             }],
             primary_key_columns: vec!["id".into()],
@@ -1047,5 +1101,30 @@ mod tests {
             map_pg_type(&Type::Point),
             NormalizedType::Unmappable(_)
         ));
+    }
+
+    #[cfg(feature = "import-sqlite")]
+    #[test]
+    fn test_map_sqlite_type_special() {
+        use sea_schema::sea_query::ColumnType;
+        assert_eq!(map_sqlite_type(&ColumnType::Uuid), NormalizedType::Uuid);
+        assert_eq!(map_sqlite_type(&ColumnType::Integer), NormalizedType::I32);
+    }
+
+    #[cfg(feature = "import-mysql")]
+    #[test]
+    fn test_map_mysql_type_special() {
+        use sea_schema::mysql::def::{NumericAttr, StringAttr, Type};
+        assert_eq!(
+            map_mysql_type(&Type::Binary(StringAttr {
+                length: Some(16),
+                ..Default::default()
+            })),
+            NormalizedType::Uuid
+        );
+        assert_eq!(
+            map_mysql_type(&Type::Int(NumericAttr::default())),
+            NormalizedType::I32
+        );
     }
 }

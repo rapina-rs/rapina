@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use colored::Colorize;
 
 use super::codegen::{self, FieldInfo};
@@ -60,6 +62,7 @@ fn parse_field(input: &str) -> Result<FieldInfo, String> {
         rust_type: rust_type.to_string(),
         schema_type: schema_type.to_string(),
         column_method: column_method.to_string(),
+        nullable: false,
     })
 }
 
@@ -91,59 +94,11 @@ fn validate_resource_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn print_next_steps(singular: &str, plural: &str, pascal: &str) {
+fn print_next_steps(pascal: &str) {
     println!();
     println!("  {}:", "Next steps".bright_yellow());
     println!();
-    println!(
-        "  1. Add the module declaration to {}:",
-        "src/main.rs".cyan()
-    );
-    println!();
-    println!("     mod {};", plural);
-    println!("     mod entity;");
-    println!("     mod migrations;");
-    println!();
-    println!("  2. Register the routes in your {}:", "Router".cyan());
-    println!();
-    println!(
-        "     use {plural}::handlers::{{list_{plural}, get_{singular}, create_{singular}, update_{singular}, delete_{singular}}};",
-        plural = plural,
-        singular = singular,
-    );
-    println!();
-    println!("     let router = Router::new()");
-    println!(
-        "         .get(\"/{plural}\", list_{plural})",
-        plural = plural
-    );
-    println!(
-        "         .get(\"/{plural}/:id\", get_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .post(\"/{plural}\", create_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .put(\"/{plural}/:id\", update_{singular})",
-        plural = plural,
-        singular = singular,
-    );
-    println!(
-        "         .delete(\"/{plural}/:id\", delete_{singular});",
-        plural = plural,
-        singular = singular,
-    );
-    println!();
-    println!(
-        "  3. Enable the database feature in {}:",
-        "Cargo.toml".cyan()
-    );
-    println!();
-    println!("     rapina = {{ version = \"...\", features = [\"postgres\"] }}");
+    println!("  1. Run {} to verify", "cargo build".cyan());
     println!();
     println!(
         "  Resource {} created successfully!",
@@ -177,11 +132,16 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
     println!("  {} {}", "Adding resource:".bright_cyan(), pascal.bold());
     println!();
 
-    codegen::create_feature_module(singular, plural, pascal, &fields)?;
-    codegen::update_entity_file(pascal, &fields, None, None)?;
-    codegen::create_migration_file(plural, pascal_plural, &fields)?;
+    let pk_type = "i32"; // New resources default to i32 PK
 
-    print_next_steps(singular, plural, pascal);
+    codegen::create_feature_module(singular, plural, pascal, &fields, pk_type, false)?;
+    codegen::update_entity_file(pascal, &fields, None, None, false)?;
+    codegen::create_migration_file(plural, pascal_plural, &fields, pk_type)?;
+
+    if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
+        eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
+    }
+    print_next_steps(pascal);
 
     Ok(())
 }
@@ -282,13 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn test_pluralize() {
-        assert_eq!(codegen::pluralize("user"), "users");
-        assert_eq!(codegen::pluralize("post"), "posts");
-        assert_eq!(codegen::pluralize("blog_post"), "blog_posts");
-    }
-
-    #[test]
     fn test_generate_mod_rs() {
         let content = codegen::generate_mod_rs();
         assert!(content.contains("pub mod dto;"));
@@ -304,15 +257,17 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: ".string().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "active".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: ".boolean().not_null()".to_string(),
+                nullable: false,
             },
         ];
-        let content = codegen::generate_handlers("post", "posts", "Post", &fields);
+        let content = codegen::generate_handlers("post", "posts", "Post", &fields, "i32");
 
         assert!(content.contains("use crate::entity::Post;"));
         assert!(content.contains("use crate::entity::post::{ActiveModel, Model};"));
@@ -339,12 +294,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
             FieldInfo {
                 name: "age".to_string(),
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_dto("User", &fields);
@@ -355,6 +312,156 @@ mod tests {
         assert!(content.contains("pub age: i32,"));
         assert!(content.contains("pub name: Option<String>,"));
         assert!(content.contains("pub age: Option<i32>,"));
+    }
+
+    #[test]
+    fn test_generate_dto_nullable_fields() {
+        let fields = vec![
+            FieldInfo {
+                name: "title".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "bio".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "Text".to_string(),
+                column_method: String::new(),
+                nullable: true,
+            },
+        ];
+        let content = codegen::generate_dto("User", &fields);
+
+        // Non-nullable field: required in CreateDTO
+        assert!(content.contains("pub title: String,"));
+        // Nullable field: Option in CreateDTO
+        assert!(content.contains("pub bio: Option<String>,"));
+        // Both are Option in UpdateDTO
+        assert!(content.contains("pub title: Option<String>,"));
+    }
+
+    #[test]
+    fn test_generate_dto_uuid_decimal_imports() {
+        let fields = vec![
+            FieldInfo {
+                name: "id".to_string(),
+                rust_type: "Uuid".to_string(),
+                schema_type: "Uuid".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "price".to_string(),
+                rust_type: "Decimal".to_string(),
+                schema_type: "Decimal".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+        ];
+        let content = codegen::generate_dto("Product", &fields);
+
+        // Must use original crate paths, not sea_orm re-exports
+        assert!(content.contains("use rapina::uuid::Uuid;"));
+        assert!(content.contains("use rapina::rust_decimal::Decimal;"));
+        // Must NOT use the glob import
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_sea_orm_types_import() {
+        let fields = vec![
+            FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "DateTimeUtc".to_string(),
+                schema_type: "DateTime".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "metadata".to_string(),
+                rust_type: "Json".to_string(),
+                schema_type: "Json".to_string(),
+                column_method: String::new(),
+                nullable: true,
+            },
+        ];
+        let content = codegen::generate_dto("Event", &fields);
+
+        assert!(content.contains("use rapina::sea_orm::prelude::{DateTimeUtc, Json};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_sea_orm_date_import() {
+        let fields = vec![FieldInfo {
+            name: "birthday".to_string(),
+            rust_type: "Date".to_string(),
+            schema_type: "Date".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let content = codegen::generate_dto("Person", &fields);
+
+        assert!(content.contains("use rapina::sea_orm::prelude::{Date};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_mixed_types_imports() {
+        let fields = vec![
+            FieldInfo {
+                name: "id".to_string(),
+                rust_type: "Uuid".to_string(),
+                schema_type: "Uuid".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "amount".to_string(),
+                rust_type: "Decimal".to_string(),
+                schema_type: "Decimal".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "DateTimeUtc".to_string(),
+                schema_type: "DateTime".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+            FieldInfo {
+                name: "name".to_string(),
+                rust_type: "String".to_string(),
+                schema_type: "String".to_string(),
+                column_method: String::new(),
+                nullable: false,
+            },
+        ];
+        let content = codegen::generate_dto("Order", &fields);
+
+        assert!(content.contains("use rapina::uuid::Uuid;"));
+        assert!(content.contains("use rapina::rust_decimal::Decimal;"));
+        assert!(content.contains("use rapina::sea_orm::prelude::{DateTimeUtc};"));
+        assert!(!content.contains("sea_orm::prelude::*"));
+    }
+
+    #[test]
+    fn test_generate_dto_primitives_no_extra_imports() {
+        let fields = vec![FieldInfo {
+            name: "name".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let content = codegen::generate_dto("Simple", &fields);
+
+        assert!(!content.contains("sea_orm"));
+        assert!(!content.contains("uuid"));
+        assert!(!content.contains("rust_decimal"));
     }
 
     #[test]
@@ -376,12 +483,14 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
             FieldInfo {
                 name: "done".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: String::new(),
+                nullable: false,
             },
         ];
         let content = codegen::generate_schema_block("Todo", &fields, None, None);
@@ -400,15 +509,17 @@ mod tests {
                 rust_type: "String".to_string(),
                 schema_type: "String".to_string(),
                 column_method: ".string().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "published".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
                 column_method: ".boolean().not_null()".to_string(),
+                nullable: false,
             },
         ];
-        let content = codegen::generate_migration("posts", "Posts", &fields);
+        let content = codegen::generate_migration("posts", "Posts", &fields, "i32");
 
         assert!(content.contains("MigrationTrait for Migration"));
         assert!(content.contains("Posts::Table"));

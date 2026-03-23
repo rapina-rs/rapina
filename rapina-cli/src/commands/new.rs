@@ -82,7 +82,7 @@ pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), St
 
 fn generate_readme(name: &str) -> String {
     format!(
-        "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /health` — Health check\n"
+        "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /__rapina/health` — Health check (built-in)\n"
     )
 }
 
@@ -98,8 +98,8 @@ All routes require JWT authentication unless explicitly marked with `#[public]`:
 
 ```rust
 #[public]
-#[get("/health")]
-async fn health() -> &'static str { "ok" }
+#[post("/auth/login")]
+async fn login(body: Json<LoginRequest>) -> Result<Json<TokenResponse>> { ... }
 
 // This route requires a valid JWT token
 #[get("/me")]

@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::spanned::Spanned;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
 /// Parsed route macro attribute: `"/path"` or `"/path", group = "/prefix"`.
@@ -57,6 +58,14 @@ mod schema;
 /// #[get("/users")]
 /// async fn list_users() -> Json<Vec<User>> { /* ... */ }
 ///
+/// // Single path parameter:
+/// #[get("/users/:id")]
+/// async fn get_user(id: Path<u64>) -> Json<User> { /* ... */ }
+///
+/// // Multiple path parameters — tuple, positional (left to right in pattern):
+/// #[get("/orgs/:org_id/teams/:team_id")]
+/// async fn get_team(Path((org_id, team_id)): Path<(u64, u64)>) -> Json<Team> { /* ... */ }
+///
 /// // With a group prefix (registers at /api/users):
 /// #[get("/users", group = "/api")]
 /// async fn list_users() -> Json<Vec<User>> { /* ... */ }
@@ -83,6 +92,21 @@ pub fn post(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro("PUT", attr, item)
+}
+
+/// Registers a PATCH route handler.
+///
+/// # Example
+///
+/// ```ignore
+/// #[patch("/users/:id")]
+/// async fn update_user(Path(id): Path<u64>) -> Json<User> { /* ... */ }
+/// ```
+///
+/// See [`get`] for syntax details including the optional `group` parameter.
+#[proc_macro_attribute]
+pub fn patch(attr: TokenStream, item: TokenStream) -> TokenStream {
+    route_macro("PATCH", attr, item)
 }
 
 /// Registers a DELETE route handler.
@@ -180,7 +204,7 @@ fn route_macro_core(
         if let Some(inner_type) = extract_json_inner_type(return_type) {
             quote! {
                 fn response_schema() -> Option<serde_json::Value> {
-                    Some(serde_json::to_value(rapina::schemars::schema_for!(#inner_type)).unwrap())
+                    Some(rapina::openapi_schema_for::<#inner_type>())
                 }
             }
         } else {
@@ -189,6 +213,38 @@ fn route_macro_core(
     } else {
         quote! {}
     };
+
+    // Extract request body type and content type for schema generation.
+    // Only generate requestBody for POST, PUT, and PATCH methods per OpenAPI spec.
+    let (request_schema_impl, request_content_type_impl, request_body_required_impl) =
+        if matches!(method, "POST" | "PUT" | "PATCH") {
+            if let Some(meta) = extract_request_body_meta(&func.sig.inputs) {
+                let inner_type = meta.inner_type;
+                let content_type = meta.content_type;
+                let required = meta.required;
+                (
+                    quote! {
+                        fn request_schema() -> Option<serde_json::Value> {
+                            Some(rapina::openapi_schema_for::<#inner_type>())
+                        }
+                    },
+                    quote! {
+                        fn request_content_type() -> Option<&'static str> {
+                            Some(#content_type)
+                        }
+                    },
+                    quote! {
+                        fn request_body_required() -> Option<bool> {
+                            Some(#required)
+                        }
+                    },
+                )
+            } else {
+                (quote! {}, quote! {}, quote! {})
+            }
+        } else {
+            (quote! {}, quote! {}, quote! {})
+        };
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
@@ -223,59 +279,80 @@ fn route_macro_core(
             __rapina_response
         }
     } else {
-        let mut parts_extractions = Vec::new();
-        let mut body_extractors: Vec<(syn::Ident, Box<syn::Type>)> = Vec::new();
+        let inner_block = &func.block;
 
-        for arg in &args {
-            if let FnArg::Typed(pat_type) = arg
-                && let Pat::Ident(pat_ident) = &*pat_type.pat
-            {
-                let arg_name = &pat_ident.ident;
+        if args.len() == 1 {
+            // Single arg: pass request directly to FromRequest
+            let arg = &args[0];
+            if let FnArg::Typed(pat_type) = arg {
+                let pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
+                let tmp = syn::Ident::new("__rapina_arg_0", proc_macro2::Span::call_site());
+                quote! {
+                    let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                        Ok(v) => v,
+                        Err(e) => return rapina::response::IntoResponse::into_response(e),
+                    };
+                    let #pat = #tmp;
+                    let __rapina_result #return_type_annotation = (async #inner_block).await;
+                    let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+                    #cache_header_injection
+                    __rapina_response
+                }
+            } else {
+                unreachable!("handler argument must be a typed pattern")
+            }
+        } else {
+            // Multiple args: all but last use FromRequestParts, last uses FromRequest
+            let mut parts_extractions = Vec::new();
 
-                let type_str = quote!(#arg_type).to_string();
-                if is_parts_only_extractor(&type_str) {
+            for (i, arg) in args[..args.len() - 1].iter().enumerate() {
+                if let FnArg::Typed(pat_type) = arg {
+                    let pat = &pat_type.pat;
+                    let arg_type = &pat_type.ty;
+                    let tmp = syn::Ident::new(
+                        &format!("__rapina_arg_{}", i),
+                        proc_macro2::Span::call_site(),
+                    );
                     parts_extractions.push(quote! {
-                        let #arg_name = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
+                        let #tmp = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
                             Ok(v) => v,
                             Err(e) => return rapina::response::IntoResponse::into_response(e),
                         };
+                        let #pat = #tmp;
                     });
-                } else {
-                    body_extractors.push((arg_name.clone(), arg_type.clone()));
                 }
             }
-        }
 
-        let body_extraction = if body_extractors.is_empty() {
-            quote! {}
-        } else if body_extractors.len() == 1 {
-            let (arg_name, arg_type) = &body_extractors[0];
+            let last_arg = args.last().unwrap();
+            let last_extraction = if let FnArg::Typed(pat_type) = last_arg {
+                let pat = &pat_type.pat;
+                let arg_type = &pat_type.ty;
+                let tmp = syn::Ident::new(
+                    &format!("__rapina_arg_{}", args.len() - 1),
+                    proc_macro2::Span::call_site(),
+                );
+                quote! {
+                    let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
+                    let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                        Ok(v) => v,
+                        Err(e) => return rapina::response::IntoResponse::into_response(e),
+                    };
+                    let #pat = #tmp;
+                }
+            } else {
+                unreachable!("handler argument must be a typed pattern")
+            };
+
             quote! {
-                let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
-                let #arg_name = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
-                    Ok(v) => v,
-                    Err(e) => return rapina::response::IntoResponse::into_response(e),
-                };
+                let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+                #(#parts_extractions)*
+                #last_extraction
+                let __rapina_result #return_type_annotation = (async #inner_block).await;
+                let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+                #cache_header_injection
+                __rapina_response
             }
-        } else {
-            let names: Vec<_> = body_extractors.iter().map(|(n, _)| n.to_string()).collect();
-            panic!(
-                "Multiple body-consuming extractors are not supported: {}. Only one extractor can consume the request body.",
-                names.join(", ")
-            );
-        };
-
-        let inner_block = &func.block;
-
-        quote! {
-            let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
-            #(#parts_extractions)*
-            #body_extraction
-            let __rapina_result #return_type_annotation = (async #inner_block).await;
-            let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
-            #cache_header_injection
-            __rapina_response
         }
     };
 
@@ -296,6 +373,9 @@ fn route_macro_core(
             const NAME: &'static str = #func_name_str;
 
             #response_schema_impl
+            #request_schema_impl
+            #request_content_type_impl
+            #request_body_required_impl
             #error_responses_impl
 
             fn call(
@@ -322,23 +402,14 @@ fn route_macro_core(
                 handler_name: #func_name_str,
                 is_public: #is_public,
                 response_schema: <#func_name as rapina::handler::Handler>::response_schema,
+                request_schema: <#func_name as rapina::handler::Handler>::request_schema,
+                request_content_type: <#func_name as rapina::handler::Handler>::request_content_type,
+                request_body_required: <#func_name as rapina::handler::Handler>::request_body_required,
                 error_responses: <#func_name as rapina::handler::Handler>::error_responses,
                 register: #register_fn_name,
             }
         }
     }
-}
-
-fn is_parts_only_extractor(type_str: &str) -> bool {
-    type_str.contains("Path")
-        || type_str.contains("Query")
-        || type_str.contains("Headers")
-        || type_str.contains("State")
-        || type_str.contains("Context")
-        || type_str.contains("CurrentUser")
-        || type_str.contains("Db")
-        || type_str.contains("Cookie")
-        || type_str.contains("Relay")
 }
 
 /// Extracts the inner type from Json<T> wrapper for schema generation
@@ -360,6 +431,77 @@ fn extract_json_inner_type(return_type: &syn::Type) -> Option<proc_macro2::Token
             && let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
         {
             return extract_json_inner_type(ok_type);
+        }
+    }
+    None
+}
+
+/// Extracts the request body metadata from handler function arguments.
+/// Supports Json<T>, Form<T>, Validated<Json<T>>, and Validated<Form<T>>.
+fn extract_request_body_meta(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> Option<RequestBodyMeta> {
+    for arg in inputs.iter() {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if let Some(meta) = extract_body_inner_type(&pat_type.ty) {
+                return Some(meta);
+            }
+        }
+    }
+    None
+}
+
+/// Information about a request body extractor.
+struct RequestBodyMeta {
+    inner_type: proc_macro2::TokenStream,
+    content_type: &'static str,
+    required: bool,
+}
+
+/// Extracts the inner type and content type from Json<T>, Form<T>, Validated<Json<T>>/Validated<Form<T>>,
+/// or Option<Json<T>>/Option<Form<T>>.
+fn extract_body_inner_type(ty: &syn::Type) -> Option<RequestBodyMeta> {
+    if let syn::Type::Path(type_path) = ty
+        && let Some(last_segment) = type_path.path.segments.last()
+    {
+        // Direct Json<T>
+        if last_segment.ident == "Json"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(RequestBodyMeta {
+                inner_type: quote!(#inner_type),
+                content_type: "application/json",
+                required: true,
+            });
+        }
+        // Direct Form<T>
+        if last_segment.ident == "Form"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
+        {
+            return Some(RequestBodyMeta {
+                inner_type: quote!(#inner_type),
+                content_type: "application/x-www-form-urlencoded",
+                required: true,
+            });
+        }
+        // Validated<Json<T>> or Validated<Form<T>>
+        if last_segment.ident == "Validated"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_extractor)) = args.args.first()
+        {
+            return extract_body_inner_type(inner_extractor);
+        }
+        // Option<Json<T>> or Option<Form<T>> - optional request body
+        if last_segment.ident == "Option"
+            && let syn::PathArguments::AngleBracketed(args) = &last_segment.arguments
+            && let Some(syn::GenericArgument::Type(inner_extractor)) = args.args.first()
+        {
+            if let Some(mut meta) = extract_body_inner_type(inner_extractor) {
+                meta.required = false;
+                return Some(meta);
+            }
         }
     }
     None
@@ -514,7 +656,7 @@ fn relay_macro_impl(
                 if let Some(u) = __rapina_current_user {
                     __rapina_parts.extensions.insert(u);
                 }
-                let __rapina_params: rapina::extract::PathParams = std::collections::HashMap::new();
+                let __rapina_params = rapina::extract::PathParams::new();
                 #(#extractor_extractions)*
                 #func_name(#(#call_args),*).await
             })
@@ -527,6 +669,278 @@ fn relay_macro_impl(
                 match_prefix: #match_prefix_str,
                 handler_name: #func_name_str,
                 handle: #wrapper_name,
+            }
+        }
+    }
+}
+
+/// Defines a background job handler.
+///
+/// Annotate an `async fn` to register it as a background job. The first
+/// argument is always the payload type (must implement `Serialize +
+/// DeserializeOwned`). Remaining arguments are dependency-injected from
+/// `AppState` — `State<T>` and `Db` are the supported extractors.
+///
+/// Optionally configure the queue and retry limit:
+///
+/// ```text
+/// #[job(queue = "emails", max_retries = 5)]
+/// ```
+///
+/// Defaults: `queue = "default"`, `max_retries = 3`.
+///
+/// # What the macro generates
+///
+/// Given:
+///
+/// ```rust,ignore
+/// #[job(queue = "emails")]
+/// async fn send_welcome_email(
+///     payload: WelcomeEmailPayload,
+///     mailer: State<Mailer>,
+/// ) -> JobResult { ... }
+/// ```
+///
+/// The macro generates a helper function with the same name and visibility:
+///
+/// ```rust,ignore
+/// fn send_welcome_email(payload: WelcomeEmailPayload) -> JobRequest {
+///     JobRequest { job_type: "send_welcome_email", queue: "emails", ... }
+/// }
+/// ```
+///
+/// The `Jobs` extractor and `enqueue()` API for dispatching jobs from handlers
+/// are planned for a follow-up release.
+///
+/// The handler is also registered via `inventory` for runtime dispatch —
+/// no manual registration needed.
+///
+/// # Feature requirement
+///
+/// Requires the `database` feature. The generated types (`JobRequest`,
+/// `JobDescriptor`) live in `rapina::jobs`, which is gated behind that feature.
+///
+/// # DI limitations
+///
+/// Only `State<T>` and `Db` work in job handlers. Request-bound extractors
+/// (`Context`, `Headers`, `Path`, `CurrentUser`) will fail at runtime.
+#[proc_macro_attribute]
+pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
+    job_macro_impl(attr.into(), item.into()).into()
+}
+
+struct JobAttr {
+    queue: String,
+    max_retries: i32,
+}
+
+impl Default for JobAttr {
+    fn default() -> Self {
+        Self {
+            queue: "default".to_string(),
+            max_retries: 3,
+        }
+    }
+}
+
+impl syn::parse::Parse for JobAttr {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut attr = JobAttr::default();
+
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            input.parse::<syn::Token![=]>()?;
+
+            if ident == "queue" {
+                let lit: syn::LitStr = input.parse()?;
+                let q = lit.value();
+                if q.is_empty() {
+                    return Err(syn::Error::new(lit.span(), "queue name must not be empty"));
+                }
+                attr.queue = q;
+            } else if ident == "max_retries" {
+                let lit: syn::LitInt = input.parse()?;
+                let val: i32 = lit.base10_parse()?;
+                if val < 0 {
+                    return Err(syn::Error::new(lit.span(), "max_retries must be >= 0"));
+                }
+                attr.max_retries = val;
+            } else if ident == "timeout" {
+                // Consume the value so the error points at the attribute name, not EOF.
+                let _: syn::LitStr = input.parse()?;
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "#[job(timeout = ...)] is not yet supported — coming in a future release",
+                ));
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    format!(
+                        "unknown #[job] attribute `{ident}` — supported: `queue`, `max_retries`"
+                    ),
+                ));
+            }
+
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            }
+        }
+
+        Ok(attr)
+    }
+}
+
+fn job_macro_impl(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let job_attr: JobAttr = match syn::parse2(attr) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
+
+    let func: ItemFn = match syn::parse2(item) {
+        Ok(f) => f,
+        Err(e) => return e.to_compile_error(),
+    };
+
+    // Must be async — the handle wrapper calls the impl with .await.
+    if func.sig.asyncness.is_none() {
+        return syn::Error::new(
+            func.sig.fn_token.span,
+            "#[job] must be applied to an async function",
+        )
+        .to_compile_error();
+    }
+
+    // Generic parameters can't be monomorphized into a fn pointer for inventory.
+    if !func.sig.generics.params.is_empty() {
+        return syn::Error::new(
+            func.sig.generics.params.first().unwrap().span(),
+            "#[job] does not support generic type parameters — the payload type must be concrete",
+        )
+        .to_compile_error();
+    }
+
+    let func_name = &func.sig.ident;
+    let func_name_str = func_name.to_string();
+    let func_vis = &func.vis;
+
+    let impl_fn_name = syn::Ident::new(
+        &format!("__rapina_job_impl_{}", func_name_str),
+        proc_macro2::Span::call_site(),
+    );
+    let handle_fn_name = syn::Ident::new(
+        &format!("__rapina_job_handle_{}", func_name_str),
+        proc_macro2::Span::call_site(),
+    );
+
+    let queue_str = &job_attr.queue;
+    let max_retries = job_attr.max_retries;
+
+    let args: Vec<_> = func.sig.inputs.iter().collect();
+
+    if args.is_empty() {
+        return syn::Error::new(
+            func.sig.ident.span(),
+            "#[job] requires at least one argument (the payload type)",
+        )
+        .to_compile_error();
+    }
+
+    // First arg is the payload — extract its type for the helper signature and
+    // for the serde_json::from_value call in the handle wrapper.
+    let payload_type = match &args[0] {
+        FnArg::Typed(pat_type) => &pat_type.ty,
+        FnArg::Receiver(r) => {
+            return syn::Error::new(
+                r.self_token.span,
+                "#[job] cannot be applied to a method — use a free function",
+            )
+            .to_compile_error();
+        }
+    };
+
+    // Remaining args are DI extractors (State<T>, Db, etc.).
+    let mut extractor_extractions = Vec::new();
+    let mut di_call_args = Vec::new();
+
+    for (i, arg) in args[1..].iter().enumerate() {
+        if let FnArg::Typed(pat_type) = arg {
+            let arg_type = &pat_type.ty;
+            let tmp = syn::Ident::new(
+                &format!("__rapina_di_{}", i),
+                proc_macro2::Span::call_site(),
+            );
+            extractor_extractions.push(quote! {
+                let #tmp = <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(
+                    &__rapina_parts, &__rapina_params, &__rapina_state
+                ).await?;
+            });
+            di_call_args.push(quote! { #tmp });
+        }
+    }
+
+    let impl_inputs = &func.sig.inputs;
+    let impl_output = &func.sig.output;
+    let func_block = &func.block;
+    let func_attrs = &func.attrs;
+
+    quote! {
+        // Original handler body, renamed to an internal function. Only called
+        // by the handle wrapper below — never exposed directly.
+        #(#func_attrs)*
+        #[doc(hidden)]
+        async fn #impl_fn_name(#impl_inputs) #impl_output
+        #func_block
+
+        // DI wrapper registered in inventory. Deserializes the JSON payload,
+        // creates synthetic request parts for extractor compatibility, injects
+        // dependencies from AppState, then calls the impl function.
+        //
+        // Only State<T> and Db work here — they source data from AppState
+        // directly and ignore the synthetic parts.
+        #[doc(hidden)]
+        fn #handle_fn_name(
+            __rapina_payload_raw: rapina::serde_json::Value,
+            __rapina_state: std::sync::Arc<rapina::state::AppState>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = rapina::jobs::JobResult> + Send>>
+        {
+            Box::pin(async move {
+                let __rapina_payload_typed: #payload_type =
+                    match rapina::serde_json::from_value(__rapina_payload_raw) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Err(rapina::error::Error::internal(format!(
+                                "failed to deserialize job payload for '{}': {e}",
+                                #func_name_str
+                            )));
+                        }
+                    };
+                let (__rapina_parts, _) = rapina::http::Request::new(()).into_parts();
+                let __rapina_params = rapina::extract::PathParams::new();
+                #(#extractor_extractions)*
+                #impl_fn_name(__rapina_payload_typed, #(#di_call_args),*).await
+            })
+        }
+
+        // Helper function with the same name and visibility as the original.
+        // Call this to build a JobRequest for jobs.enqueue().
+        #func_vis fn #func_name(payload: #payload_type) -> rapina::jobs::JobRequest {
+            rapina::jobs::JobRequest {
+                job_type: #func_name_str,
+                payload: rapina::serde_json::to_value(payload).expect(
+                    "job payload serialization failed — ensure all fields are JSON-compatible",
+                ),
+                queue: #queue_str,
+                max_retries: #max_retries,
+            }
+        }
+
+        rapina::inventory::submit! {
+            rapina::jobs::JobDescriptor {
+                job_type: #func_name_str,
+                handle: #handle_fn_name,
             }
         }
     }
@@ -731,10 +1145,11 @@ mod tests {
         let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
-        // Check struct is generated
         assert!(output_str.contains("struct get_user"));
-        // Check extraction code is present
-        assert!(output_str.contains("FromRequestParts"));
+        // Single arg is last arg — uses FromRequest (blanket impl handles parts-only)
+        assert!(output_str.contains("FromRequest"));
+        // Single arg should NOT destructure request into parts
+        assert!(!output_str.contains("into_parts"));
     }
 
     #[test]
@@ -760,8 +1175,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Multiple body-consuming extractors are not supported")]
-    fn test_multiple_body_extractors_panics() {
+    fn test_two_body_extractors_no_macro_panic() {
+        // With positional convention, the macro does NOT panic for multiple body consumers.
+        // Instead, it generates code where the first Json is bounded by FromRequestParts
+        // (which it doesn't implement), so the compiler catches it at type-check time.
         let path = quote!("/users");
         let input = quote! {
             async fn handler(
@@ -772,7 +1189,59 @@ mod tests {
             }
         };
 
-        route_macro_core("POST", path, input);
+        // Should NOT panic — macro expansion succeeds, compiler catches the error later
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // First arg gets FromRequestParts (will fail at compile time since Json doesn't impl it)
+        assert!(output_str.contains("FromRequestParts"));
+        // Last arg gets FromRequest
+        assert!(output_str.contains("FromRequest"));
+    }
+
+    #[test]
+    fn test_custom_type_name_not_misclassified() {
+        // UserPathInfo contains "Path" but should NOT be routed to FromRequestParts
+        // Positional convention: single (last) arg always uses FromRequest
+        let path = quote!("/users");
+        let input = quote! {
+            async fn handler(info: UserPathInfo) -> String {
+                "ok".to_string()
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("FromRequest"));
+        assert!(!output_str.contains("FromRequestParts"));
+    }
+
+    #[test]
+    fn test_multiple_parts_only_extractors_positional() {
+        // All parts-only extractors: first N-1 use FromRequestParts, last uses FromRequest
+        let path = quote!("/users/:id");
+        let input = quote! {
+            async fn handler(
+                id: rapina::extract::Path<u64>,
+                query: rapina::extract::Query<Params>,
+                headers: rapina::extract::Headers,
+            ) -> String {
+                "ok".to_string()
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        // First two args use FromRequestParts
+        assert!(output_str.contains("FromRequestParts"));
+        // Last arg uses FromRequest (via blanket impl at runtime)
+        assert!(output_str.contains("FromRequest"));
+        // Request is destructured for multi-arg case
+        assert!(output_str.contains("into_parts"));
+        // Request is reassembled for last arg
+        assert!(output_str.contains("from_parts"));
     }
 
     #[test]
@@ -796,9 +1265,9 @@ mod tests {
         let output = route_macro_core("GET", path, input);
         let output_str = output.to_string();
 
-        // Check response_schema method is generated with schema_for!
+        // Check response_schema method is generated with openapi_schema_for
         assert!(output_str.contains("fn response_schema"));
-        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("rapina :: openapi_schema_for"));
         assert!(output_str.contains("UserResponse"));
     }
 
@@ -815,7 +1284,7 @@ mod tests {
         let output_str = output.to_string();
 
         assert!(output_str.contains("fn response_schema"));
-        assert!(output_str.contains("rapina :: schemars :: schema_for !"));
+        assert!(output_str.contains("rapina :: openapi_schema_for"));
         assert!(output_str.contains("UserResponse"));
     }
 
@@ -838,6 +1307,186 @@ mod tests {
     }
 
     #[test]
+    fn test_json_body_generates_request_schema_and_content_type() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn create_user(body: Json<CreateUserRequest>) -> Json<UserResponse> {
+                Json(UserResponse { id: 1 })
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // Check request_schema method is generated
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("CreateUserRequest"));
+        // Check request_content_type method is generated with JSON content type
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/json"));
+    }
+
+    #[test]
+    fn test_form_body_generates_request_schema_and_content_type() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn create_user(body: Form<CreateUserForm>) -> Json<UserResponse> {
+                Json(UserResponse { id: 1 })
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("CreateUserForm"));
+        // Check request_content_type method is generated with form content type
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/x-www-form-urlencoded"));
+    }
+
+    #[test]
+    fn test_validated_json_generates_request_schema_and_content_type() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn create_user(body: Validated<Json<CreateUserRequest>>) -> Json<UserResponse> {
+                Json(UserResponse { id: 1 })
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // Should extract CreateUserRequest from Validated<Json<CreateUserRequest>>
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("CreateUserRequest"));
+        // Should inherit JSON content type from inner Json extractor
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/json"));
+    }
+
+    #[test]
+    fn test_validated_form_generates_request_schema_and_content_type() {
+        let path = quote!("/login");
+        let input = quote! {
+            async fn login(body: Validated<Form<LoginForm>>) -> Json<TokenResponse> {
+                Json(TokenResponse { token: "abc".into() })
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // Should extract LoginForm from Validated<Form<LoginForm>>
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("LoginForm"));
+        // Should inherit form content type from inner Form extractor
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/x-www-form-urlencoded"));
+    }
+
+    #[test]
+    fn test_option_json_generates_optional_request_body() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn update_user(body: Option<Json<UpdateUserRequest>>) -> Json<UserResponse> {
+                Json(UserResponse { id: 1 })
+            }
+        };
+
+        let output = route_macro_core("PATCH", path, input);
+        let output_str = output.to_string();
+
+        // Should extract UpdateUserRequest from Option<Json<UpdateUserRequest>>
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("UpdateUserRequest"));
+        // Should have JSON content type
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/json"));
+        // Should have request_body_required returning false
+        assert!(output_str.contains("fn request_body_required"));
+        assert!(output_str.contains("Some (false)"));
+    }
+
+    #[test]
+    fn test_option_form_generates_optional_request_body() {
+        let path = quote!("/login");
+        let input = quote! {
+            async fn login(body: Option<Form<LoginForm>>) -> Json<TokenResponse> {
+                Json(TokenResponse { token: "abc".into() })
+            }
+        };
+
+        let output = route_macro_core("POST", path, input);
+        let output_str = output.to_string();
+
+        // Should extract LoginForm from Option<Form<LoginForm>>
+        assert!(output_str.contains("fn request_schema"));
+        assert!(output_str.contains("LoginForm"));
+        // Should have form content type
+        assert!(output_str.contains("fn request_content_type"));
+        assert!(output_str.contains("application/x-www-form-urlencoded"));
+        // Should have request_body_required returning false
+        assert!(output_str.contains("fn request_body_required"));
+        assert!(output_str.contains("Some (false)"));
+    }
+
+    #[test]
+    fn test_get_with_json_body_no_request_schema() {
+        // GET handlers should not generate requestBody even if they have Json<T> parameter
+        let path = quote!("/users");
+        let input = quote! {
+            async fn list_users(body: Json<FilterRequest>) -> Json<Vec<UserResponse>> {
+                Json(vec![])
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        // Should NOT generate request_schema for GET method
+        assert!(!output_str.contains("fn request_schema"));
+        assert!(!output_str.contains("fn request_content_type"));
+        assert!(!output_str.contains("fn request_body_required"));
+    }
+
+    #[test]
+    fn test_delete_with_json_body_no_request_schema() {
+        // DELETE handlers should not generate requestBody even if they have Json<T> parameter
+        let path = quote!("/users/:id");
+        let input = quote! {
+            async fn delete_user(body: Json<DeleteRequest>) -> StatusCode {
+                StatusCode::NO_CONTENT
+            }
+        };
+
+        let output = route_macro_core("DELETE", path, input);
+        let output_str = output.to_string();
+
+        // Should NOT generate request_schema for DELETE method
+        assert!(!output_str.contains("fn request_schema"));
+        assert!(!output_str.contains("fn request_content_type"));
+        assert!(!output_str.contains("fn request_body_required"));
+    }
+
+    #[test]
+    fn test_no_body_no_request_schema_or_content_type() {
+        let path = quote!("/users");
+        let input = quote! {
+            async fn list_users() -> Json<Vec<UserResponse>> {
+                Json(vec![])
+            }
+        };
+
+        let output = route_macro_core("GET", path, input);
+        let output_str = output.to_string();
+
+        // Should NOT generate request_schema or request_content_type for handlers without body
+        assert!(!output_str.contains("fn request_schema"));
+        assert!(!output_str.contains("fn request_content_type"));
+    }
+
+    #[test]
     fn test_non_json_return_type_no_response_schema() {
         let path = quote!("/health");
         let input = quote! {
@@ -851,7 +1500,7 @@ mod tests {
 
         // Check response_schema method is NOT generated for non-Json types
         assert!(!output_str.contains("fn response_schema"));
-        assert!(!output_str.contains("schema_for"));
+        assert!(!output_str.contains("openapi_schema_for"));
     }
 
     #[test]
@@ -1058,7 +1707,8 @@ mod tests {
 
         assert!(output_str.contains("x-rapina-cache-ttl"));
         assert!(output_str.contains("120"));
-        assert!(output_str.contains("FromRequestParts"));
+        // Single arg uses FromRequest (positional convention)
+        assert!(output_str.contains("FromRequest"));
     }
 
     #[test]

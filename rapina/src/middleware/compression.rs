@@ -55,9 +55,14 @@ impl Algorithm {
     }
 }
 
+/// Configuration for [`CompressionMiddleware`].
 #[derive(Debug, Clone)]
 pub struct CompressionConfig {
+    /// Minimum response body size in bytes required for compression to run.
+    /// Responses smaller than this value are sent uncompressed. Defaults to 1024 bytes.
     pub min_size: usize,
+    /// Compression level from 0 (none) to 9 (best). Values above 9 are
+    /// clamped to 9. Defaults to 6.
     pub level: u32,
 }
 
@@ -79,6 +84,21 @@ impl Default for CompressionConfig {
     }
 }
 
+/// Middleware that compresses response bodies using gzip or deflate.
+///
+/// Negotiates the encoding via the `Accept-Encoding` request header (gzip is
+/// preferred over deflate). Only text-based content types such as
+/// `application/json` and `text/*` are compressed; binary responses are passed
+/// through unchanged. Responses smaller than [`CompressionConfig::min_size`]
+/// are also left uncompressed. If compression does not reduce the payload size
+/// the original body is returned.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// Rapina::new()
+///     .with(CompressionMiddleware::new(CompressionConfig::new(512, 6)))
+/// ```
 #[derive(Debug, Clone)]
 pub struct CompressionMiddleware {
     config: CompressionConfig,

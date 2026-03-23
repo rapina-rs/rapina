@@ -61,10 +61,20 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
+    /// Database seeding tools
+    Seed {
+        #[command(subcommand)]
+        command: SeedCommands,
+    },
     /// Database migration tools
     Migrate {
         #[command(subcommand)]
         command: MigrateCommands,
+    },
+    /// Background jobs management
+    Jobs {
+        #[command(subcommand)]
+        command: JobsCommands,
     },
     /// Run health checks on your API
     Doctor {
@@ -88,8 +98,39 @@ enum Commands {
         /// Watch for changes and re-run tests
         #[arg(short, long)]
         watch: bool,
+        /// Update snapshot files (golden-file testing)
+        #[arg(long)]
+        bless: bool,
         /// Filter tests by name
         filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SeedCommands {
+    /// Load seed data from JSON files into the database
+    Load {
+        /// Load specific entity only
+        #[arg(long)]
+        entity: Option<String>,
+        /// Wipe database before loading (truncate + load)
+        #[arg(long)]
+        fresh: bool,
+    },
+    /// Dump database data to JSON seed files
+    Dump {
+        /// Dump specific entity only
+        #[arg(long)]
+        entity: Option<String>,
+    },
+    /// Generate fake seed data based on schema types
+    Generate {
+        /// Number of records per entity
+        #[arg(long, default_value = "10")]
+        count: u32,
+        /// Generate for specific entity only
+        #[arg(long)]
+        entity: Option<String>,
     },
 }
 
@@ -114,6 +155,18 @@ enum MigrateCommands {
 }
 
 #[derive(Subcommand)]
+enum JobsCommands {
+    /// Set up the background jobs migration in your project
+    Init,
+    /// Show job counts by status (pending, running, completed, failed)
+    List {
+        /// Show individual failed jobs with error details
+        #[arg(long)]
+        failed: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ImportCommands {
     /// Import schema from a live database
     Database {
@@ -126,6 +179,9 @@ enum ImportCommands {
         /// Database schema name (default: "public" for Postgres)
         #[arg(long)]
         schema: Option<String>,
+        /// Overwrite existing files (useful for re-importing after schema changes)
+        #[arg(long)]
+        force: bool,
     },
     /// Import handlers, DTOs, and module structure from an OpenAPI 3.0 spec
     #[cfg(feature = "import-openapi")]
@@ -149,7 +205,7 @@ enum OpenapiCommands {
         #[arg(short, long)]
         output: Option<String>,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -161,7 +217,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -176,7 +232,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -185,6 +241,11 @@ enum OpenapiCommands {
 }
 
 fn main() {
+    // Load .env file if present (before clap parses, so env vars are available).
+    dotenvy::dotenv().ok();
+    // Propagate SERVER_PORT / PORT → RAPINA_PORT for backwards compat.
+    common::env::propagate_port_env();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -225,6 +286,35 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Some(Commands::Seed { command }) => {
+            #[cfg(feature = "seed")]
+            {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                let result = rt.block_on(async {
+                    match command {
+                        SeedCommands::Load { entity, fresh } => {
+                            commands::seed::load(entity, fresh).await
+                        }
+                        SeedCommands::Dump { entity } => commands::seed::dump(entity).await,
+                        SeedCommands::Generate { count, entity } => {
+                            commands::seed::generate(count, entity)
+                        }
+                    }
+                });
+                if let Err(e) = result {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
+            }
+            #[cfg(not(feature = "seed"))]
+            {
+                let _ = command;
+                let msg = "The seed command requires a database feature. \
+                           Reinstall with: cargo install rapina-cli --features seed-postgres";
+                eprintln!("{} {}", "Error:".red().bold(), msg);
+                std::process::exit(1);
+            }
+        }
         Some(Commands::Migrate { command }) => {
             let result = match command {
                 MigrateCommands::New { name } => commands::migrate::new_migration(&name),
@@ -261,6 +351,35 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Some(Commands::Jobs { command }) => match command {
+            JobsCommands::Init => {
+                if let Err(e) = commands::jobs::init() {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
+            }
+            JobsCommands::List { failed } => {
+                #[cfg(feature = "jobs")]
+                {
+                    let rt =
+                        tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                    if let Err(e) = rt.block_on(commands::jobs::list(failed)) {
+                        eprintln!("{} {}", "Error:".red().bold(), e);
+                        std::process::exit(1);
+                    }
+                }
+                #[cfg(not(feature = "jobs"))]
+                {
+                    let _ = failed;
+                    eprintln!(
+                        "{} The jobs list command requires a database feature. \
+                             Reinstall with: cargo install rapina-cli --features jobs-postgres",
+                        "Error:".red().bold()
+                    );
+                    std::process::exit(1);
+                }
+            }
+        },
         Some(Commands::Import { command }) => {
             #[allow(unreachable_patterns)]
             let result: Result<(), String> = match command {
@@ -268,14 +387,20 @@ fn main() {
                     url,
                     tables,
                     schema,
+                    force,
                 } => {
                     #[cfg(feature = "import")]
                     {
-                        commands::import::database(&url, tables.as_deref(), schema.as_deref())
+                        commands::import::database(
+                            &url,
+                            tables.as_deref(),
+                            schema.as_deref(),
+                            force,
+                        )
                     }
                     #[cfg(not(feature = "import"))]
                     {
-                        let _ = (url, tables, schema);
+                        let _ = (url, tables, schema, force);
                         Err("The import command requires the import feature. \
                              Reinstall with: cargo install rapina-cli --features import-postgres"
                             .to_string())
@@ -307,11 +432,13 @@ fn main() {
         Some(Commands::Test {
             coverage,
             watch,
+            bless,
             filter,
         }) => {
             let config = commands::test::TestConfig {
                 coverage,
                 watch,
+                bless,
                 filter,
             };
             if let Err(e) = commands::test::execute(config) {

@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 // =============================================================================
 
 /// App config loaded from environment (host, port).
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "HOST"]
     #[default = "127.0.0.1"]
@@ -115,18 +115,18 @@ impl TodoStore {
 // DTOs
 // =============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct LoginRequest {
     username: String,
     password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct CreateTodoRequest {
     title: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct UpdateTodoRequest {
     title: Option<String>,
     completed: Option<bool>,
@@ -141,7 +141,7 @@ struct UpdateTodoRequest {
 /// Marked #[public] so it bypasses the auth middleware.
 #[public]
 #[post("/login")]
-async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+async fn login(auth: State<AuthConfig>, body: Json<LoginRequest>) -> Result<Json<TokenResponse>> {
     if body.username == "admin" && body.password == "password" {
         let token = auth.create_token(&body.username)?;
         Ok(Json(TokenResponse::new(token, auth.expiration())))
@@ -163,8 +163,8 @@ async fn list_todos(user: CurrentUser, store: State<TodoStore>) -> Json<Vec<Todo
 #[post("/todos")]
 async fn create_todo(
     user: CurrentUser,
-    body: Json<CreateTodoRequest>,
     store: State<TodoStore>,
+    body: Json<CreateTodoRequest>,
 ) -> Result<(StatusCode, Json<Todo>)> {
     let id = uuid::Uuid::new_v4().to_string();
     let todo = Todo {
@@ -182,8 +182,8 @@ async fn create_todo(
 async fn update_todo(
     id: Path<String>,
     user: CurrentUser,
-    body: Json<UpdateTodoRequest>,
     store: State<TodoStore>,
+    body: Json<UpdateTodoRequest>,
 ) -> Result<Json<Todo>> {
     let updated = store.update(&id, &user.id, body.title.clone(), body.completed)?;
     Ok::<_, Error>(Json(updated))

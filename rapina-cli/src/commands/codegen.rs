@@ -7,6 +7,7 @@ pub(crate) struct FieldInfo {
     pub rust_type: String,
     pub schema_type: String,
     pub column_method: String,
+    pub nullable: bool,
 }
 
 pub(crate) fn to_pascal_case(s: &str) -> String {
@@ -25,34 +26,166 @@ pub(crate) fn to_pascal_case(s: &str) -> String {
         .collect()
 }
 
+/// Irregular plural forms: (singular, plural)
+const IRREGULARS: &[(&str, &str)] = &[
+    // Common irregular plurals
+    ("person", "people"),
+    ("child", "children"),
+    ("man", "men"),
+    ("woman", "women"),
+    ("mouse", "mice"),
+    ("goose", "geese"),
+    ("tooth", "teeth"),
+    ("foot", "feet"),
+    ("ox", "oxen"),
+    // -f/-fe → -ves
+    ("leaf", "leaves"),
+    ("life", "lives"),
+    ("knife", "knives"),
+    ("wife", "wives"),
+    ("half", "halves"),
+    ("wolf", "wolves"),
+    ("shelf", "shelves"),
+    ("loaf", "loaves"),
+    // Latin/Greek-origin
+    ("datum", "data"),
+    ("medium", "media"),
+    ("criterion", "criteria"),
+    ("phenomenon", "phenomena"),
+    ("index", "indices"),
+    ("vertex", "vertices"),
+    ("matrix", "matrices"),
+    ("appendix", "appendices"),
+    ("analysis", "analyses"),
+    ("base", "bases"),
+    ("crisis", "crises"),
+    ("thesis", "theses"),
+    ("diagnosis", "diagnoses"),
+    ("hypothesis", "hypotheses"),
+    ("parenthesis", "parentheses"),
+    ("synopsis", "synopses"),
+    ("curriculum", "curricula"),
+    ("formula", "formulae"),
+    ("antenna", "antennae"),
+    ("alumnus", "alumni"),
+    ("cactus", "cacti"),
+    ("fungus", "fungi"),
+    ("nucleus", "nuclei"),
+    ("radius", "radii"),
+    ("stimulus", "stimuli"),
+    ("syllabus", "syllabi"),
+];
+
+/// Words that are the same in singular and plural form.
+const UNCOUNTABLE: &[&str] = &[
+    "series",
+    "species",
+    "news",
+    "info",
+    "metadata",
+    "sheep",
+    "fish",
+    "deer",
+    "aircraft",
+    "software",
+    "hardware",
+    "firmware",
+    "middleware",
+    "equipment",
+    "feedback",
+    "moose",
+    "bison",
+    "trout",
+    "salmon",
+    "shrimp",
+];
+
+/// Words ending in -us where the singular should not have -s stripped,
+/// and the plural is formed by adding -es (e.g. status → statuses).
+const SINGULAR_US: &[&str] = &[
+    "status",
+    "campus",
+    "virus",
+    "census",
+    "corpus",
+    "opus",
+    "genus",
+    "apparatus",
+    "nexus",
+    "prospectus",
+    "consensus",
+];
+
 pub(crate) fn pluralize(s: &str) -> String {
+    if UNCOUNTABLE.contains(&s) {
+        return s.to_string();
+    }
+    if IRREGULARS.iter().any(|(_, plural)| *plural == s) {
+        return s.to_string();
+    }
+    if let Some((_, plural)) = IRREGULARS.iter().find(|(singular, _)| *singular == s) {
+        return plural.to_string();
+    }
+    if s.ends_with("us") {
+        return format!("{}es", s);
+    }
+    let cases = [
+        ("ss", "sses"), //address -> addresses
+        ("sh", "shes"), //bush -> bushes
+        ("ch", "ches"), //watch -> watches
+        ("x", "xes"),   //box -> boxes
+        ("z", "zes"),   //gas -> gases
+        ("s", "ses"),   //bus -> buses
+        ("ay", "ays"),  //day -> days
+        ("uy", "uys"),  //buy -> buys
+        ("ey", "eys"),  //key -> keys
+        ("oy", "oys"),  //boy -> boys
+        ("y", "ies"),   //category -> categories
+    ];
+    for (suffix, replacement) in cases {
+        if let Some(stem) = s.strip_suffix(suffix) {
+            return format!("{}{}", stem, replacement);
+        }
+    }
     format!("{}s", s)
 }
 
 pub(crate) fn singularize(s: &str) -> String {
+    if UNCOUNTABLE.contains(&s) {
+        return s.to_string();
+    }
+    if SINGULAR_US.contains(&s) {
+        return s.to_string();
+    }
+    if IRREGULARS.iter().any(|(singular, _)| *singular == s) {
+        return s.to_string();
+    }
+    if let Some((singular, _)) = IRREGULARS.iter().find(|(_, plural)| *plural == s) {
+        return singular.to_string();
+    }
+    if let Some(stem) = s.strip_suffix("uses") {
+        let candidate = format!("{}us", stem);
+        if SINGULAR_US.contains(&candidate.as_str()) {
+            return candidate;
+        }
+    }
     if let Some(stem) = s.strip_suffix("ies") {
         format!("{}y", stem)
     } else if let Some(stem) = s.strip_suffix("sses") {
-        // "bosses" -> "boss"
         format!("{}ss", stem)
     } else if let Some(stem) = s.strip_suffix("shes") {
-        // "bushes" -> "bush"
         format!("{}sh", stem)
     } else if let Some(stem) = s.strip_suffix("ches") {
-        // "watches" -> "watch"
         format!("{}ch", stem)
     } else if let Some(stem) = s.strip_suffix("xes") {
-        // "boxes" -> "box"
         format!("{}x", stem)
     } else if let Some(stem) = s.strip_suffix("zes") {
-        // "buzzes" -> "buzz"
         format!("{}z", stem)
     } else if let Some(stem) = s.strip_suffix("ses") {
-        // "addresses" -> "address"
         format!("{}s", stem)
     } else if let Some(stem) = s.strip_suffix('s') {
         if stem.ends_with('s') {
-            s.to_string() // "boss" -> "boss"
+            s.to_string()
         } else {
             stem.to_string()
         }
@@ -75,6 +208,7 @@ pub(crate) fn generate_handlers(
     plural: &str,
     pascal: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> String {
     let create_fields: Vec<String> = fields
         .iter()
@@ -93,10 +227,17 @@ pub(crate) fn generate_handlers(
         .collect();
     let update_body = update_checks.join("\n");
 
+    let uuid_import = if pk_type.to_lowercase().as_str() == "uuid" {
+        "use rapina::uuid::Uuid;"
+    } else {
+        ""
+    };
+
     format!(
         r#"use rapina::prelude::*;
 use rapina::database::{{Db, DbError}};
 use rapina::sea_orm::{{ActiveModelTrait, EntityTrait, IntoActiveModel, Set}};
+{uuid_import}
 
 use crate::entity::{pascal};
 use crate::entity::{singular}::{{ActiveModel, Model}};
@@ -113,7 +254,7 @@ pub async fn list_{plural}(db: Db) -> Result<Json<Vec<Model>>> {{
 
 #[get("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn get_{singular}(db: Db, id: Path<i32>) -> Result<Json<Model>> {{
+pub async fn get_{singular}(db: Db, id: Path<{pk_type}>) -> Result<Json<Model>> {{
     let id = id.into_inner();
     let item = {pascal}::find_by_id(id)
         .one(db.conn())
@@ -137,7 +278,7 @@ pub async fn create_{singular}(db: Db, body: Json<Create{pascal}>) -> Result<Jso
 
 #[put("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn update_{singular}(db: Db, id: Path<i32>, body: Json<Update{pascal}>) -> Result<Json<Model>> {{
+pub async fn update_{singular}(db: Db, id: Path<{pk_type}>, body: Json<Update{pascal}>) -> Result<Json<Model>> {{
     let id = id.into_inner();
     let item = {pascal}::find_by_id(id)
         .one(db.conn())
@@ -155,7 +296,7 @@ pub async fn update_{singular}(db: Db, id: Path<i32>, body: Json<Update{pascal}>
 
 #[delete("/{plural}/:id")]
 #[errors({pascal}Error)]
-pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json::Value>> {{
+pub async fn delete_{singular}(db: Db, id: Path<{pk_type}>) -> Result<Json<serde_json::Value>> {{
     let id = id.into_inner();
     let result = {pascal}::delete_by_id(id)
         .exec(db.conn())
@@ -172,13 +313,21 @@ pub async fn delete_{singular}(db: Db, id: Path<i32>) -> Result<Json<serde_json:
         plural = plural,
         create_body = create_body,
         update_body = update_body,
+        pk_type = pk_type,
+        uuid_import = uuid_import,
     )
 }
 
 pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
     let create_fields: Vec<String> = fields
         .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.rust_type))
+        .map(|f| {
+            if f.nullable {
+                format!("    pub {}: Option<{}>,", f.name, f.rust_type)
+            } else {
+                format!("    pub {}: {},", f.name, f.rust_type)
+            }
+        })
         .collect();
 
     let update_fields: Vec<String> = fields
@@ -186,18 +335,40 @@ pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
         .map(|f| format!("    pub {}: Option<{}>,", f.name, f.rust_type))
         .collect();
 
-    // Detect non-primitive types that need imports from sea_orm prelude
-    let needs_sea_orm_import = fields.iter().any(|f| {
-        matches!(
-            f.rust_type.as_str(),
-            "Uuid" | "DateTimeUtc" | "Date" | "Decimal" | "Json"
-        )
-    });
+    // Build type-specific imports instead of sea_orm glob.
+    // Uuid and Decimal must come from their original crates (not sea_orm re-exports)
+    // because the sea_orm re-exports don't implement JsonSchema.
+    let needs_uuid = fields.iter().any(|f| f.rust_type == "Uuid");
+    let needs_decimal = fields.iter().any(|f| f.rust_type == "Decimal");
 
-    let extra_import = if needs_sea_orm_import {
-        "use rapina::sea_orm::prelude::*;\n"
+    let sea_orm_types: Vec<&str> = fields
+        .iter()
+        .filter_map(|f| match f.rust_type.as_str() {
+            "DateTimeUtc" | "Date" | "Json" => Some(f.rust_type.as_str()),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut extra_imports = Vec::new();
+    if needs_uuid {
+        extra_imports.push("use rapina::uuid::Uuid;".to_string());
+    }
+    if needs_decimal {
+        extra_imports.push("use rapina::rust_decimal::Decimal;".to_string());
+    }
+    if !sea_orm_types.is_empty() {
+        extra_imports.push(format!(
+            "use rapina::sea_orm::prelude::{{{}}};",
+            sea_orm_types.join(", ")
+        ));
+    }
+
+    let extra_import = if extra_imports.is_empty() {
+        String::new()
     } else {
-        ""
+        format!("{}\n", extra_imports.join("\n"))
     };
 
     format!(
@@ -279,17 +450,18 @@ pub(crate) fn generate_schema_block(
     let mut attrs = String::new();
 
     if let Some(pk_cols) = primary_key {
-        attrs.push_str(&format!("\n    #[primary_key({})]\n", pk_cols.join(", ")));
+        attrs.push_str(&format!("\n    #[primary_key({})]", pk_cols.join(", ")));
     }
 
     if let Some(ts) = timestamps {
-        attrs.push_str(&format!("\n    #[timestamps({})]\n", ts));
+        attrs.push_str(&format!("\n    #[timestamps({})]", ts));
     }
 
     format!(
         r#"
 schema! {{
-    {pascal} {{{attrs}
+    {attrs}
+    {pascal} {{
 {fields}
     }}
 }}
@@ -304,9 +476,11 @@ pub(crate) fn generate_migration(
     plural: &str,
     pascal_plural: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> String {
     let column_defs: Vec<String> = fields
         .iter()
+        .filter(|f| f.name != "id") // Skip id as it's added separately
         .map(|f| {
             let iden = to_pascal_case(&f.name);
             format!(
@@ -320,10 +494,28 @@ pub(crate) fn generate_migration(
 
     let iden_variants: Vec<String> = fields
         .iter()
+        .filter(|f| f.name != "id") // Skip prefix/reserved id
         .map(|f| format!("    {},", to_pascal_case(&f.name)))
         .collect();
 
     let readable_name = format!("create {}", plural);
+
+    let col = match pk_type.to_lowercase().as_str() {
+        "uuid" => format!("ColumnDef::new({pascal_plural}::Id).uuid().not_null().primary_key()"),
+        "i32" | "integer" => {
+            format!(
+                "ColumnDef::new({pascal_plural}::Id).integer().not_null().auto_increment().primary_key()"
+            )
+        }
+        "i64" | "bigint" => {
+            format!(
+                "ColumnDef::new({pascal_plural}::Id).big_integer().not_null().auto_increment().primary_key()"
+            )
+        }
+        _ => format!(
+            r#"ColumnDef::new({pascal_plural}::Id).type_iden(rapina::migration::Alias::new("{pk_type}")).not_null().primary_key()"#
+        ),
+    };
 
     format!(
         r#"//! Migration: {readable_name}
@@ -341,13 +533,7 @@ impl MigrationTrait for Migration {{
             .create_table(
                 Table::create()
                     .table({pascal_plural}::Table)
-                    .col(
-                        ColumnDef::new({pascal_plural}::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
+                    .col({col})
 {column_defs}
                     .to_owned(),
             )
@@ -375,18 +561,82 @@ enum {pascal_plural} {{
     )
 }
 
+pub(crate) fn remove_schema_block(content: &str, entity_name: &str) -> String {
+    let mut result = String::new();
+    let mut lines = content.lines().peekable();
+    let entity_pattern = format!("{} {{", entity_name);
+
+    while let Some(line) = lines.next() {
+        if line.trim_start().starts_with("schema! {") {
+            // Collect the entire schema block
+            let mut block_lines = vec![line.to_string()];
+            let mut depth: i32 =
+                line.matches('{').count() as i32 - line.matches('}').count() as i32;
+
+            while depth > 0 {
+                if let Some(next) = lines.next() {
+                    depth += next.matches('{').count() as i32 - next.matches('}').count() as i32;
+                    block_lines.push(next.to_string());
+                } else {
+                    break;
+                }
+            }
+
+            // Check if this block contains our entity
+            let block_text = block_lines.join("\n");
+            if !block_text.contains(&entity_pattern) {
+                result.push_str(&block_text);
+                result.push('\n');
+            }
+            // else: skip the block entirely
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    // Clean up excessive blank lines left behind
+    while result.contains("\n\n\n") {
+        result = result.replace("\n\n\n", "\n\n");
+    }
+
+    result
+}
+
 pub(crate) fn update_entity_file(
     pascal: &str,
     fields: &[FieldInfo],
     timestamps: Option<&str>,
     primary_key: Option<&[String]>,
+    force: bool,
 ) -> Result<(), String> {
-    let entity_path = Path::new("src/entity.rs");
+    update_entity_file_in(
+        pascal,
+        fields,
+        timestamps,
+        primary_key,
+        force,
+        Path::new("src/entity.rs"),
+    )
+}
+
+fn update_entity_file_in(
+    pascal: &str,
+    fields: &[FieldInfo],
+    timestamps: Option<&str>,
+    primary_key: Option<&[String]>,
+    force: bool,
+    entity_path: &Path,
+) -> Result<(), String> {
     let schema_block = generate_schema_block(pascal, fields, timestamps, primary_key);
 
     if entity_path.exists() {
-        let content = fs::read_to_string(entity_path)
+        let mut content = fs::read_to_string(entity_path)
             .map_err(|e| format!("Failed to read entity.rs: {}", e))?;
+
+        if force {
+            content = remove_schema_block(&content, pascal);
+        }
 
         // Ensure schema! macro is importable
         let needs_import =
@@ -413,6 +663,7 @@ pub(crate) fn create_migration_file(
     plural: &str,
     pascal_plural: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
 ) -> Result<(), String> {
     let migrations_dir = Path::new("src/migrations");
 
@@ -428,7 +679,7 @@ pub(crate) fn create_migration_file(
     let filename = format!("{}.rs", module_name);
     let filepath = migrations_dir.join(&filename);
 
-    let template = generate_migration(plural, pascal_plural, fields);
+    let template = generate_migration(plural, pascal_plural, fields, pk_type);
     fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
     println!(
         "  {} Created {}",
@@ -446,14 +697,45 @@ pub(crate) fn create_feature_module(
     plural: &str,
     pascal: &str,
     fields: &[FieldInfo],
+    pk_type: &str,
+    force: bool,
 ) -> Result<(), String> {
-    let module_dir = Path::new("src").join(plural);
+    create_feature_module_in(
+        singular,
+        plural,
+        pascal,
+        fields,
+        pk_type,
+        force,
+        Path::new("src"),
+    )
+}
+
+fn create_feature_module_in(
+    singular: &str,
+    plural: &str,
+    pascal: &str,
+    fields: &[FieldInfo],
+    pk_type: &str,
+    force: bool,
+    base: &Path,
+) -> Result<(), String> {
+    let module_dir = base.join(plural);
 
     if module_dir.exists() {
-        return Err(format!(
-            "Directory 'src/{}/' already exists. Remove it first or choose a different resource name.",
-            plural
-        ));
+        if !force {
+            return Err(format!(
+                "Directory 'src/{}/' already exists. Remove it first, choose a different resource name, or use --force to overwrite.",
+                plural
+            ));
+        }
+        fs::remove_dir_all(&module_dir)
+            .map_err(|e| format!("Failed to remove existing directory: {}", e))?;
+        println!(
+            "  {} Removed existing {}",
+            "↻".yellow(),
+            format!("src/{}/", plural).cyan()
+        );
     }
 
     fs::create_dir_all(&module_dir)
@@ -474,7 +756,7 @@ pub(crate) fn create_feature_module(
 
     fs::write(
         module_dir.join("handlers.rs"),
-        generate_handlers(singular, plural, pascal, fields),
+        generate_handlers(singular, plural, pascal, fields, pk_type),
     )
     .map_err(|e| format!("Failed to write handlers.rs: {}", e))?;
     println!(
@@ -502,13 +784,197 @@ pub(crate) fn create_feature_module(
     Ok(())
 }
 
+/// Inserts `mod <name>;` declarations into `src/main.rs` for any modules not
+/// already declared. Silently returns Ok if main.rs does not exist.
+pub(crate) fn wire_main_rs(modules: &[&str], project_root: &Path) -> Result<(), String> {
+    let main_path = project_root.join("src").join("main.rs");
+    if !main_path.exists() {
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&main_path).map_err(|e| format!("Failed to read main.rs: {e}"))?;
+
+    // Filter out modules already declared.
+    let new_modules: Vec<&str> = modules
+        .iter()
+        .copied()
+        .filter(|m| {
+            !content.lines().any(|l| {
+                l.trim_start().starts_with("mod ")
+                    && l.trim_end().ends_with(';')
+                    && l.contains(&format!("mod {m};"))
+            })
+        })
+        .collect();
+
+    if new_modules.is_empty() {
+        return Ok(());
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Find the index of the last `mod ...;` line.
+    let last_mod_idx = lines
+        .iter()
+        .rposition(|l| l.trim_start().starts_with("mod ") && l.trim_end().ends_with(';'));
+
+    let insertion_line = match last_mod_idx {
+        Some(idx) => idx + 1,
+        None => {
+            // No existing mod declarations — insert before `fn main` or `#[tokio::main]`.
+            lines
+                .iter()
+                .position(|l| l.contains("fn main") || l.contains("#[tokio::main]"))
+                .unwrap_or(lines.len())
+        }
+    };
+
+    let mut result = lines[..insertion_line].join("\n");
+    if !result.ends_with('\n') {
+        result.push('\n');
+    }
+    for m in &new_modules {
+        result.push_str(&format!("mod {m};\n"));
+    }
+    if insertion_line < lines.len() {
+        result.push_str(&lines[insertion_line..].join("\n"));
+        if content.ends_with('\n') {
+            result.push('\n');
+        }
+    }
+
+    fs::write(&main_path, &result).map_err(|e| format!("Failed to write main.rs: {e}"))?;
+
+    for m in &new_modules {
+        println!(
+            "  {} Wired {} in {}",
+            "✓".green(),
+            format!("mod {m};").cyan(),
+            "src/main.rs".cyan()
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_main(dir: &TempDir, content: &str) -> std::path::PathBuf {
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let path = src.join("main.rs");
+        std::fs::write(&path, content).unwrap();
+        dir.path().to_path_buf()
+    }
+
+    #[test]
+    fn inserts_after_last_mod() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+use rapina::prelude::*;
+
+mod entity;
+mod migrations;
+
+#[tokio::main]
+async fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod todos;"));
+        let mod_pos = content.find("mod todos;").unwrap();
+        let main_pos = content.find("#[tokio::main]").unwrap();
+        assert!(mod_pos < main_pos);
+    }
+
+    #[test]
+    fn skips_duplicate() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+mod entity;
+mod todos;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert_eq!(content.matches("mod todos;").count(), 1);
+    }
+
+    #[test]
+    fn inserts_multiple_modules() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+mod entity;
+mod migrations;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["users", "posts"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod users;"));
+        assert!(content.contains("mod posts;"));
+    }
+
+    #[test]
+    fn no_main_rs_is_silent() {
+        let dir = TempDir::new().unwrap();
+        let result = wire_main_rs(&["todos"], dir.path());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_existing_mods_inserts_before_fn_main() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(
+            &dir,
+            "\
+use rapina::prelude::*;
+
+fn main() {}
+",
+        );
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(content.contains("mod todos;"));
+        let mod_pos = content.find("mod todos;").unwrap();
+        let main_pos = content.find("fn main()").unwrap();
+        assert!(mod_pos < main_pos);
+    }
+
+    #[test]
+    fn no_double_blank_line() {
+        let dir = TempDir::new().unwrap();
+        let root = write_main(&dir, "mod entity;\nmod migrations;\n\nfn main() {}\n");
+        wire_main_rs(&["todos"], &root).unwrap();
+        let content = std::fs::read_to_string(root.join("src/main.rs")).unwrap();
+        assert!(
+            !content.contains("\n\n\n"),
+            "triple newline found (double blank line)"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "import")]
     fn test_singularize() {
+        // Regular plurals (already working)
         assert_eq!(singularize("users"), "user");
         assert_eq!(singularize("posts"), "post");
         assert_eq!(singularize("categories"), "category");
@@ -516,7 +982,207 @@ mod tests {
         assert_eq!(singularize("boxes"), "box");
         assert_eq!(singularize("buzzes"), "buzz");
         assert_eq!(singularize("boss"), "boss");
-        assert_eq!(singularize("status"), "statu"); // naive, acceptable
+        assert_eq!(singularize("buses"), "bus");
+        assert_eq!(singularize("watches"), "watch");
+        assert_eq!(singularize("bushes"), "bush");
+
+        // Irregular plurals
+        assert_eq!(singularize("people"), "person");
+        assert_eq!(singularize("children"), "child");
+        assert_eq!(singularize("men"), "man");
+        assert_eq!(singularize("women"), "woman");
+        assert_eq!(singularize("mice"), "mouse");
+        assert_eq!(singularize("geese"), "goose");
+        assert_eq!(singularize("teeth"), "tooth");
+        assert_eq!(singularize("feet"), "foot");
+        assert_eq!(singularize("oxen"), "ox");
+        assert_eq!(singularize("leaves"), "leaf");
+        assert_eq!(singularize("lives"), "life");
+        assert_eq!(singularize("knives"), "knife");
+        assert_eq!(singularize("wives"), "wife");
+        assert_eq!(singularize("halves"), "half");
+        assert_eq!(singularize("wolves"), "wolf");
+        assert_eq!(singularize("shelves"), "shelf");
+        assert_eq!(singularize("loaves"), "loaf");
+
+        // Latin/Greek-origin plurals common in tech
+        assert_eq!(singularize("data"), "datum");
+        assert_eq!(singularize("media"), "medium");
+        assert_eq!(singularize("criteria"), "criterion");
+        assert_eq!(singularize("phenomena"), "phenomenon");
+        assert_eq!(singularize("indices"), "index");
+        assert_eq!(singularize("vertices"), "vertex");
+        assert_eq!(singularize("matrices"), "matrix");
+        assert_eq!(singularize("appendices"), "appendix");
+        assert_eq!(singularize("analyses"), "analysis");
+        assert_eq!(singularize("bases"), "base");
+        assert_eq!(singularize("crises"), "crisis");
+        assert_eq!(singularize("theses"), "thesis");
+        assert_eq!(singularize("diagnoses"), "diagnosis");
+        assert_eq!(singularize("hypotheses"), "hypothesis");
+        assert_eq!(singularize("parentheses"), "parenthesis");
+        assert_eq!(singularize("synopses"), "synopsis");
+        assert_eq!(singularize("curricula"), "curriculum");
+        assert_eq!(singularize("formulae"), "formula");
+        assert_eq!(singularize("antennae"), "antenna");
+        assert_eq!(singularize("alumni"), "alumnus");
+        assert_eq!(singularize("cacti"), "cactus");
+        assert_eq!(singularize("fungi"), "fungus");
+        assert_eq!(singularize("nuclei"), "nucleus");
+        assert_eq!(singularize("radii"), "radius");
+        assert_eq!(singularize("stimuli"), "stimulus");
+        assert_eq!(singularize("syllabi"), "syllabus");
+
+        // Words ending in -us (should NOT strip the s)
+        assert_eq!(singularize("statuses"), "status");
+        assert_eq!(singularize("status"), "status");
+        assert_eq!(singularize("campus"), "campus");
+        assert_eq!(singularize("virus"), "virus");
+        assert_eq!(singularize("census"), "census");
+        assert_eq!(singularize("corpus"), "corpus");
+        assert_eq!(singularize("opus"), "opus");
+        assert_eq!(singularize("genus"), "genus");
+        assert_eq!(singularize("apparatus"), "apparatus");
+        assert_eq!(singularize("nexus"), "nexus");
+        assert_eq!(singularize("prospectus"), "prospectus");
+        assert_eq!(singularize("consensus"), "consensus");
+
+        // Uncountable / identity words
+        assert_eq!(singularize("series"), "series");
+        assert_eq!(singularize("species"), "species");
+        assert_eq!(singularize("news"), "news");
+        assert_eq!(singularize("info"), "info");
+        assert_eq!(singularize("metadata"), "metadata");
+        assert_eq!(singularize("sheep"), "sheep");
+        assert_eq!(singularize("fish"), "fish");
+        assert_eq!(singularize("deer"), "deer");
+        assert_eq!(singularize("aircraft"), "aircraft");
+        assert_eq!(singularize("software"), "software");
+        assert_eq!(singularize("hardware"), "hardware");
+        assert_eq!(singularize("firmware"), "firmware");
+        assert_eq!(singularize("middleware"), "middleware");
+        assert_eq!(singularize("equipment"), "equipment");
+        assert_eq!(singularize("feedback"), "feedback");
+        assert_eq!(singularize("moose"), "moose");
+        assert_eq!(singularize("bison"), "bison");
+        assert_eq!(singularize("trout"), "trout");
+        assert_eq!(singularize("salmon"), "salmon");
+        assert_eq!(singularize("shrimp"), "shrimp");
+
+        // Already singular — should be idempotent
+        assert_eq!(singularize("user"), "user");
+        assert_eq!(singularize("post"), "post");
+        assert_eq!(singularize("category"), "category");
+        assert_eq!(singularize("person"), "person");
+        assert_eq!(singularize("child"), "child");
+    }
+
+    #[test]
+    fn test_pluralize() {
+        // Regular plurals (already working)
+        assert_eq!(pluralize("user"), "users");
+        assert_eq!(pluralize("post"), "posts");
+        assert_eq!(pluralize("category"), "categories");
+        assert_eq!(pluralize("address"), "addresses");
+        assert_eq!(pluralize("box"), "boxes");
+        assert_eq!(pluralize("buzz"), "buzzes");
+        assert_eq!(pluralize("boss"), "bosses");
+        assert_eq!(pluralize("monkey"), "monkeys");
+        assert_eq!(pluralize("boy"), "boys");
+        assert_eq!(pluralize("day"), "days");
+        assert_eq!(pluralize("guy"), "guys");
+        assert_eq!(pluralize("watch"), "watches");
+        assert_eq!(pluralize("bush"), "bushes");
+        assert_eq!(pluralize("bus"), "buses");
+
+        // Irregular plurals
+        assert_eq!(pluralize("person"), "people");
+        assert_eq!(pluralize("child"), "children");
+        assert_eq!(pluralize("man"), "men");
+        assert_eq!(pluralize("woman"), "women");
+        assert_eq!(pluralize("mouse"), "mice");
+        assert_eq!(pluralize("goose"), "geese");
+        assert_eq!(pluralize("tooth"), "teeth");
+        assert_eq!(pluralize("foot"), "feet");
+        assert_eq!(pluralize("ox"), "oxen");
+        assert_eq!(pluralize("leaf"), "leaves");
+        assert_eq!(pluralize("life"), "lives");
+        assert_eq!(pluralize("knife"), "knives");
+        assert_eq!(pluralize("wife"), "wives");
+        assert_eq!(pluralize("half"), "halves");
+        assert_eq!(pluralize("wolf"), "wolves");
+        assert_eq!(pluralize("shelf"), "shelves");
+        assert_eq!(pluralize("loaf"), "loaves");
+
+        // Latin/Greek-origin
+        assert_eq!(pluralize("datum"), "data");
+        assert_eq!(pluralize("medium"), "media");
+        assert_eq!(pluralize("criterion"), "criteria");
+        assert_eq!(pluralize("phenomenon"), "phenomena");
+        assert_eq!(pluralize("index"), "indices");
+        assert_eq!(pluralize("vertex"), "vertices");
+        assert_eq!(pluralize("matrix"), "matrices");
+        assert_eq!(pluralize("appendix"), "appendices");
+        assert_eq!(pluralize("analysis"), "analyses");
+        assert_eq!(pluralize("base"), "bases");
+        assert_eq!(pluralize("crisis"), "crises");
+        assert_eq!(pluralize("thesis"), "theses");
+        assert_eq!(pluralize("diagnosis"), "diagnoses");
+        assert_eq!(pluralize("hypothesis"), "hypotheses");
+        assert_eq!(pluralize("parenthesis"), "parentheses");
+        assert_eq!(pluralize("synopsis"), "synopses");
+        assert_eq!(pluralize("curriculum"), "curricula");
+        assert_eq!(pluralize("formula"), "formulae");
+        assert_eq!(pluralize("antenna"), "antennae");
+        assert_eq!(pluralize("alumnus"), "alumni");
+        assert_eq!(pluralize("cactus"), "cacti");
+        assert_eq!(pluralize("fungus"), "fungi");
+        assert_eq!(pluralize("nucleus"), "nuclei");
+        assert_eq!(pluralize("radius"), "radii");
+        assert_eq!(pluralize("stimulus"), "stimuli");
+        assert_eq!(pluralize("syllabus"), "syllabi");
+
+        // Words ending in -us
+        assert_eq!(pluralize("status"), "statuses");
+        assert_eq!(pluralize("campus"), "campuses");
+        assert_eq!(pluralize("virus"), "viruses");
+        assert_eq!(pluralize("census"), "censuses");
+        assert_eq!(pluralize("corpus"), "corpuses");
+        assert_eq!(pluralize("opus"), "opuses");
+        assert_eq!(pluralize("genus"), "genuses");
+        assert_eq!(pluralize("apparatus"), "apparatuses");
+        assert_eq!(pluralize("nexus"), "nexuses");
+        assert_eq!(pluralize("prospectus"), "prospectuses");
+        assert_eq!(pluralize("consensus"), "consensuses");
+
+        // Uncountable / identity words
+        assert_eq!(pluralize("series"), "series");
+        assert_eq!(pluralize("species"), "species");
+        assert_eq!(pluralize("news"), "news");
+        assert_eq!(pluralize("info"), "info");
+        assert_eq!(pluralize("metadata"), "metadata");
+        assert_eq!(pluralize("sheep"), "sheep");
+        assert_eq!(pluralize("fish"), "fish");
+        assert_eq!(pluralize("deer"), "deer");
+        assert_eq!(pluralize("aircraft"), "aircraft");
+        assert_eq!(pluralize("software"), "software");
+        assert_eq!(pluralize("hardware"), "hardware");
+        assert_eq!(pluralize("firmware"), "firmware");
+        assert_eq!(pluralize("middleware"), "middleware");
+        assert_eq!(pluralize("equipment"), "equipment");
+        assert_eq!(pluralize("feedback"), "feedback");
+        assert_eq!(pluralize("moose"), "moose");
+        assert_eq!(pluralize("bison"), "bison");
+        assert_eq!(pluralize("trout"), "trout");
+        assert_eq!(pluralize("salmon"), "salmon");
+        assert_eq!(pluralize("shrimp"), "shrimp");
+
+        // Already plural (irregular) — should be idempotent
+        assert_eq!(pluralize("people"), "people");
+        assert_eq!(pluralize("children"), "children");
+        assert_eq!(pluralize("men"), "men");
+        assert_eq!(pluralize("data"), "data");
+        assert_eq!(pluralize("indices"), "indices");
     }
 
     #[test]
@@ -526,6 +1192,7 @@ mod tests {
             rust_type: "String".to_string(),
             schema_type: "String".to_string(),
             column_method: String::new(),
+            nullable: false,
         }];
 
         let block = generate_schema_block("Post", &fields, None, None);
@@ -549,12 +1216,14 @@ mod tests {
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
             FieldInfo {
                 name: "role_id".to_string(),
                 rust_type: "i32".to_string(),
                 schema_type: "i32".to_string(),
                 column_method: ".integer().not_null()".to_string(),
+                nullable: false,
             },
         ];
 
@@ -564,5 +1233,165 @@ mod tests {
         assert!(block.contains("#[timestamps(none)]"));
         assert!(block.contains("user_id: i32,"));
         assert!(block.contains("role_id: i32,"));
+    }
+
+    #[test]
+    fn test_remove_schema_block_removes_matching_entity() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+
+schema! {
+    Comment {
+        body: String,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "Post");
+        assert!(!result.contains("Post {"));
+        assert!(result.contains("Comment {"));
+        assert!(result.contains("schema! {"));
+    }
+
+    #[test]
+    fn test_remove_schema_block_no_match_returns_unchanged() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "User");
+        assert_eq!(result.trim(), content.trim());
+    }
+
+    #[test]
+    fn test_create_feature_module_errors_without_force_when_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let module_dir = dir.path().join("users");
+        fs::create_dir_all(&module_dir).unwrap();
+        fs::write(module_dir.join("mod.rs"), "old content").unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "email".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        let result =
+            create_feature_module_in("user", "users", "User", &fields, "i32", false, dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_create_feature_module_overwrites_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let module_dir = dir.path().join("users");
+        fs::create_dir_all(&module_dir).unwrap();
+        fs::write(module_dir.join("mod.rs"), "old content").unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "email".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        let result =
+            create_feature_module_in("user", "users", "User", &fields, "i32", true, dir.path());
+        assert!(result.is_ok());
+        let mod_content = fs::read_to_string(module_dir.join("mod.rs")).unwrap();
+        assert!(mod_content.contains("pub mod"));
+    }
+
+    #[test]
+    fn test_update_entity_file_deduplicates_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+        fs::write(
+            &entity_path,
+            r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        update_entity_file_in("Post", &fields, None, None, true, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        // Should have exactly one schema! block for Post, not two
+        assert_eq!(content.matches("Post {").count(), 1);
+        assert!(content.contains("schema! {"));
+    }
+
+    #[test]
+    fn test_update_entity_file_appends_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let entity_path = dir.path().join("entity.rs");
+        fs::write(
+            &entity_path,
+            r#"use rapina::prelude::*;
+
+schema! {
+    Post {
+        title: String,
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+
+        update_entity_file_in("Post", &fields, None, None, false, &entity_path).unwrap();
+        let content = fs::read_to_string(&entity_path).unwrap();
+        // Without force, should have two schema! blocks (duplicate)
+        assert_eq!(content.matches("Post {").count(), 2);
+    }
+
+    #[test]
+    fn test_remove_schema_block_with_attributes() {
+        let content = r#"use rapina::prelude::*;
+
+schema! {
+    #[primary_key(user_id, role_id)]
+    #[timestamps(none)]
+    UsersRole {
+        user_id: i32,
+        role_id: i32,
+    }
+}
+"#;
+        let result = remove_schema_block(content, "UsersRole");
+        assert!(!result.contains("UsersRole"));
+        assert!(!result.contains("schema!"));
     }
 }

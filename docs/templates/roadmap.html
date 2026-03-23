@@ -55,22 +55,15 @@ block content %}
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Snapshot Testing</h4>
-                    <p><code>rapina test --bless</code> for snapshot-based API response testing.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">CLI</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
                     <h4>Schema Improvements</h4>
-                    <p>UUID primary keys, relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
+                    <p>Relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>RFC 7807 Problem Details</h4>
-                    <p>Standard error format for HTTP APIs.</p>
+                    <h4>Multipart File Uploads</h4>
+                    <p>Streaming multipart extractor with <code>multer</code> for file uploads and form data.</p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
@@ -84,16 +77,6 @@ block content %}
                 <h3>In Progress</h3>
             </div>
             <div class="column-cards">
-                <div class="roadmap-card">
-                    <h4>Feature Flags for Middleware</h4>
-                    <p>
-                        Gate rate limiting and compression behind feature flags
-                        to keep the default build lean.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Chore</span>
-                    </div>
-                </div>
                 <div class="roadmap-card">
                     <h4>Redis TLS Support</h4>
                     <p>
@@ -113,12 +96,21 @@ block content %}
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Import CLI Improvements</h4>
+                    <h4>Scalar OpenAPI UI</h4>
                     <p>
-                        Auto-wire mod declarations after import, <code>--force</code> flag for re-importing, and fix broken JsonSchema derives in generated DTOs.
+                        Built-in Scalar API documentation UI served from the framework.
                     </p>
                     <div class="card-tags">
-                        <span class="card-tag">CLI</span>
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Health Check Endpoints</h4>
+                    <p>
+                        Built-in health check routes for readiness and liveness probes.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
                     </div>
                 </div>
             </div>
@@ -130,6 +122,66 @@ block content %}
                 <h3>Done</h3>
             </div>
             <div class="column-cards">
+                <div class="roadmap-card">
+                    <h4>Serde-based Path Extraction</h4>
+                    <p>
+                        <code>Path&lt;T&gt;</code> supports scalars, tuples, and structs
+                        via a custom serde deserializer.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Database Seeding</h4>
+                    <p>
+                        <code>rapina seed load</code>, <code>dump</code>, and
+                        <code>generate</code> for managing seed data.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Snapshot Testing</h4>
+                    <p>
+                        Golden-file testing with <code>--bless</code> mode and automatic
+                        UUID/timestamp redaction.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>RFC 7807 Problem Details</h4>
+                    <p>
+                        Standardized error responses with configurable base URI
+                        and per-request scoping.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Three-layer Router</h4>
+                    <p>
+                        O(1) static route lookup, SmallVec path params, and
+                        criterion benchmarks.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Compression Feature Flag</h4>
+                    <p>
+                        Compression gated behind <code>compression</code> feature,
+                        <code>--force</code> flag for import, and improved codegen pluralization.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">v0.10.0</span>
+                    </div>
+                </div>
                 <div class="roadmap-card">
                     <h4>WebSocket &amp; Relay</h4>
                     <p>

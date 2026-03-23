@@ -234,8 +234,8 @@ mod tests {
         let result = Paginate::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let err = result.unwrap_err();
-        assert_eq!(err.status, 422);
-        assert!(err.message.contains("page must be >= 1"));
+        assert_eq!(err.status(), 422);
+        assert!(err.message().contains("page must be >= 1"));
     }
 
     #[tokio::test]
@@ -244,8 +244,8 @@ mod tests {
         let result = Paginate::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let err = result.unwrap_err();
-        assert_eq!(err.status, 422);
-        assert!(err.message.contains("per_page must be >= 1"));
+        assert_eq!(err.status(), 422);
+        assert!(err.message().contains("per_page must be >= 1"));
     }
 
     #[tokio::test]
@@ -254,8 +254,8 @@ mod tests {
         let result = Paginate::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let err = result.unwrap_err();
-        assert_eq!(err.status, 422);
-        assert!(err.message.contains("per_page must be <= 100"));
+        assert_eq!(err.status(), 422);
+        assert!(err.message().contains("per_page must be <= 100"));
     }
 
     #[tokio::test]
@@ -281,8 +281,8 @@ mod tests {
         let result = Paginate::from_request_parts(&parts, &empty_params(), &state).await;
 
         let err = result.unwrap_err();
-        assert_eq!(err.status, 422);
-        assert!(err.message.contains("per_page must be <= 50"));
+        assert_eq!(err.status(), 422);
+        assert!(err.message().contains("per_page must be <= 50"));
     }
 
     #[tokio::test]
@@ -413,6 +413,6 @@ mod tests {
         let result = Paginate::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let err = result.unwrap_err();
-        assert_eq!(err.status, 422);
+        assert_eq!(err.status(), 422);
     }
 }

@@ -322,15 +322,15 @@ mod tests {
     fn test_db_error_not_found() {
         let err = DbError(sea_orm::DbErr::RecordNotFound("user".to_string()));
         let api_err = err.into_api_error();
-        assert_eq!(api_err.status, 404);
-        assert_eq!(api_err.code, "NOT_FOUND");
+        assert_eq!(api_err.status(), 404);
+        assert_eq!(api_err.code(), "NOT_FOUND");
     }
 
     #[test]
     fn test_db_error_custom() {
         let err = DbError(sea_orm::DbErr::Custom("something went wrong".to_string()));
         let api_err = err.into_api_error();
-        assert_eq!(api_err.status, 500);
-        assert_eq!(api_err.message, "something went wrong");
+        assert_eq!(api_err.status(), 500);
+        assert_eq!(api_err.message(), "something went wrong");
     }
 }

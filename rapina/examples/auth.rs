@@ -3,13 +3,13 @@
 //! Run with: `JWT_SECRET=your-secret-key cargo run --example auth`
 //!
 //! Test endpoints:
-//! - GET /health (public) - Health check, no auth required
+//! - GET /__rapina/health (public) - Health check, no auth required
 //! - POST /login (public) - Get a JWT token
 //! - GET /me (protected) - Requires valid JWT token
 
 use rapina::prelude::*;
 
-#[derive(Clone, Config)]
+#[derive(Config)]
 struct AppConfig {
     #[env = "HOST"]
     #[default = "127.0.0.1"]
@@ -20,7 +20,7 @@ struct AppConfig {
     port: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct LoginRequest {
     username: String,
     password: String,
@@ -32,17 +32,10 @@ struct UserResponse {
     username: String,
 }
 
-// Public route - no authentication required
-#[public]
-#[get("/health")]
-async fn health() -> &'static str {
-    "ok"
-}
-
 // Public route - login to get a token
 #[public]
 #[post("/login")]
-async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json<TokenResponse>> {
+async fn login(auth: State<AuthConfig>, body: Json<LoginRequest>) -> Result<Json<TokenResponse>> {
     // In a real app, validate credentials against a database
     if body.username == "admin" && body.password == "password" {
         let token = auth.create_token(&body.username)?;
@@ -91,8 +84,8 @@ async fn main() -> std::io::Result<()> {
     println!("  Server running at http://{}", addr);
     println!();
     println!("  Public endpoints:");
-    println!("    GET  /health  - Health check");
-    println!("    POST /login   - Get JWT token");
+    println!("    GET  /__rapina/health  - Health check");
+    println!("    POST /login            - Get JWT token");
     println!();
     println!("  Protected endpoints (require Authorization: Bearer <token>):");
     println!("    GET  /me         - Current user info");
@@ -101,6 +94,7 @@ async fn main() -> std::io::Result<()> {
 
     Rapina::new()
         .with_auth(auth_config.clone())
+        .with_health_check(true)
         .state(auth_config)
         .discover()
         .listen(&addr)
