@@ -36,9 +36,9 @@ pub async fn liveness_check(
     Response::builder()
         .status(StatusCode::OK)
         .header(CONTENT_TYPE, APPLICATION_JSON)
-        .body(crate::response::full_body(http_body_util::Full::new(bytes::Bytes::from(
-            serde_json::to_vec(&body).unwrap_or_default(),
-        ))))
+        .body(crate::response::full_body(http_body_util::Full::new(
+            bytes::Bytes::from(serde_json::to_vec(&body).unwrap_or_default()),
+        )))
         .unwrap()
 }
 
@@ -109,9 +109,9 @@ pub async fn readiness_check(
     Response::builder()
         .status(status)
         .header(CONTENT_TYPE, APPLICATION_JSON)
-        .body(crate::response::full_body(http_body_util::Full::new(bytes::Bytes::from(
-            serde_json::to_vec(&body).unwrap_or_default(),
-        ))))
+        .body(crate::response::full_body(http_body_util::Full::new(
+            bytes::Bytes::from(serde_json::to_vec(&body).unwrap_or_default()),
+        )))
         .unwrap()
 }
 

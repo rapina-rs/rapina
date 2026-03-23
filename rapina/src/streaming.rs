@@ -167,18 +167,16 @@ impl IntoResponse for SseResponse {
                 let merged = futures_util::stream::unfold(
                     (event_stream.fuse(), interval),
                     |(mut events, interval)| async move {
-                        loop {
-                            let sleep = tokio::time::sleep(interval);
-                            tokio::pin!(sleep);
-                            tokio::select! {
-                                biased;
-                                item = futures_util::StreamExt::next(&mut events) => {
-                                    return item.map(|result| (result, (events, interval)));
-                                }
-                                _ = &mut sleep => {
-                                    let comment = Bytes::from_static(b": keep-alive\n\n");
-                                    return Some((Ok(Frame::data(comment)), (events, interval)));
-                                }
+                        let sleep = tokio::time::sleep(interval);
+                        tokio::pin!(sleep);
+                        tokio::select! {
+                            biased;
+                            item = futures_util::StreamExt::next(&mut events) => {
+                                item.map(|result| (result, (events, interval)))
+                            }
+                            _ = &mut sleep => {
+                                let comment = Bytes::from_static(b": keep-alive\n\n");
+                                Some((Ok(Frame::data(comment)), (events, interval)))
                             }
                         }
                     },
