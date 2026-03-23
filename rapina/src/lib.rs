@@ -90,11 +90,15 @@ pub mod config;
 pub mod context;
 #[cfg(feature = "database")]
 pub mod database;
+pub(crate) mod date_cache;
 pub mod discovery;
 pub mod error;
 pub mod extract;
 pub mod handler;
+pub mod health;
 pub mod introspection;
+#[cfg(feature = "database")]
+pub mod jobs;
 #[cfg(feature = "metrics")]
 pub mod metrics;
 pub mod middleware;
@@ -137,6 +141,8 @@ pub mod prelude {
     #[cfg(feature = "multipart")]
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
+    #[cfg(feature = "database")]
+    pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus};
     pub use crate::middleware::{
         KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
     };
@@ -145,7 +151,7 @@ pub mod prelude {
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
     #[cfg(feature = "websocket")]
     pub use crate::relay::{Relay, RelayConfig, RelayEvent};
-    pub use crate::response::{IntoResponse, empty_body, full_body};
+    pub use crate::response::{IntoResponse, StaticStr, empty_body, full_body};
     pub use crate::router::Router;
     pub use crate::streaming::{SseEvent, SseResponse, StreamResponse};
 
@@ -155,21 +161,24 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, patch, post, public, put, relay, schema};
+    pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
 }
 
 // Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
-pub use rapina_macros::{Config, delete, get, patch, post, public, put, relay, schema};
+pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
 
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
 pub use rust_decimal;
 pub use schemars;
+pub use serde_json;
 pub use uuid;
 
 #[doc(hidden)]
 pub use inventory;
+#[doc(hidden)]
+pub use openapi::openapi_schema_for;
 
 #[cfg(feature = "websocket")]
 pub use futures_util;

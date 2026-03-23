@@ -335,18 +335,40 @@ pub(crate) fn generate_dto(pascal: &str, fields: &[FieldInfo]) -> String {
         .map(|f| format!("    pub {}: Option<{}>,", f.name, f.rust_type))
         .collect();
 
-    // Detect non-primitive types that need imports from sea_orm prelude
-    let needs_sea_orm_import = fields.iter().any(|f| {
-        matches!(
-            f.rust_type.as_str(),
-            "Uuid" | "DateTimeUtc" | "Date" | "Decimal" | "Json"
-        )
-    });
+    // Build type-specific imports instead of sea_orm glob.
+    // Uuid and Decimal must come from their original crates (not sea_orm re-exports)
+    // because the sea_orm re-exports don't implement JsonSchema.
+    let needs_uuid = fields.iter().any(|f| f.rust_type == "Uuid");
+    let needs_decimal = fields.iter().any(|f| f.rust_type == "Decimal");
 
-    let extra_import = if needs_sea_orm_import {
-        "use rapina::sea_orm::prelude::*;\n"
+    let sea_orm_types: Vec<&str> = fields
+        .iter()
+        .filter_map(|f| match f.rust_type.as_str() {
+            "DateTimeUtc" | "Date" | "Json" => Some(f.rust_type.as_str()),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut extra_imports = Vec::new();
+    if needs_uuid {
+        extra_imports.push("use rapina::uuid::Uuid;".to_string());
+    }
+    if needs_decimal {
+        extra_imports.push("use rapina::rust_decimal::Decimal;".to_string());
+    }
+    if !sea_orm_types.is_empty() {
+        extra_imports.push(format!(
+            "use rapina::sea_orm::prelude::{{{}}};",
+            sea_orm_types.join(", ")
+        ));
+    }
+
+    let extra_import = if extra_imports.is_empty() {
+        String::new()
     } else {
-        ""
+        format!("{}\n", extra_imports.join("\n"))
     };
 
     format!(

@@ -106,7 +106,10 @@ impl IntoResponse for StreamResponse {
         let body = StreamBody::new(self.stream);
         let body = BoxBody::new(body.map_err(|e| -> BoxBodyError { e }));
 
-        let mut response = Response::builder().status(self.status).body(body).unwrap();
+        let mut response = Response::builder()
+            .status(self.status)
+            .body(body)
+            .expect("streaming response builder should not fail");
 
         for (name, value) in self.headers {
             response.headers_mut().insert(name, value);
@@ -159,15 +162,28 @@ impl IntoResponse for SseResponse {
 
         let stream: Pin<Box<dyn Stream<Item = Result<Frame<Bytes>, BoxBodyError>> + Send>> =
             if let Some(interval) = self.keep_alive {
-                let keep_alive_stream = futures_util::stream::unfold((), move |()| async move {
-                    tokio::time::sleep(interval).await;
-                    let comment = Bytes::from_static(b": keep-alive\n\n");
-                    Some((Ok(Frame::data(comment)), ()))
-                });
-                Box::pin(futures_util::stream::select(
-                    event_stream,
-                    keep_alive_stream,
-                ))
+                // Use unfold to interleave keep-alive comments between events.
+                // Unlike stream::select, this terminates when the event stream ends.
+                let merged = futures_util::stream::unfold(
+                    (event_stream.fuse(), interval),
+                    |(mut events, interval)| async move {
+                        loop {
+                            let sleep = tokio::time::sleep(interval);
+                            tokio::pin!(sleep);
+                            tokio::select! {
+                                biased;
+                                item = futures_util::StreamExt::next(&mut events) => {
+                                    return item.map(|result| (result, (events, interval)));
+                                }
+                                _ = &mut sleep => {
+                                    let comment = Bytes::from_static(b": keep-alive\n\n");
+                                    return Some((Ok(Frame::data(comment)), (events, interval)));
+                                }
+                            }
+                        }
+                    },
+                );
+                Box::pin(merged)
             } else {
                 Box::pin(event_stream)
             };
@@ -181,7 +197,7 @@ impl IntoResponse for SseResponse {
             .header(header::CACHE_CONTROL, "no-cache")
             .header(header::CONNECTION, "keep-alive")
             .body(body)
-            .unwrap();
+            .expect("SSE response builder should not fail");
 
         response.extensions_mut().insert(StreamingMarker);
         response

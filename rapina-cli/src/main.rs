@@ -71,6 +71,11 @@ enum Commands {
         #[command(subcommand)]
         command: MigrateCommands,
     },
+    /// Background jobs management
+    Jobs {
+        #[command(subcommand)]
+        command: JobsCommands,
+    },
     /// Run health checks on your API
     Doctor {
         /// Port to listen on
@@ -150,6 +155,12 @@ enum MigrateCommands {
 }
 
 #[derive(Subcommand)]
+enum JobsCommands {
+    /// Set up the background jobs migration in your project
+    Init,
+}
+
+#[derive(Subcommand)]
 enum ImportCommands {
     /// Import schema from a live database
     Database {
@@ -188,7 +199,7 @@ enum OpenapiCommands {
         #[arg(short, long)]
         output: Option<String>,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -200,7 +211,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -215,7 +226,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -224,6 +235,11 @@ enum OpenapiCommands {
 }
 
 fn main() {
+    // Load .env file if present (before clap parses, so env vars are available).
+    dotenvy::dotenv().ok();
+    // Propagate SERVER_PORT / PORT → RAPINA_PORT for backwards compat.
+    common::env::propagate_port_env();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -325,6 +341,15 @@ fn main() {
         Some(Commands::Routes { host, port }) => {
             let config = commands::routes::RoutesConfig { host, port };
             if let Err(e) = commands::routes::execute(config) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Jobs { command }) => {
+            let result = match command {
+                JobsCommands::Init => commands::jobs::init(),
+            };
+            if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }

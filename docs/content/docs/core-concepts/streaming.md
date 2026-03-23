@@ -168,7 +168,7 @@ impl IntoResponse for MyStreamingResponse {
         let mut response = http::Response::builder()
             .status(http::StatusCode::OK)
             .body(body)
-            .unwrap();
+            .expect("response builder should not fail");
 
         // Insert StreamingMarker so compression/cache middleware skip buffering
         response.extensions_mut().insert(StreamingMarker);

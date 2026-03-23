@@ -150,6 +150,18 @@ pub struct Components {
     pub schemas: BTreeMap<String, serde_json::Value>,
 }
 
+/// Generate a JSON Schema for type `T` using OpenAPI 3.0-compatible settings.
+///
+/// This uses `SchemaSettings::openapi3()` which replaces boolean schemas
+/// (`true`/`false`) with object equivalents (`{}`/`{"not": {}}`) that are
+/// valid in OpenAPI 3.0.x.
+pub fn openapi_schema_for<T: schemars::JsonSchema>() -> serde_json::Value {
+    let schema = schemars::generate::SchemaSettings::openapi3()
+        .into_generator()
+        .into_root_schema_for::<T>();
+    serde_json::to_value(schema).unwrap()
+}
+
 /// Create the standard Rapina error response schema
 fn error_response_schema() -> serde_json::Value {
     serde_json::json!({
@@ -280,6 +292,26 @@ pub fn build_openapi_spec(
             ..Default::default()
         };
 
+        // Add request body schema if present
+        if let Some(schema) = &route.request_schema {
+            let content_type = route
+                .request_content_type
+                .as_deref()
+                .unwrap_or("application/json");
+            let mut content = BTreeMap::new();
+            content.insert(
+                content_type.to_string(),
+                MediaType {
+                    schema: Schema::Inline(schema.clone()),
+                },
+            );
+            operation.request_body = Some(RequestBody {
+                description: None,
+                required: route.request_body_required.unwrap_or(true),
+                content,
+            });
+        }
+
         operation
             .responses
             .insert("200".to_string(), success_response);
@@ -338,6 +370,9 @@ mod tests {
             "/users",
             "list_users",
             None,
+            None,
+            None::<String>,
+            None,
             Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -366,6 +401,9 @@ mod tests {
             "/users/:id",
             "get_user",
             None,
+            None,
+            None::<String>,
+            None,
             errors,
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -391,14 +429,203 @@ mod tests {
     }
 
     #[test]
+    fn test_openapi_schema_for_serde_json_value() {
+        let schema = openapi_schema_for::<serde_json::Value>();
+        // Must be an object schema, not boolean true
+        assert!(
+            schema.is_object(),
+            "serde_json::Value schema should be an object, got: {schema}"
+        );
+        assert!(
+            !schema.is_boolean(),
+            "serde_json::Value schema should not be boolean"
+        );
+    }
+
+    #[test]
+    fn test_openapi_schema_for_option_serde_json_value() {
+        let schema = openapi_schema_for::<Option<serde_json::Value>>();
+        assert!(schema.is_object());
+    }
+
+    #[test]
+    fn test_openapi_schema_for_struct_with_value_field() {
+        #[derive(schemars::JsonSchema)]
+        struct TestDto {
+            #[allow(dead_code)]
+            opts: Option<serde_json::Value>,
+        }
+        let schema = openapi_schema_for::<TestDto>();
+        let properties = schema.get("properties").unwrap();
+        let opts = properties.get("opts").unwrap();
+        assert!(
+            opts.is_object(),
+            "opts field schema should be an object, got: {opts}"
+        );
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_value_response_schema() {
+        #[derive(schemars::JsonSchema)]
+        struct DtoWithValue {
+            #[allow(dead_code)]
+            data: String,
+            #[allow(dead_code)]
+            opts: Option<serde_json::Value>,
+        }
+        let schema = openapi_schema_for::<DtoWithValue>();
+        let routes = vec![RouteInfo::new(
+            "POST",
+            "/items",
+            "create_item",
+            Some(schema),
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let json = serde_json::to_value(&spec).unwrap();
+        let opts_schema = &json["paths"]["/items"]["post"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["properties"]["opts"];
+
+        assert!(
+            !opts_schema.is_boolean(),
+            "opts should not be a boolean schema, got: {opts_schema}"
+        );
+        assert!(
+            opts_schema.is_object(),
+            "opts should be an object schema, got: {opts_schema}"
+        );
+    }
+
+    #[test]
     fn test_build_openapi_spec_skips_internal_routes() {
         let routes = vec![
-            RouteInfo::new("GET", "/__rapina/routes", "internal", None, Vec::new()),
-            RouteInfo::new("GET", "/users", "list_users", None, Vec::new()),
+            RouteInfo::new(
+                "GET",
+                "/__rapina/routes",
+                "internal",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "GET",
+                "/users",
+                "list_users",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
         ];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
         assert!(!spec.paths.contains_key("/__rapina/routes"));
         assert!(spec.paths.contains_key("/users"));
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_request_body() {
+        #[derive(schemars::JsonSchema)]
+        struct CreateUserRequest {
+            #[allow(dead_code)]
+            name: String,
+            #[allow(dead_code)]
+            email: String,
+        }
+        let request_schema = openapi_schema_for::<CreateUserRequest>();
+        let routes = vec![RouteInfo::new(
+            "POST",
+            "/users",
+            "create_user",
+            None,
+            Some(request_schema),
+            Some("application/json"),
+            Some(true),
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let path = spec.paths.get("/users").unwrap();
+        let post_op = path.post.as_ref().unwrap();
+
+        // Should have requestBody
+        assert!(post_op.request_body.is_some());
+        let request_body = post_op.request_body.as_ref().unwrap();
+        assert!(request_body.required);
+        assert!(request_body.content.contains_key("application/json"));
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_form_request_body() {
+        #[derive(schemars::JsonSchema)]
+        struct LoginForm {
+            #[allow(dead_code)]
+            username: String,
+            #[allow(dead_code)]
+            password: String,
+        }
+        let request_schema = openapi_schema_for::<LoginForm>();
+        let routes = vec![RouteInfo::new(
+            "POST",
+            "/login",
+            "login",
+            None,
+            Some(request_schema),
+            Some("application/x-www-form-urlencoded"),
+            Some(true),
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let path = spec.paths.get("/login").unwrap();
+        let post_op = path.post.as_ref().unwrap();
+
+        // Should have requestBody with form content type
+        assert!(post_op.request_body.is_some());
+        let request_body = post_op.request_body.as_ref().unwrap();
+        assert!(request_body.required);
+        assert!(
+            request_body
+                .content
+                .contains_key("application/x-www-form-urlencoded")
+        );
+        assert!(!request_body.content.contains_key("application/json"));
+    }
+
+    #[test]
+    fn test_build_openapi_spec_with_optional_request_body() {
+        #[derive(schemars::JsonSchema)]
+        struct UpdateUserRequest {
+            #[allow(dead_code)]
+            name: Option<String>,
+        }
+        let request_schema = openapi_schema_for::<UpdateUserRequest>();
+        let routes = vec![RouteInfo::new(
+            "PATCH",
+            "/users/:id",
+            "update_user",
+            None,
+            Some(request_schema),
+            Some("application/json"),
+            Some(false), // optional request body
+            Vec::new(),
+        )];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let path = spec.paths.get("/users/{id}").unwrap();
+        let patch_op = path.patch.as_ref().unwrap();
+
+        // Should have requestBody with required: false
+        assert!(patch_op.request_body.is_some());
+        let request_body = patch_op.request_body.as_ref().unwrap();
+        assert!(!request_body.required);
+        assert!(request_body.content.contains_key("application/json"));
     }
 }

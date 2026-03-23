@@ -414,7 +414,7 @@ impl Context {
 
     /// Returns the trace ID for this request.
     pub fn trace_id(&self) -> &str {
-        &self.0.trace_id
+        self.0.trace_id()
     }
 
     /// Returns the elapsed time since the request started.
@@ -1254,7 +1254,7 @@ mod tests {
     fn test_context_into_inner() {
         let ctx = crate::context::RequestContext::with_trace_id("test".to_string());
         let context = Context(ctx);
-        assert_eq!(context.into_inner().trace_id, "test");
+        assert_eq!(context.into_inner().trace_id(), "test");
     }
 
     #[test]
@@ -1381,7 +1381,7 @@ mod tests {
         let ctx = Context(crate::context::RequestContext::with_trace_id(
             "test".to_string(),
         ));
-        assert_eq!(ctx.trace_id, "test");
+        assert_eq!(ctx.trace_id(), "test");
     }
 
     #[test]

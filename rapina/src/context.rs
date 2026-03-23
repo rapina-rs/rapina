@@ -1,15 +1,17 @@
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 /// Per-request context passed through the middleware stack and into handlers.
 ///
 /// Created automatically for each incoming connection. Available via
 /// `req.extensions().get::<RequestContext>()` inside handlers and middleware.
+///
+/// The trace ID is generated lazily on first access, so requests that never
+/// read the trace ID (e.g. when no tracing middleware is registered) avoid
+/// the UUID v4 allocation entirely.
 #[derive(Debug, Clone)]
 pub struct RequestContext {
-    /// Unique identifier for this request, used for distributed tracing.
-    /// Populated from the incoming `x-trace-id` header if present, otherwise
-    /// a new UUID v4 is generated.
-    pub trace_id: String,
+    trace_id: Arc<OnceLock<String>>,
     /// Timestamp recorded when the request context was created, used to
     /// calculate request duration.
     pub start_time: Instant,
@@ -18,16 +20,24 @@ pub struct RequestContext {
 impl RequestContext {
     pub fn new() -> Self {
         Self {
-            trace_id: uuid::Uuid::new_v4().to_string(),
+            trace_id: Arc::new(OnceLock::new()),
             start_time: Instant::now(),
         }
     }
 
     pub fn with_trace_id(trace_id: String) -> Self {
+        let cell = Arc::new(OnceLock::new());
+        let _ = cell.set(trace_id);
         Self {
-            trace_id,
+            trace_id: cell,
             start_time: Instant::now(),
         }
+    }
+
+    /// Returns the trace ID for this request, generating a UUID v4 on first access.
+    pub fn trace_id(&self) -> &str {
+        self.trace_id
+            .get_or_init(|| uuid::Uuid::new_v4().to_string())
     }
 
     pub fn elapsed(&self) -> std::time::Duration {
@@ -51,22 +61,22 @@ mod tests {
     fn test_new_generates_uuid() {
         let ctx = RequestContext::new();
         // UUID v4 format: 8-4-4-4-12 hex chars
-        assert_eq!(ctx.trace_id.len(), 36);
-        assert!(ctx.trace_id.chars().filter(|c| *c == '-').count() == 4);
+        assert_eq!(ctx.trace_id().len(), 36);
+        assert!(ctx.trace_id().chars().filter(|c| *c == '-').count() == 4);
     }
 
     #[test]
     fn test_new_generates_unique_ids() {
         let ctx1 = RequestContext::new();
         let ctx2 = RequestContext::new();
-        assert_ne!(ctx1.trace_id, ctx2.trace_id);
+        assert_ne!(ctx1.trace_id(), ctx2.trace_id());
     }
 
     #[test]
     fn test_with_trace_id() {
         let custom_id = "custom-trace-123".to_string();
         let ctx = RequestContext::with_trace_id(custom_id.clone());
-        assert_eq!(ctx.trace_id, custom_id);
+        assert_eq!(ctx.trace_id(), custom_id);
     }
 
     #[test]
@@ -81,14 +91,53 @@ mod tests {
     #[test]
     fn test_default_is_new() {
         let ctx = RequestContext::default();
-        assert_eq!(ctx.trace_id.len(), 36);
+        assert_eq!(ctx.trace_id().len(), 36);
     }
 
     #[test]
-    fn test_clone() {
+    fn test_clone_shares_trace_id() {
         let ctx1 = RequestContext::new();
         let ctx2 = ctx1.clone();
-        assert_eq!(ctx1.trace_id, ctx2.trace_id);
+        // Arc<OnceLock> ensures both sides share the same cell,
+        // so whichever initializes first wins.
+        assert_eq!(ctx1.trace_id(), ctx2.trace_id());
+    }
+
+    #[test]
+    fn test_trace_id_is_lazy() {
+        let ctx = RequestContext::new();
+        // The internal OnceLock should not be initialized until trace_id() is called
+        assert!(
+            ctx.trace_id.get().is_none(),
+            "trace_id should not be initialized before first access"
+        );
+        let id = ctx.trace_id();
+        assert_eq!(id.len(), 36, "trace_id should be a valid UUID after access");
+        assert!(
+            ctx.trace_id.get().is_some(),
+            "trace_id should be initialized after first access"
+        );
+    }
+
+    #[test]
+    fn test_trace_id_stable_across_calls() {
+        let ctx = RequestContext::new();
+        let id1 = ctx.trace_id();
+        let id2 = ctx.trace_id();
+        assert_eq!(
+            id1, id2,
+            "trace_id should return the same value on repeated calls"
+        );
+    }
+
+    #[test]
+    fn test_with_trace_id_is_eager() {
+        let ctx = RequestContext::with_trace_id("pre-set".to_string());
+        assert!(
+            ctx.trace_id.get().is_some(),
+            "with_trace_id should eagerly set the value"
+        );
+        assert_eq!(ctx.trace_id(), "pre-set");
     }
 
     #[test]
