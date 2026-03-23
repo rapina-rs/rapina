@@ -68,14 +68,10 @@ impl RedisCache {
     pub async fn connect_tls(
         url: &str,
         tls_config: RedisTlsConfig,
-    ) -> Result<Self, std::io::Error> {
-        let tls_certs = tls_config.into_tls_certificates()?;
-        let client = redis::Client::build_with_tls(url, tls_certs)
-            .map_err(|e| std::io::Error::other(format!("Redis TLS client error: {}", e)))?;
-        let conn = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| std::io::Error::other(format!("Redis TLS connection failed: {}", e)))?;
+    ) -> Result<Self, redis::RedisError> {
+        let tls_certs = tls_config.into_tls_certificates().await?;
+        let client = redis::Client::build_with_tls(url, tls_certs)?;
+        let conn = client.get_multiplexed_async_connection().await?;
         Ok(Self {
             conn,
             prefix: "rapina:".to_string(),
@@ -148,9 +144,11 @@ impl RedisTlsConfig {
     }
 
     /// Reads certificate files and builds `redis::TlsCertificates`.
-    pub(crate) fn into_tls_certificates(self) -> Result<redis::TlsCertificates, std::io::Error> {
+    pub(crate) async fn into_tls_certificates(
+        self,
+    ) -> Result<redis::TlsCertificates, std::io::Error> {
         let root_cert = match self.ca_cert_path {
-            Some(path) => Some(std::fs::read(&path).map_err(|e| {
+            Some(path) => Some(tokio::fs::read(&path).await.map_err(|e| {
                 std::io::Error::other(format!("Failed to read CA cert '{}': {}", path, e))
             })?),
             None => None,
@@ -158,13 +156,13 @@ impl RedisTlsConfig {
 
         let client_tls = match (self.client_cert_path, self.client_key_path) {
             (Some(cert_path), Some(key_path)) => {
-                let client_cert = std::fs::read(&cert_path).map_err(|e| {
+                let client_cert = tokio::fs::read(&cert_path).await.map_err(|e| {
                     std::io::Error::other(format!(
                         "Failed to read client cert '{}': {}",
                         cert_path, e
                     ))
                 })?;
-                let client_key = std::fs::read(&key_path).map_err(|e| {
+                let client_key = tokio::fs::read(&key_path).await.map_err(|e| {
                     std::io::Error::other(format!(
                         "Failed to read client key '{}': {}",
                         key_path, e
@@ -299,18 +297,26 @@ mod tests {
     }
 
     #[cfg(feature = "cache-redis-tls")]
-    #[test]
-    fn test_redis_tls_config_partial_client_tls_fails() {
+    #[tokio::test]
+    async fn test_redis_tls_config_partial_client_cert_only_fails() {
         let config = RedisTlsConfig::new().client_cert_path("/path/to/cert.pem");
-        let result = config.into_tls_certificates();
+        let result = config.into_tls_certificates().await;
         assert!(result.is_err());
     }
 
     #[cfg(feature = "cache-redis-tls")]
-    #[test]
-    fn test_redis_tls_config_empty_is_valid() {
+    #[tokio::test]
+    async fn test_redis_tls_config_partial_client_key_only_fails() {
+        let config = RedisTlsConfig::new().client_key_path("/path/to/key.pem");
+        let result = config.into_tls_certificates().await;
+        assert!(result.is_err());
+    }
+
+    #[cfg(feature = "cache-redis-tls")]
+    #[tokio::test]
+    async fn test_redis_tls_config_empty_is_valid() {
         let config = RedisTlsConfig::new();
-        let result = config.into_tls_certificates();
+        let result = config.into_tls_certificates().await;
         assert!(result.is_ok());
     }
 
