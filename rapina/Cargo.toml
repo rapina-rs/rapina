@@ -54,7 +54,7 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
-# Concurrent map (used by cache + optional rate limiting)
+# Concurrent map (used by cache, relay, and optional rate limiting)
 dashmap = "6.1.0"
 
 # SmallVec for stack-allocated path params
