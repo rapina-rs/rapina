@@ -398,12 +398,3 @@ async fn main() -> std::io::Result<()> {
 
 And for free: structured error responses with trace IDs, an OpenAPI spec, request logging, and a health check at `/__rapina/health`.
 
----
-
-## Next steps
-
-- **[Project Structure](@/docs/getting-started/project-structure.md)** — how to grow your codebase beyond a single file
-- **[Configuration](@/docs/getting-started/configuration.md)** — environment variables and the `#[derive(Config)]` macro
-- **[Authentication](@/docs/core-concepts/authentication.md)** — JWT, `CurrentUser`, and protecting routes with `#[public]`
-- **[Database](@/docs/core-concepts/database.md)** — the `Db` extractor, `schema!` macro, and migrations
-- **[Validation](@/docs/core-concepts/validation.md)** — `Validated<T>` and field-level error messages
