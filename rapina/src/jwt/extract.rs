@@ -295,8 +295,8 @@ mod tests {
         println!("{:?}", result);
 
         let error = result.expect_err("Expected extraction to fail");
-        assert_eq!(error.status, 401);
-        assert!(error.message.contains("invalid token"));
+        assert_eq!(error.status(), 401);
+        assert!(error.message().contains("invalid token"));
     }
 
     #[tokio::test]
@@ -309,8 +309,8 @@ mod tests {
             JsonWebToken::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let error = result.expect_err("Expected extraction to fail");
-        assert_eq!(error.status, 401);
-        assert!(error.message.contains("missing authorization header"));
+        assert_eq!(error.status(), 401);
+        assert!(error.message().contains("missing authorization header"));
     }
 
     #[tokio::test]
@@ -330,8 +330,8 @@ mod tests {
         println!("{:?}", result);
 
         let error = result.expect_err("Expected extraction to fail");
-        assert_eq!(error.status, 401);
-        assert!(error.message.contains("token header validation failed"));
+        assert_eq!(error.status(), 401);
+        assert!(error.message().contains("token header validation failed"));
     }
 
     #[tokio::test]
@@ -344,7 +344,7 @@ mod tests {
             JsonWebToken::from_request_parts(&parts, &empty_params(), &empty_state()).await;
 
         let error = result.expect_err("Expected extraction to fail");
-        assert_eq!(error.status, 500);
-        assert!(error.message.contains("Internal authentication error"));
+        assert_eq!(error.status(), 500);
+        assert!(error.message().contains("Internal authentication error"));
     }
 }
