@@ -1,18 +1,23 @@
 +++
-title = "Quickstart Tutorial"
-description = "Build your first Rapina API from scratch — installation, routes, and a running server in under 10 minutes"
-weight = 4
-date = 2026-03-23
+title = "Getting Started with Rapina"
+description = "Build your first Rust API from scratch — installation, routes, and a running server in under 10 minutes"
+date = 2026-03-25
+
+[taxonomies]
+categories = ["tutorials"]
+tags = ["getting-started", "rust", "api"]
+
+[extra]
+author = "Ricardo Uemura"
 +++
 
-This tutorial walks you through building a small users API with Rapina from scratch. By the end you'll have a running server with multiple routes, typed JSON responses, and a clear mental model of how the framework works.
+Rapina is a Rust web framework designed to make building APIs fast and predictable. In this tutorial you'll go from zero to a running server with multiple routes, typed JSON responses, automatic error handling, and an OpenAPI spec — all in under 10 minutes.
 
-**Time:** ~10 minutes
 **Prerequisites:** Rust 1.75+ installed ([rustup.rs](https://rustup.rs/))
 
 ---
 
-## Step 1 — Install the CLI
+## Install the CLI
 
 The Rapina CLI handles scaffolding, development, and code generation.
 
@@ -28,7 +33,7 @@ rapina --version
 
 ---
 
-## Step 2 — Create a new project
+## Create a new project
 
 ```bash
 rapina new my-app
@@ -49,7 +54,7 @@ Open `src/main.rs`. You'll see one handler (`hello`) already wired up to `GET /`
 
 ---
 
-## Step 3 — Start the development server
+## Start the development server
 
 ```bash
 rapina dev
@@ -67,11 +72,11 @@ curl http://127.0.0.1:3000/
 {"message": "Hello from Rapina!"}
 ```
 
-You're up. Now let's build something.
+You're up. Now let's build something real.
 
 ---
 
-## Step 4 — Add your first route
+## Add your first route
 
 You'll add a `GET /users` endpoint that returns a list of users.
 
@@ -156,7 +161,7 @@ curl http://127.0.0.1:3000/users
 
 ---
 
-## Step 5 — Add a route with a path parameter
+## Add a route with a path parameter
 
 Add `GET /users/:id` to retrieve a single user. Add this handler below `list_users`:
 
@@ -219,7 +224,7 @@ Every error from Rapina includes a `trace_id`. You can correlate a user-reported
 
 ---
 
-## Step 6 — Add a POST route
+## Add a POST route
 
 Add `POST /users` to accept a new user:
 
@@ -269,7 +274,7 @@ If the body is missing or has the wrong shape, Rapina returns a `422` with detai
 
 ---
 
-## Step 7 — Inspect your routes
+## Inspect your routes
 
 ```bash
 rapina routes
@@ -287,7 +292,7 @@ All registered routes visible at a glance.
 
 ---
 
-## Step 8 — Export the OpenAPI spec
+## Export the OpenAPI spec
 
 Rapina generates an OpenAPI spec from your code. No YAML to write, no annotations to maintain separately.
 
@@ -398,3 +403,6 @@ async fn main() -> std::io::Result<()> {
 
 And for free: structured error responses with trace IDs, an OpenAPI spec, request logging, and a health check at `/__rapina/health`.
 
+---
+
+Want to keep going? Check out the [tutorial series](/tutorial) for deeper dives into authentication, validation, database integration, and more.
