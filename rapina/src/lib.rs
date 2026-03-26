@@ -141,7 +141,7 @@ pub mod prelude {
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
-    pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus};
+    pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus, Jobs};
     pub use crate::middleware::{
         KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
     };

@@ -48,8 +48,8 @@
 //! ```
 //!
 //! The macro generates a `send_welcome_email(payload) -> JobRequest` helper.
-//! The `Jobs` extractor and `enqueue()` API for dispatching jobs from handlers
-//! are planned for a follow-up release.
+//! Use the [`Jobs`] extractor in handlers to dispatch jobs via [`Jobs::enqueue`]
+//! or [`Jobs::enqueue_with`] for transactional enqueue.
 //!
 //! # DI Limitations
 //!
@@ -70,6 +70,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -125,6 +126,129 @@ pub struct JobDescriptor {
 
 inventory::collect!(JobDescriptor);
 
+/// Extractor that provides access to the job queue from HTTP handlers.
+///
+/// Captures the database connection pool from `AppState` and the `trace_id`
+/// from the current request's [`RequestContext`](crate::context::RequestContext), so enqueued jobs inherit
+/// the request's observability context automatically.
+///
+/// Two enqueue methods:
+///
+/// - [`enqueue`](Self::enqueue) grabs its own connection from the pool.
+///   This is the 90% case.
+/// - [`enqueue_with`](Self::enqueue_with) uses the caller's connection or
+///   transaction. The job row is committed atomically with the surrounding
+///   business logic — if the transaction rolls back, the job is never enqueued.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use rapina::prelude::*;
+///
+/// #[post("/users")]
+/// async fn create_user(body: Json<CreateUserRequest>, db: Db, jobs: Jobs) -> Result<StatusCode> {
+///     // Simple enqueue — independent of any transaction.
+///     jobs.enqueue(send_report(ReportPayload { user_id: 42 })).await?;
+///
+///     // Transactional enqueue — job row commits atomically with the user row.
+///     let txn = db.conn().begin().await?;
+///     let user = User::insert(&txn, &body).await?;
+///     jobs.enqueue_with(&txn, send_welcome_email(WelcomeEmailPayload {
+///         email: user.email.clone(),
+///     })).await?;
+///     txn.commit().await?;
+///
+///     Ok(StatusCode::CREATED)
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct Jobs {
+    pool: DatabaseConnection,
+    pub(crate) trace_id: Option<String>,
+}
+
+impl Jobs {
+    /// Creates a `Jobs` instance from a connection pool and optional trace id.
+    ///
+    /// Normally constructed by the `FromRequestParts` implementation. Public
+    /// so code that manages its own connection lifecycle outside the request
+    /// cycle (e.g., a job handler that enqueues a follow-up job) can construct
+    /// it directly.
+    pub fn new(pool: DatabaseConnection, trace_id: Option<String>) -> Self {
+        Self { pool, trace_id }
+    }
+
+    /// Enqueues a job using a connection from the pool.
+    ///
+    /// The job is inserted independently of any caller-managed transaction.
+    /// For transactional enqueue, see [`enqueue_with`](Self::enqueue_with).
+    pub async fn enqueue(&self, req: impl Into<JobRequest>) -> crate::error::Result<JobId> {
+        insert_job(&self.pool, req.into(), self.trace_id.as_deref()).await
+    }
+
+    /// Enqueues a job using the caller's connection or transaction.
+    ///
+    /// Both `DatabaseConnection` and `DatabaseTransaction` implement
+    /// `ConnectionTrait`, so the same method handles both cases.
+    pub async fn enqueue_with<C>(
+        &self,
+        conn: &C,
+        req: impl Into<JobRequest>,
+    ) -> crate::error::Result<JobId>
+    where
+        C: ConnectionTrait,
+    {
+        insert_job(conn, req.into(), self.trace_id.as_deref()).await
+    }
+}
+
+async fn insert_job<C>(
+    conn: &C,
+    req: JobRequest,
+    trace_id: Option<&str>,
+) -> crate::error::Result<JobId>
+where
+    C: ConnectionTrait,
+{
+    // rapina_jobs is PostgreSQL-only (gen_random_uuid(), partial indexes).
+    // If this panics, the user enabled a non-postgres database feature.
+    debug_assert_eq!(
+        conn.get_database_backend(),
+        DbBackend::Postgres,
+        "Jobs require PostgreSQL — rapina_jobs uses gen_random_uuid() and partial indexes"
+    );
+
+    let stmt = build_insert_stmt(req, trace_id);
+
+    let row = conn
+        .query_one(stmt)
+        .await
+        .map_err(|e| crate::error::Error::internal(format!("failed to enqueue job: {e}")))?
+        .ok_or_else(|| crate::error::Error::internal("INSERT INTO rapina_jobs returned no rows"))?;
+
+    let id: Uuid = row
+        .try_get("", "id")
+        .map_err(|e| crate::error::Error::internal(format!("failed to read job id: {e}")))?;
+
+    Ok(id)
+}
+
+fn build_insert_stmt(req: JobRequest, trace_id: Option<&str>) -> Statement {
+    Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO rapina_jobs (job_type, queue, payload, max_retries, trace_id) \
+         VALUES ($1, $2, $3, $4, $5) \
+         RETURNING id",
+        [
+            req.job_type.into(),
+            req.queue.into(),
+            req.payload.into(),
+            req.max_retries.into(),
+            trace_id.map(ToOwned::to_owned).into(),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +290,61 @@ mod tests {
             max_retries: i32::MAX,
         };
         assert_eq!(req.max_retries, i32::MAX);
+    }
+
+    #[test]
+    fn insert_stmt_has_correct_sql() {
+        let req = JobRequest {
+            job_type: "send_email",
+            payload: serde_json::json!({"to": "a@b.com"}),
+            queue: "emails",
+            max_retries: 5,
+        };
+        let stmt = build_insert_stmt(req, Some("trace-123"));
+        assert!(stmt.sql.contains("INSERT INTO rapina_jobs"));
+        assert!(stmt.sql.contains("RETURNING id"));
+    }
+
+    #[test]
+    fn insert_stmt_uses_postgres_backend() {
+        let req = JobRequest {
+            job_type: "t",
+            payload: serde_json::Value::Null,
+            queue: "default",
+            max_retries: 3,
+        };
+        let stmt = build_insert_stmt(req, None);
+        assert_eq!(stmt.db_backend, DbBackend::Postgres);
+    }
+
+    #[test]
+    fn insert_stmt_trace_id_some() {
+        let req = JobRequest {
+            job_type: "t",
+            payload: serde_json::Value::Null,
+            queue: "default",
+            max_retries: 3,
+        };
+        let stmt = build_insert_stmt(req, Some("abc-123"));
+        // 5 params: job_type, queue, payload, max_retries, trace_id
+        assert_eq!(stmt.values.as_ref().map(|v| v.0.len()), Some(5));
+        let trace_val = &stmt.values.as_ref().unwrap().0[4];
+        assert_eq!(
+            *trace_val,
+            sea_orm::Value::String(Some(Box::new("abc-123".to_owned())))
+        );
+    }
+
+    #[test]
+    fn insert_stmt_trace_id_none() {
+        let req = JobRequest {
+            job_type: "t",
+            payload: serde_json::Value::Null,
+            queue: "default",
+            max_retries: 3,
+        };
+        let stmt = build_insert_stmt(req, None);
+        let trace_val = &stmt.values.as_ref().unwrap().0[4];
+        assert_eq!(*trace_val, sea_orm::Value::String(None));
     }
 }
