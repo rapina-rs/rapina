@@ -30,7 +30,7 @@
 
 use rapina::prelude::*;
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize, Validate, JsonSchema)]
 struct CreateUser {
     #[validate(length(min = 1, max = 50))]
     name: String,

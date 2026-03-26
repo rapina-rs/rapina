@@ -14,7 +14,7 @@ use crate::error::ErrorVariant;
 /// ```
 /// use rapina::introspection::RouteInfo;
 ///
-/// let info = RouteInfo::new("GET", "/users/:id", "get_user", None, Vec::new());
+/// let info = RouteInfo::new("GET", "/users/:id", "get_user", None, None, None::<String>, None, Vec::new());
 /// assert_eq!(info.method, "GET");
 /// assert_eq!(info.path, "/users/:id");
 /// ```
@@ -29,6 +29,15 @@ pub struct RouteInfo {
     /// JSON Schema for the success response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<serde_json::Value>,
+    /// JSON Schema for the request body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_schema: Option<serde_json::Value>,
+    /// Content type for the request body (e.g., "application/json").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_content_type: Option<String>,
+    /// Whether the request body is required (true) or optional (false).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_body_required: Option<bool>,
     /// Error variants for OpenAPI documentation.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub error_responses: Vec<ErrorVariant>,
@@ -36,11 +45,15 @@ pub struct RouteInfo {
 
 impl RouteInfo {
     /// Creates a new RouteInfo with the given metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         method: impl Into<String>,
         path: impl Into<String>,
         handler_name: impl Into<String>,
         response_schema: Option<serde_json::Value>,
+        request_schema: Option<serde_json::Value>,
+        request_content_type: Option<impl Into<String>>,
+        request_body_required: Option<bool>,
         error_responses: Vec<ErrorVariant>,
     ) -> Self {
         Self {
@@ -48,6 +61,9 @@ impl RouteInfo {
             path: path.into(),
             handler_name: handler_name.into(),
             response_schema,
+            request_schema,
+            request_content_type: request_content_type.map(|s| s.into()),
+            request_body_required,
             error_responses,
         }
     }
@@ -59,7 +75,16 @@ mod tests {
 
     #[test]
     fn test_route_info_new() {
-        let info = RouteInfo::new("GET", "/users", "list_users", None, Vec::new());
+        let info = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        );
         assert_eq!(info.method, "GET");
         assert_eq!(info.path, "/users");
         assert_eq!(info.handler_name, "list_users");
@@ -67,20 +92,47 @@ mod tests {
 
     #[test]
     fn test_route_info_with_params() {
-        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, Vec::new());
+        let info = RouteInfo::new(
+            "GET",
+            "/users/:id",
+            "get_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        );
         assert_eq!(info.path, "/users/:id");
     }
 
     #[test]
     fn test_route_info_clone() {
-        let info = RouteInfo::new("POST", "/users", "create_user", None, Vec::new());
+        let info = RouteInfo::new(
+            "POST",
+            "/users",
+            "create_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        );
         let cloned = info.clone();
         assert_eq!(info, cloned);
     }
 
     #[test]
     fn test_route_info_serialize() {
-        let info = RouteInfo::new("GET", "/health", "health_check", None, Vec::new());
+        let info = RouteInfo::new(
+            "GET",
+            "/health",
+            "health_check",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        );
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"method\":\"GET\""));
         assert!(json.contains("\"path\":\"/health\""));
@@ -89,7 +141,16 @@ mod tests {
 
     #[test]
     fn test_route_info_debug() {
-        let info = RouteInfo::new("DELETE", "/users/:id", "delete_user", None, Vec::new());
+        let info = RouteInfo::new(
+            "DELETE",
+            "/users/:id",
+            "delete_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+        );
         let debug = format!("{:?}", info);
         assert!(debug.contains("DELETE"));
         assert!(debug.contains("/users/:id"));
@@ -102,7 +163,16 @@ mod tests {
             code: "NOT_FOUND",
             description: "Resource not found",
         }];
-        let info = RouteInfo::new("GET", "/users/:id", "get_user", None, errors);
+        let info = RouteInfo::new(
+            "GET",
+            "/users/:id",
+            "get_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            errors,
+        );
         assert_eq!(info.error_responses.len(), 1);
         assert_eq!(info.error_responses[0].status, 404);
     }

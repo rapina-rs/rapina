@@ -158,6 +158,12 @@ enum MigrateCommands {
 enum JobsCommands {
     /// Set up the background jobs migration in your project
     Init,
+    /// Show job counts by status (pending, running, completed, failed)
+    List {
+        /// Show individual failed jobs with error details
+        #[arg(long)]
+        failed: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -199,7 +205,7 @@ enum OpenapiCommands {
         #[arg(short, long)]
         output: Option<String>,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -211,7 +217,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -226,7 +232,7 @@ enum OpenapiCommands {
         #[arg(default_value = "openapi.json")]
         file: String,
         /// Port to connect to
-        #[arg(short, long, env = "SERVER_PORT", default_value = "3000")]
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
         port: u16,
         /// Host to connect to
         #[arg(long, default_value = "127.0.0.1")]
@@ -235,6 +241,11 @@ enum OpenapiCommands {
 }
 
 fn main() {
+    // Load .env file if present (before clap parses, so env vars are available).
+    dotenvy::dotenv().ok();
+    // Propagate SERVER_PORT / PORT → RAPINA_PORT for backwards compat.
+    common::env::propagate_port_env();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -340,15 +351,35 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Some(Commands::Jobs { command }) => {
-            let result = match command {
-                JobsCommands::Init => commands::jobs::init(),
-            };
-            if let Err(e) = result {
-                eprintln!("{} {}", "Error:".red().bold(), e);
-                std::process::exit(1);
+        Some(Commands::Jobs { command }) => match command {
+            JobsCommands::Init => {
+                if let Err(e) = commands::jobs::init() {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
             }
-        }
+            JobsCommands::List { failed } => {
+                #[cfg(feature = "jobs")]
+                {
+                    let rt =
+                        tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                    if let Err(e) = rt.block_on(commands::jobs::list(failed)) {
+                        eprintln!("{} {}", "Error:".red().bold(), e);
+                        std::process::exit(1);
+                    }
+                }
+                #[cfg(not(feature = "jobs"))]
+                {
+                    let _ = failed;
+                    eprintln!(
+                        "{} The jobs list command requires a database feature. \
+                             Reinstall with: cargo install rapina-cli --features jobs-postgres",
+                        "Error:".red().bold()
+                    );
+                    std::process::exit(1);
+                }
+            }
+        },
         Some(Commands::Import { command }) => {
             #[allow(unreachable_patterns)]
             let result: Result<(), String> = match command {

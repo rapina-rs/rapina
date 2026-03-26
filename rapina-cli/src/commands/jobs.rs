@@ -4,6 +4,9 @@ use std::path::Path;
 
 use super::verify_rapina_project;
 
+#[cfg(feature = "jobs")]
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+
 /// Set up the background jobs migration in the current project.
 ///
 /// Creates or updates `src/migrations/mod.rs` to include the framework's
@@ -72,9 +75,224 @@ fn fresh_mod_rs() -> &'static str {
      }\n"
 }
 
-#[cfg(test)]
+/// Query `rapina_jobs` and display counts by status.
+///
+/// With `--failed`, also lists individual failed jobs with their error details.
+#[cfg(feature = "jobs")]
+pub async fn list(failed: bool) -> Result<(), String> {
+    let conn = connect_to_db().await?;
+
+    println!();
+    println!("  {} Querying job counts...", "→".cyan());
+
+    let rows = conn
+        .query_all(Statement::from_string(
+            conn.get_database_backend(),
+            "SELECT status, CAST(COUNT(*) AS bigint) AS count \
+             FROM rapina_jobs GROUP BY status ORDER BY status"
+                .to_string(),
+        ))
+        .await
+        .map_err(|e| format!("Failed to query rapina_jobs: {e}"))?;
+
+    let mut counts = std::collections::HashMap::<String, i64>::new();
+    for row in &rows {
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|e| format!("Failed to read status: {e}"))?;
+        let count: i64 = row
+            .try_get("", "count")
+            .map_err(|e| format!("Failed to read count: {e}"))?;
+        counts.insert(status, count);
+    }
+
+    println!();
+    println!("  {}  {}", "STATUS      ".bold(), "COUNT".bold());
+    println!("  ────────────  ─────");
+
+    let known_statuses = ["pending", "running", "completed", "failed"];
+    let mut total = 0i64;
+    for status in known_statuses {
+        let count = *counts.get(status).unwrap_or(&0);
+        total += count;
+        // Pad the raw label first so ANSI codes don't break alignment.
+        let padding = " ".repeat(12usize.saturating_sub(status.len()));
+        let label = match status {
+            "pending" => status.yellow().to_string(),
+            "running" => status.cyan().to_string(),
+            "completed" => status.green().to_string(),
+            "failed" => status.red().to_string(),
+            _ => status.to_string(),
+        };
+        println!("  {}{}  {}", label, padding, count);
+    }
+
+    // Show any unexpected statuses so nothing is silently hidden.
+    for (status, &count) in &counts {
+        if !known_statuses.contains(&status.as_str()) {
+            total += count;
+            let padding = " ".repeat(12usize.saturating_sub(status.len()));
+            println!("  {}{}  {}", status.magenta(), padding, count);
+        }
+    }
+
+    println!();
+    println!("  {} {} total job(s)", "✓".green(), total);
+
+    if failed {
+        let fail_rows = conn
+            .query_all(Statement::from_string(
+                conn.get_database_backend(),
+                "SELECT CAST(id AS text) AS id, queue, job_type, attempts, max_retries, last_error \
+                 FROM rapina_jobs WHERE status = 'failed' \
+                 ORDER BY created_at DESC"
+                    .to_string(),
+            ))
+            .await
+            .map_err(|e| format!("Failed to query failed jobs: {e}"))?;
+
+        println!();
+
+        if fail_rows.is_empty() {
+            println!("  {} No failed jobs", "✓".green());
+        } else {
+            println!(
+                "  {:<36}  {:<12}  {:<20}  {:<6}  {}",
+                "ID".bold(),
+                "QUEUE".bold(),
+                "JOB TYPE".bold(),
+                "ATT.".bold(),
+                "LAST ERROR".bold(),
+            );
+            println!(
+                "  {}  {}  {}  {}  {}",
+                "─".repeat(36),
+                "─".repeat(12),
+                "─".repeat(20),
+                "─".repeat(6),
+                "─".repeat(40),
+            );
+
+            for row in &fail_rows {
+                let id: String = row
+                    .try_get("", "id")
+                    .map_err(|e| format!("Failed to read id: {e}"))?;
+                let queue: String = row
+                    .try_get("", "queue")
+                    .map_err(|e| format!("Failed to read queue: {e}"))?;
+                let job_type: String = row
+                    .try_get("", "job_type")
+                    .map_err(|e| format!("Failed to read job_type: {e}"))?;
+                let attempts: i32 = row
+                    .try_get("", "attempts")
+                    .map_err(|e| format!("Failed to read attempts: {e}"))?;
+                let max_retries: i32 = row
+                    .try_get("", "max_retries")
+                    .map_err(|e| format!("Failed to read max_retries: {e}"))?;
+                let last_error: Option<String> = row
+                    .try_get("", "last_error")
+                    .map_err(|e| format!("Failed to read last_error: {e}"))?;
+
+                let error_display = last_error.as_deref().unwrap_or("—");
+                let truncated_error = truncate_chars(error_display, 40);
+                let short_job_type = truncate_chars(&job_type, 20);
+
+                let id_pad = " ".repeat(36usize.saturating_sub(id.len()));
+                println!(
+                    "  {}{}  {:<12}  {:<20}  {:<6}  {}",
+                    id.red(),
+                    id_pad,
+                    queue,
+                    short_job_type,
+                    format!("{}/{}", attempts, max_retries),
+                    truncated_error,
+                );
+            }
+
+            println!();
+            println!("  {} {} failed job(s)", "!".red().bold(), fail_rows.len());
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
+#[cfg(feature = "jobs")]
+async fn connect_to_db() -> Result<DatabaseConnection, String> {
+    dotenvy::dotenv().ok();
+
+    let database_url = std::env::var("DATABASE_URL")
+        .map_err(|_| "DATABASE_URL environment variable is not set".to_string())?;
+
+    sea_orm::Database::connect(&database_url)
+        .await
+        .map_err(|e| format!("Failed to connect to database: {e}"))
+}
+
+/// Truncate a string to `max` visible characters, appending "..." if it exceeds
+/// the limit. Safe for multi-byte UTF-8 — never splits a codepoint.
+#[cfg(feature = "jobs")]
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    if max < 4 {
+        return ".".repeat(max);
+    }
+    let end = s
+        .char_indices()
+        .nth(max.saturating_sub(3))
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    format!("{}...", &s[..end])
+}
+
+#[cfg(all(test, feature = "jobs"))]
 mod tests {
     use super::*;
+
+    // -- truncate_chars --
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate_chars("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_at_exact_limit() {
+        assert_eq!(truncate_chars("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_long_ascii() {
+        let result = truncate_chars("abcdefghijklmnop", 10);
+        assert!(result.ends_with("..."));
+        assert!(result.chars().count() <= 10);
+    }
+
+    #[test]
+    fn truncate_multibyte_safe() {
+        // 5 CJK characters = 5 chars but 15 bytes
+        let input = "日本語テスト";
+        let result = truncate_chars(input, 5);
+        assert!(result.ends_with("..."));
+        // Should not panic, and result should be valid UTF-8
+        assert!(result.chars().count() <= 5);
+    }
+
+    #[test]
+    fn truncate_empty_string() {
+        assert_eq!(truncate_chars("", 5), "");
+    }
+
+    #[test]
+    fn truncate_with_small_max() {
+        assert_eq!(truncate_chars("abcdef", 3), "...");
+        assert_eq!(truncate_chars("abcdef", 2), "..");
+        assert_eq!(truncate_chars("abcdef", 1), ".");
+        assert_eq!(truncate_chars("abcdef", 0), "");
+    }
 
     // -- is_already_configured --
 

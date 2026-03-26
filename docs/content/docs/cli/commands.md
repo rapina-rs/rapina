@@ -289,6 +289,47 @@ The migration creates the `rapina_jobs` table used by the background jobs system
 
 > **Note:** The jobs migration requires PostgreSQL. It uses `gen_random_uuid()` and partial indexes, which are not available in MySQL or SQLite.
 
+## rapina jobs list
+
+Show job counts grouped by status:
+
+```bash
+rapina jobs list
+```
+
+Output:
+
+```
+  STATUS        COUNT
+  ────────────  ─────
+  pending       3
+  running       1
+  completed     42
+  failed        2
+
+  ✓ 48 total job(s)
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--failed` | Also list individual failed jobs with error details |
+
+With `--failed`:
+
+```bash
+rapina jobs list --failed
+```
+
+This appends a table of failed jobs showing ID, queue, job type, attempt count (`attempts/max_retries`), and the last error message.
+
+Requires the `jobs` feature:
+
+```bash
+cargo install rapina-cli --features jobs-postgres
+```
+
 ## rapina openapi export
 
 Export the OpenAPI specification to a file:
@@ -297,11 +338,15 @@ Export the OpenAPI specification to a file:
 rapina openapi export -o openapi.json
 ```
 
+> When no output file is given, the spec is written to stdout.
+
 Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-o, --output <FILE>` | Output file | openapi.json |
+| `-o, --output <FILE>` | Output file | stdout |
+| `-p, --port <PORT>` | Port to connect to (reads `$RAPINA_PORT`, falling back to `$SERVER_PORT`) | 3000 |
+| `--host <HOST>` | Host to connect to | 127.0.0.1 |
 
 ## rapina openapi check
 

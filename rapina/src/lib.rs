@@ -141,7 +141,7 @@ pub mod prelude {
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
-    pub use crate::jobs::{JobRow, JobStatus};
+    pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus};
     pub use crate::middleware::{
         KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
     };
@@ -159,17 +159,18 @@ pub mod prelude {
     pub use tracing;
     pub use validator::Validate;
 
-    pub use rapina_macros::{Config, delete, get, patch, post, public, put, relay, schema};
+    pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
 }
 
 // Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
-pub use rapina_macros::{Config, delete, get, patch, post, public, put, relay, schema};
+pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
 
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
 pub use rust_decimal;
 pub use schemars;
+pub use serde_json;
 pub use uuid;
 
 #[doc(hidden)]

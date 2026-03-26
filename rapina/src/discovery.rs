@@ -33,6 +33,12 @@ pub struct RouteDescriptor {
     pub is_public: bool,
     /// Returns the JSON Schema for the response type, if available
     pub response_schema: fn() -> Option<serde_json::Value>,
+    /// Returns the JSON Schema for the request body, if available
+    pub request_schema: fn() -> Option<serde_json::Value>,
+    /// Returns the content type for the request body (e.g., "application/json")
+    pub request_content_type: fn() -> Option<&'static str>,
+    /// Returns whether the request body is required (true) or optional (false)
+    pub request_body_required: fn() -> Option<bool>,
     /// Returns documented error variants for this route
     pub error_responses: fn() -> Vec<ErrorVariant>,
     /// Registers this route on the given Router and returns it
