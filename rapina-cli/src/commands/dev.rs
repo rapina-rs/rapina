@@ -214,7 +214,7 @@ fn get_binary_name(parsed: toml::Value) -> Result<String, String> {
 /// Print the development server banner.
 fn print_banner(config: &DevConfig) {
     let url = format!("http://{}:{}", config.host, config.port);
-    let routes_url = format!("{}/.__rapina/routes", url);
+    let routes_url = format!("{}/__rapina/routes", url);
 
     // Box is 61 chars wide total, 59 chars inner content
     let b = "│".custom_color(colors::mauve());
