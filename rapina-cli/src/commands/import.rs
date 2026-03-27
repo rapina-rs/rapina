@@ -131,6 +131,14 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
 // NormalizedType -> FieldInfo conversion
 // ---------------------------------------------------------------------------
 
+fn wrap_nullable_type(inner: &str, nullable: bool) -> String {
+    if nullable {
+        format!("Option<{inner}>")
+    } else {
+        inner.to_owned()
+    }
+}
+
 fn normalized_to_field_info(
     col_name: &str,
     col_type: &NormalizedType,
@@ -159,10 +167,13 @@ fn normalized_to_field_info(
         NormalizedType::Unmappable(_) => return None,
     };
 
+    let rust_type = wrap_nullable_type(rust_type, is_nullable);
+    let schema_type = wrap_nullable_type(schema_type, is_nullable);
+
     Some(FieldInfo {
         name: col_name.to_string(),
-        rust_type: rust_type.to_string(),
-        schema_type: schema_type.to_string(),
+        rust_type,
+        schema_type,
         column_method: format!("{}{}", column_base, null_suffix),
         nullable: is_nullable,
     })
@@ -724,6 +735,8 @@ mod tests {
     #[test]
     fn test_normalized_to_field_info_nullable() {
         let fi = normalized_to_field_info("bio", &NormalizedType::Text, true).unwrap();
+        assert_eq!(fi.rust_type, "Option<String>");
+        assert_eq!(fi.schema_type, "Option<Text>");
         assert_eq!(fi.column_method, ".text().null()");
     }
 
