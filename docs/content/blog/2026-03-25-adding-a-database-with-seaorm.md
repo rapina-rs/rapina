@@ -8,7 +8,7 @@ categories = ["tutorials"]
 tags = ["database", "seaorm", "postgres", "sqlite"]
 
 [extra]
-author = "Rapina Team"
+author = "Ricardo Uemura"
 +++
 
 Rapina ships with first-class [SeaORM](https://www.sea-ql.org/SeaORM/) support behind a feature flag. This tutorial walks you through the full setup: enabling the feature, defining your first entity, migrating the schema, and querying data from a handler.
@@ -20,6 +20,9 @@ Rapina's database integration is opt-in. Add the feature flag for your database 
 ```toml
 [dependencies]
 rapina = { version = "0.10", features = ["postgres"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
 Replace `postgres` with `mysql` or `sqlite` depending on your target database. The `postgres` feature pulls in `sea-orm` with the `sqlx-postgres` backend and runtime support for Tokio with `rustls`.
@@ -60,7 +63,7 @@ async fn main() -> std::io::Result<()> {
 
     Rapina::new()
         .with_database(db_config).await?
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
@@ -142,15 +145,6 @@ use rapina::migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-#[derive(DeriveIden)]
-enum Posts {
-    Table,
-    Id,
-    Title,
-    Body,
-    Published,
-}
-
 #[async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -168,6 +162,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Posts::Title).string().not_null())
                     .col(ColumnDef::new(Posts::Body).text().not_null())
                     .col(ColumnDef::new(Posts::Published).boolean().not_null())
+                    .col(ColumnDef::new(Posts::CreatedAt).timestamp_with_time_zone().not_null())
+                    .col(ColumnDef::new(Posts::UpdatedAt).timestamp_with_time_zone().not_null())
                     .to_owned(),
             )
             .await
@@ -179,6 +175,17 @@ impl MigrationTrait for Migration {
             .await
     }
 }
+
+#[derive(DeriveIden)]
+enum Posts {
+    Table,
+    Id,
+    Title,
+    Body,
+    Published,
+    CreatedAt,
+    UpdatedAt,
+}
 ```
 
 ### Run migrations on startup
@@ -186,14 +193,18 @@ impl MigrationTrait for Migration {
 Chain `.run_migrations()` after `.with_database()`. Pending migrations are applied before the server starts listening, and already-applied ones are skipped:
 
 ```rust
+use rapina::prelude::*;
+use rapina::database::DatabaseConfig;
+
 mod migrations;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     Rapina::new()
         .with_database(DatabaseConfig::from_env()?).await?
-        .run_migrations::<migrations::Migrator>().await?
-        .router(router)
+        .run_migrations::<migrations::Migrator>()
+        .await?
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
@@ -207,6 +218,7 @@ Use the `Db` extractor to get a connection from the pool. Pass `db.conn()` to an
 use rapina::database::{Db, DbError};
 use rapina::prelude::*;
 use rapina::sea_orm::EntityTrait;
+use rapina::schemars;
 
 #[derive(Serialize, JsonSchema)]
 struct PostResponse {
@@ -220,7 +232,7 @@ async fn list_posts(db: Db) -> Result<Json<Vec<PostResponse>>> {
     let posts = Post::find()
         .all(db.conn())
         .await
-        .map_err(DbError::from)?;
+        .map_err(DbError)?;
 
     let response = posts
         .into_iter()
@@ -240,14 +252,16 @@ async fn list_posts(db: Db) -> Result<Json<Vec<PostResponse>>> {
 ### Fetch a single record
 
 ```rust
+use rapina::database::{Db, DbError};
+use rapina::prelude::*;
 use rapina::sea_orm::EntityTrait;
 
 #[get("/posts/:id")]
-async fn get_post(id: Path<i32>, db: Db) -> Result<Json<PostResponse>> {
+async fn get_post(db: Db, id: Path<i32>) -> Result<Json<PostResponse>> {
     let post = Post::find_by_id(*id)
         .one(db.conn())
         .await
-        .map_err(DbError::from)?
+        .map_err(DbError)?
         .ok_or_else(|| Error::not_found("post not found"))?;
 
     Ok(Json(PostResponse {
@@ -261,6 +275,9 @@ async fn get_post(id: Path<i32>, db: Db) -> Result<Json<PostResponse>> {
 ### Insert a record
 
 ```rust
+use rapina::database::{Db, DbError};
+use rapina::prelude::*;
+use rapina::schemars;
 use rapina::sea_orm::{ActiveModelTrait, Set};
 
 #[derive(Deserialize, JsonSchema, Validate)]
@@ -272,17 +289,17 @@ struct CreatePost {
 
 #[post("/posts")]
 async fn create_post(
-    body: Validated<Json<CreatePost>>,
+    payload: Validated<Json<CreatePost>>,
     db: Db,
 ) -> Result<Json<PostResponse>> {
     let new_post = post::ActiveModel {
-        title: Set(body.title.clone()),
-        body: Set(body.body.clone()),
+        title: Set(payload.title.clone()),
+        body: Set(payload.body.clone()),
         published: Set(false),
         ..Default::default()
     };
 
-    let post = new_post.insert(db.conn()).await.map_err(DbError::from)?;
+    let post = new_post.insert(db.conn()).await.map_err(DbError)?;
 
     Ok(Json(PostResponse {
         id: post.id,
@@ -297,8 +314,10 @@ async fn create_post(
 Here's the complete `main.rs` for a minimal posts API with a connected database:
 
 ```rust
-use rapina::database::DatabaseConfig;
+use rapina::database::{DatabaseConfig, Db, DbError};
 use rapina::prelude::*;
+use rapina::schemars;
+use rapina::sea_orm::EntityTrait;
 
 mod migrations;
 
@@ -319,13 +338,10 @@ struct PostResponse {
 
 #[get("/posts")]
 async fn list_posts(db: Db) -> Result<Json<Vec<PostResponse>>> {
-    use rapina::sea_orm::EntityTrait;
-    use rapina::database::DbError;
-
     let posts = Post::find()
         .all(db.conn())
         .await
-        .map_err(DbError::from)?;
+        .map_err(DbError)?;
 
     Ok(Json(
         posts
@@ -335,16 +351,13 @@ async fn list_posts(db: Db) -> Result<Json<Vec<PostResponse>>> {
     ))
 }
 
-fn router(r: Router) -> Router {
-    r.route(list_posts)
-}
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     Rapina::new()
         .with_database(DatabaseConfig::from_env()?).await?
-        .run_migrations::<migrations::Migrator>().await?
-        .router(router)
+        .run_migrations::<migrations::Migrator>()
+        .await?
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
