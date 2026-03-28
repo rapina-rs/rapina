@@ -43,10 +43,12 @@ async fn main() -> std::io::Result<()> {
 
     // Enable the audience validation (this is a _must have_ in production environments!).
     // Only turn it off deliberately by calling "jwks_validation.validate_aud = false" if you know what you are doing!
-    const TEST_AUDIENCE: &str = "407408718192.apps.googleusercontent.com";
+    const GOOGLE_OAUTH_PLAYGROUND_AUDIENCE: &str = "407408718192.apps.googleusercontent.com";
+    const GOOGLE_ISSUER: &str = "https://accounts.google.com";
+
     let mut jwks_validation = jwt::default_validation();
-    jwks_validation.set_audience(&[TEST_AUDIENCE]);
-    jwks_validation.validate_aud = false;
+    jwks_validation.set_audience(&[GOOGLE_OAUTH_PLAYGROUND_AUDIENCE]);
+    jwks_validation.set_issuer(&[GOOGLE_ISSUER]);
 
     Rapina::new()
         .state(jwks_client)

@@ -99,7 +99,7 @@ where
         match decode::<JsonWebToken<T>>(token, &decoding_key?, &validation) {
             Ok(decoded_token) => Ok(decoded_token.claims),
             Err(e) => Err(Error::unauthorized(format!(
-                "Failed to decode token: {:?}",
+                "failed to decode token: {:?}",
                 e
             ))),
         }
@@ -131,7 +131,7 @@ where
             .ok_or_else(|| Error::unauthorized("missing authorization header"))?
             .to_str()
             .map_err(|_| {
-                Error::unauthorized("Authorization header could not be parsed as String")
+                Error::unauthorized("authorization header could not be parsed as String")
             })?;
 
         let jwks_client: Option<&JwksClient> = state.get::<JwksClient>();
@@ -143,7 +143,7 @@ where
         };
 
         let Some(jwks) = jwks else {
-            return Err(Error::internal("Internal authentication error"));
+            return Err(Error::internal("internal authentication error"));
         };
 
         JsonWebToken::new(jwks, validation, value.to_string())
@@ -331,6 +331,6 @@ mod tests {
 
         let error = result.expect_err("Expected extraction to fail");
         assert_eq!(error.status(), 500);
-        assert!(error.message().contains("Internal authentication error"));
+        assert!(error.message().contains("internal authentication error"));
     }
 }
