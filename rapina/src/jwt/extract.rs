@@ -17,19 +17,16 @@ pub struct DefaultClaims {}
 ///
 /// Parses the `Authorization` header and validates the structure of the header value to be a JSON Web Token
 /// Returns 400 Bad Request if the header value is empty or parsing fails.
+/// Returns 401 Unauthorized if the `kid` of the JWT is missing in the configured JWKS or the JWT fails the validation based on the configured `validation` (covering token expiration, token audience, ...)
 ///
 /// # Examples
 ///
 /// ```ignore
 /// use rapina::prelude::*;
 ///
-/// #[derive(Clone)]
-/// struct AppConfig {
-///     db_url: String,
-/// }
 ///
 /// #[get("/config")]
-/// async fn get_config(state: JsonWebToken) -> StatusCode {
+/// async fn get_config(token: JsonWebToken) -> StatusCode {
 ///     StatusCode::Ok
 /// }
 /// ```
@@ -135,7 +132,6 @@ where
         let jwks_client: Option<&JwksClient> = state.get::<JwksClient>();
         let validation: Option<&Validation> = state.get::<Validation>();
 
-        println!("JWKS config: {:?}", jwks_client.is_some());
 
         let jwks: Option<JwkSet> = match jwks_client {
             Some(client) => Some(client.get_jwks_content().await?),
@@ -146,7 +142,6 @@ where
             return Err(Error::internal("Internal authentication error"));
         };
 
-        println!("JWKS: {:?}", jwks);
 
         JsonWebToken::new(jwks, validation, value.to_string())
     }
@@ -202,7 +197,6 @@ mod tests {
                     http::Method::GET,
                     "/realms/master/.well-known/openid-configuration",
                     |req, _, _| async move {
-                        println!("{:?}", req);
                         //host header includes 127.0.0.1 and the test server port, e.g. "host": "127.0.0.1:49222"
                         let host_header =
                             req.headers().get(header::HOST).unwrap().to_str().unwrap();
@@ -250,7 +244,6 @@ mod tests {
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
 
-        println!("{:?}", result);
         assert!(result.is_ok());
     }
 
@@ -274,7 +267,6 @@ mod tests {
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
 
-        println!("{:?}", result);
         assert!(result.is_ok());
     }
 
@@ -292,7 +284,6 @@ mod tests {
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
 
-        println!("{:?}", result);
 
         let error = result.expect_err("Expected extraction to fail");
         assert_eq!(error.status(), 401);
@@ -327,7 +318,6 @@ mod tests {
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
 
-        println!("{:?}", result);
 
         let error = result.expect_err("Expected extraction to fail");
         assert_eq!(error.status(), 401);
