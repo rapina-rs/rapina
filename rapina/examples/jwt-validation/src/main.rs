@@ -1,6 +1,4 @@
-use jsonwebtoken::jwk::JwkSet;
 use rapina::jwt;
-use rapina::jwt::JwksProvider;
 use rapina::jwt::{JsonWebToken, JwksClient};
 use rapina::prelude::*;
 
@@ -8,8 +6,8 @@ use rapina::prelude::*;
 struct GoogleClaims {
     pub email: String,
 }
-#[get("/users")]
-async fn list_users(token: JsonWebToken<GoogleClaims>) -> Json<String> {
+#[get("/email")]
+async fn get_email(token: JsonWebToken<GoogleClaims>) -> Json<String> {
     println!("Token subject: {}", token.sub);
     Json(token.claims.email)
 }
@@ -29,15 +27,13 @@ async fn main() -> std::io::Result<()> {
     6) The webserver should respond with the email address after parsing and validating the JWT
      */
 
-    let router = Router::new().get("/users", list_users);
+    let router = Router::new().get("/email", get_email);
 
-    let jwks_client = JwksClient::Oidc {
-        client: jwt::build_http_client(),
-        discovery_url: "https://accounts.google.com/.well-known/openid-configuration".to_string(),
-    };
+    let discovery_url = "https://accounts.google.com/.well-known/openid-configuration";
+    let jwks_client = JwksClient::oidc(discovery_url.to_string());
 
     /*
-    Alternatively use the direct JWKS url to fetch JwksClient::Direct:
+    Alternatively use the direct JWKS url to fetch JwksClient::Direct
 
     let jwks_client = JwksClient::Direct {
         client: jwt::build_http_client(),
@@ -45,15 +41,12 @@ async fn main() -> std::io::Result<()> {
     };
     */
 
-    // Enable the audience validation (this is a _must have_ in production environments!)
+    // Enable the audience validation (this is a _must have_ in production environments!).
+    // Only turn it off deliberately by calling "jwks_validation.validate_aud = false" if you know what you are doing!
     const TEST_AUDIENCE: &str = "407408718192.apps.googleusercontent.com";
     let mut jwks_validation = jwt::default_validation();
     jwks_validation.set_audience(&[TEST_AUDIENCE]);
-
-    let _: JwkSet = jwks_client
-        .get_jwks_content()
-        .await
-        .expect("Failed to get JWKS content");
+    jwks_validation.validate_aud = false;
 
     Rapina::new()
         .state(jwks_client)

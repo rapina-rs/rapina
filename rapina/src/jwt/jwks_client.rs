@@ -11,7 +11,7 @@ use jsonwebtoken::jwk::JwkSet;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-pub type HttpsClient = Client<HttpsConnector<HttpConnector>, Empty<Bytes>>;
+pub(crate) type HttpsClient = Client<HttpsConnector<HttpConnector>, Empty<Bytes>>;
 
 #[derive(Clone)]
 pub enum JwksClient {
@@ -25,8 +25,24 @@ pub enum JwksClient {
     },
 }
 
-pub trait JwksProvider {
+pub(crate) trait JwksProvider {
     fn get_jwks_content(&self) -> impl Future<Output = Result<JwkSet, Error>> + Send;
+}
+
+impl JwksClient {
+    pub fn oidc(discovery_url: String) -> JwksClient {
+        Self::Oidc {
+            client: build_http_client(),
+            discovery_url,
+        }
+    }
+
+    pub fn direct(jwks_url: String) -> JwksClient {
+        Self::Direct {
+            client: build_http_client(),
+            jwks_url,
+        }
+    }
 }
 
 impl JwksProvider for JwksClient {
@@ -75,7 +91,7 @@ pub fn default_validation() -> Validation {
     validation
 }
 
-pub fn build_http_client() -> HttpsClient {
+pub(crate) fn build_http_client() -> HttpsClient {
     let http_client = hyper_rustls::HttpsConnectorBuilder::new()
         .with_native_roots()
         .expect("no native root CA certificates found")

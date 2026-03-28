@@ -147,7 +147,7 @@ pub mod prelude {
     #[cfg(feature = "database")]
     pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus, Jobs};
     #[cfg(feature = "jwks")]
-    pub use crate::jwt::{JsonWebToken, JwksClient, JwksProvider};
+    pub use crate::jwt::{JsonWebToken, JwksClient};
     #[cfg(feature = "rate-limit")]
     pub use crate::middleware::{KeyExtractor, RateLimitConfig};
     pub use crate::middleware::{Middleware, Next, RequestLogConfig};

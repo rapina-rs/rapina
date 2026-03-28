@@ -1,7 +1,8 @@
 use crate::error::Error;
 use crate::extract::{FromRequestParts, PathParams};
 use crate::jwt;
-use crate::jwt::{JwksClient, JwksProvider};
+use crate::jwt::JwksClient;
+use crate::jwt::jwks_client::JwksProvider;
 use crate::state::AppState;
 use http::request::Parts;
 use jsonwebtoken::jwk::JwkSet;
@@ -64,8 +65,6 @@ where
         let token = token.trim_start_matches("Bearer ");
         let jwt_header = Self::parse_header(token)?;
 
-        tracing::debug!("jwt header: {:?}", jwt_header);
-
         let Some(kid) = jwt_header.kid else {
             return Err(Error::unauthorized(
                 "Token doesn't have a `kid` header field",
@@ -79,6 +78,12 @@ where
         };
 
         let validation = if let Some(validation) = validation {
+            if validation.validate_aud && validation.aud.is_none() {
+                tracing::debug!(
+                    "aud claim validation is enabled but validation.set_audience was not called"
+                );
+            }
+
             let mut v = validation.clone();
             v.algorithms = vec![jwt_header.alg];
             v
@@ -132,7 +137,6 @@ where
         let jwks_client: Option<&JwksClient> = state.get::<JwksClient>();
         let validation: Option<&Validation> = state.get::<Validation>();
 
-
         let jwks: Option<JwkSet> = match jwks_client {
             Some(client) => Some(client.get_jwks_content().await?),
             None => None,
@@ -141,7 +145,6 @@ where
         let Some(jwks) = jwks else {
             return Err(Error::internal("Internal authentication error"));
         };
-
 
         JsonWebToken::new(jwks, validation, value.to_string())
     }
@@ -208,20 +211,15 @@ mod tests {
 
     fn setup_jwks_client(addr: SocketAddr) -> JwksClient {
         let jwks_url = format!("http://{}/realms/master/protocol/openid-connect/cert", addr);
-        JwksClient::Direct {
-            client: jwt::build_http_client(),
-            jwks_url: jwks_url.to_string(),
-        }
+        JwksClient::direct(jwks_url.to_string())
     }
+
     fn setup_jwks_client_oidc_discovery(addr: SocketAddr) -> JwksClient {
         let oidc_discovery_url = format!(
             "http://{}/realms/master/.well-known/openid-configuration",
             addr
         );
-        JwksClient::Oidc {
-            client: jwt::build_http_client(),
-            discovery_url: oidc_discovery_url.to_string(),
-        }
+        JwksClient::oidc(oidc_discovery_url.to_string())
     }
 
     #[tokio::test]
@@ -284,7 +282,6 @@ mod tests {
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
 
-
         let error = result.expect_err("Expected extraction to fail");
         assert_eq!(error.status(), 401);
         assert!(error.message().contains("invalid token"));
@@ -317,7 +314,6 @@ mod tests {
 
         let result: Result<JsonWebToken<DefaultClaims>, Error> =
             JsonWebToken::from_request_parts(&parts, &empty_params(), &Arc::new(state)).await;
-
 
         let error = result.expect_err("Expected extraction to fail");
         assert_eq!(error.status(), 401);
