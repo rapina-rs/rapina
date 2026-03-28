@@ -154,4 +154,4 @@ For validating JWTs issued by **external identity providers** such as Google, Au
 
 Instead of a shared `JWT_SECRET`, it fetches the provider's public keys from their JWKS or OIDC discovery endpoint and verifies token signatures cryptographically.
 
-See the [JWKS Authentication](../jwks.md) page for full documentation.
+See the [JWKS Authentication](jwks.md) page for full documentation.
