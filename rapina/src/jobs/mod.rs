@@ -63,8 +63,10 @@
 
 pub mod create_rapina_jobs;
 mod model;
+pub(crate) mod retry;
 
 pub use model::{JobRow, JobStatus};
+pub use retry::RetryPolicy;
 
 use std::future::Future;
 use std::pin::Pin;
