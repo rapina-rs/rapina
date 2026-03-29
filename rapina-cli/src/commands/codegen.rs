@@ -100,6 +100,7 @@ const UNCOUNTABLE: &[&str] = &[
     "shrimp",
 ];
 
+#[cfg(any(feature = "import", feature = "import-openapi"))]
 /// Words ending in -us where the singular should not have -s stripped,
 /// and the plural is formed by adding -es (e.g. status → statuses).
 const SINGULAR_US: &[&str] = &[
@@ -150,6 +151,7 @@ pub(crate) fn pluralize(s: &str) -> String {
     format!("{}s", s)
 }
 
+#[cfg(any(feature = "import", feature = "import-openapi"))]
 pub(crate) fn singularize(s: &str) -> String {
     if UNCOUNTABLE.contains(&s) {
         return s.to_string();
@@ -973,6 +975,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(any(feature = "import", feature = "import-openapi"))]
     fn test_singularize() {
         // Regular plurals (already working)
         assert_eq!(singularize("users"), "user");
