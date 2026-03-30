@@ -701,6 +701,47 @@ mod tests {
     }
 
     #[test]
+    fn test_split_pattern_mid_segment_colon_treated_as_param_name() {
+        // The colon starts a param that reads until the next '/' or end,
+        // so ":name.txt" becomes a param whose name is "name.txt".
+        // The trie does not support suffix patterns; this test documents
+        // the current behavior so regressions are caught.
+        let segments = split_pattern("/files/:name.txt");
+        assert_eq!(segments.len(), 2);
+        match &segments[1] {
+            Segment::Param(name) => assert_eq!(*name, "name.txt"),
+            _ => panic!("expected a Param segment"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported HTTP method")]
+    fn test_trie_router_build_panics_on_extension_method_with_dynamic_route() {
+        let router = crate::router::Router::new().route(
+            Method::from_bytes(b"FOOBAR").unwrap(),
+            "/users/:id",
+            |_, _, _| async { http::StatusCode::OK },
+        );
+        TrieRouter::build(&router.routes);
+    }
+
+    #[test]
+    fn test_params_cleaned_up_after_failed_deep_match() {
+        let mut trie = RadixTrie::new();
+        trie.insert("/a/:x/y", 0);
+
+        // :x captures "val" but "/y" != "/z" — the whole match fails.
+        // After failure, params must be empty (no leaked :x entry).
+        let mut params = PathParams::new();
+        let result = trie.lookup("/a/val/z", &mut params);
+        assert_eq!(result, None);
+        assert!(
+            params.is_empty(),
+            "param :x must be removed on backtrack failure"
+        );
+    }
+
+    #[test]
     fn test_param_with_multiple_static_children() {
         let mut trie = RadixTrie::new();
         trie.insert("/users/:id/posts", 0);
