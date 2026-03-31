@@ -967,6 +967,34 @@ impl FromRequestParts for crate::database::Db {
     }
 }
 
+// Jobs extractor (requires "database" feature)
+#[cfg(feature = "database")]
+impl FromRequestParts for crate::jobs::Jobs {
+    async fn from_request_parts(
+        parts: &http::request::Parts,
+        _params: &PathParams,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Error> {
+        use sea_orm::DatabaseConnection;
+
+        let pool = state
+            .get::<DatabaseConnection>()
+            .ok_or_else(|| {
+                Error::internal(
+                    "Database connection not configured. Did you forget to call .with_database()?",
+                )
+            })?
+            .clone();
+
+        let trace_id = parts
+            .extensions
+            .get::<RequestContext>()
+            .map(|ctx| ctx.trace_id().to_owned());
+
+        Ok(crate::jobs::Jobs::new(pool, trace_id))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1588,5 +1616,15 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status(), 400);
+    }
+
+    #[cfg(feature = "database")]
+    #[tokio::test]
+    async fn jobs_extractor_missing_db_returns_500() {
+        let (parts, _) = TestRequest::get("/").into_parts();
+        let result =
+            crate::jobs::Jobs::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 500);
     }
 }

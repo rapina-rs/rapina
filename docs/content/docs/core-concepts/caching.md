@@ -111,7 +111,7 @@ For multi-instance deployments where all instances need to share the same cache 
 
 ```toml
 [dependencies]
-rapina = { version = "0.7", features = ["cache-redis"] }
+rapina = { version = "0.10.0", features = ["cache-redis"] }
 ```
 
 ```rust
