@@ -7,7 +7,7 @@ date = 2026-03-17
 
 Background jobs let you defer work to run outside the request cycle. Sending emails, processing uploads, generating reports — anything that shouldn't block an HTTP response.
 
-Rapina's job system uses your existing PostgreSQL database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by workers with `FOR UPDATE SKIP LOCKED` for safe concurrent processing.
+Rapina's job system uses your existing PostgreSQL database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by in-process workers with `FOR UPDATE SKIP LOCKED` for safe concurrent processing.
 
 This page covers the foundation: the database table, the types, and the CLI setup. The `#[job]` macro, `Jobs` extractor, and worker runtime are coming in future releases.
 
@@ -48,6 +48,122 @@ rapina::migrations! {
 The framework migration uses a zero timestamp (`m00000000_000000_`) so it always sorts before your application migrations, regardless of their dates.
 
 Next time your app starts and runs migrations, the `rapina_jobs` table will be created.
+
+## Defining a Job
+
+Use the `#[job]` macro to define a handler. The first argument is always the payload — a struct that implements `Serialize + DeserializeOwned`. Remaining arguments are dependency-injected from `AppState` via `State<T>` or `Db`.
+
+```rust
+use rapina::prelude::*;
+
+#[derive(Serialize, Deserialize)]
+pub struct WelcomeEmailPayload {
+    pub email: String,
+}
+
+#[job(queue = "emails", max_retries = 5)]
+async fn send_welcome_email(
+    payload: WelcomeEmailPayload,
+    mailer: State<Mailer>,
+) -> JobResult {
+    mailer.send(&payload.email).await?;
+    Ok(())
+}
+```
+
+The macro generates a `send_welcome_email(payload) -> JobRequest` helper used for enqueuing.
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `queue` | `"default"` | Queue to place the job in |
+| `max_retries` | `3` | Total execution count before permanent failure (includes the initial run) |
+
+## Enqueuing Jobs
+
+Use the `Jobs` extractor in HTTP handlers to dispatch jobs.
+
+```rust
+#[post("/users")]
+async fn create_user(body: Json<CreateUserRequest>, jobs: Jobs) -> Result<StatusCode> {
+    jobs.enqueue(send_welcome_email(WelcomeEmailPayload {
+        email: body.email.clone(),
+    })).await?;
+
+    Ok(StatusCode::CREATED)
+}
+```
+
+For transactional enqueue — where the job row commits atomically with your business logic — use `enqueue_with`:
+
+```rust
+let txn = db.conn().begin().await?;
+let user = User::insert(&txn, &body).await?;
+jobs.enqueue_with(&txn, send_welcome_email(WelcomeEmailPayload {
+    email: user.email.clone(),
+})).await?;
+txn.commit().await?;
+```
+
+If the transaction rolls back, the job is never created.
+
+## Starting the Worker
+
+Call `.jobs()` on the application builder before `.listen()`. The worker spawns in-process alongside the HTTP server and shuts down gracefully on SIGINT/SIGTERM — it finishes its current batch before stopping.
+
+```rust
+use rapina::jobs::JobConfig;
+
+Rapina::new()
+    .with_database(db_config).await?
+    .jobs(JobConfig::default())
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+All options have sensible defaults. Override only what you need:
+
+```rust
+JobConfig::default()
+    .poll_interval(Duration::from_secs(2))
+    .batch_size(20)
+    .queues(["default", "emails", "heavy"])
+    .job_timeout(Duration::from_secs(60))
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `poll_interval` | 5s | How often the worker wakes up to claim jobs |
+| `batch_size` | 10 | Maximum jobs claimed per poll cycle |
+| `queues` | `["default"]` | Queue names to subscribe to |
+| `job_timeout` | 30s | How long a job lock is held — expired locks can be reclaimed after a worker crash |
+
+## Job Lifecycle
+
+```
+pending → running → completed
+                  ↘ failed   (or back to pending if retries remain)
+```
+
+The worker atomically transitions each job from `pending` to `running` in a single SQL statement. On completion the job moves to `completed` or `failed`.
+
+Failed jobs are retried with exponential backoff:
+
+| Attempt | Delay (base = 1s) |
+|---------|-------------------|
+| 1 | immediate |
+| 2 | 1s + jitter |
+| 3 | 4s + jitter |
+| 4 | 16s + jitter |
+
+Jitter is seeded from the job's UUID so concurrent failures don't retry in lockstep. Delay is capped at one week. Once `max_retries` is exhausted the job is permanently marked `failed`.
+
+## DI Limitations
+
+Job handlers run outside the request cycle. Only `State<T>` and `Db` work — they source data from `AppState` directly. Request-bound extractors (`Context`, `Headers`, `Path`, `Query`, `CurrentUser`) will fail at runtime and must not be used in job handlers.
+
+## Trace Propagation
+
+When a job is enqueued from an HTTP handler, the request's `trace_id` is stored on the job row. The worker restores it into its tracing span before calling the handler, so all log lines emitted during job execution are correlated with the original HTTP request.
 
 ## Table Schema
 

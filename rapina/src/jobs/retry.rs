@@ -65,8 +65,6 @@ impl RetryPolicy {
     ///
     /// `attempts` is the attempt count **after** the failure (already
     /// incremented). Returns [`Duration::ZERO`] for the first retry.
-    // TODO: remove once the worker lands
-    #[allow(dead_code)]
     pub(crate) fn backoff_delay(&self, attempts: i32, job_id: Uuid) -> Duration {
         match self {
             Self::Exponential { base_delay, .. } => {
@@ -89,8 +87,6 @@ impl RetryPolicy {
 /// Each job gets a unique jitter value regardless of when it was scheduled,
 /// which prevents workers that fail around the same time from retrying in
 /// lockstep (thundering herd).
-// TODO: remove once the worker lands
-#[allow(dead_code)]
 fn jitter(base: Duration, job_id: Uuid) -> Duration {
     if base.is_zero() {
         return Duration::ZERO;
@@ -108,8 +104,6 @@ fn jitter(base: Duration, job_id: Uuid) -> Duration {
 /// Computes the exponential backoff delay for a given attempt count.
 ///
 /// Capped at one week so `run_at` never becomes absurdly far in the future.
-// TODO: remove once the worker lands
-#[allow(dead_code)]
 fn exponential_delay(base: Duration, attempts: i32, job_id: Uuid) -> Duration {
     // First retry is always immediate — no point penalising a transient failure.
     if attempts <= 1 {
@@ -131,8 +125,6 @@ fn exponential_delay(base: Duration, attempts: i32, job_id: Uuid) -> Duration {
 /// `attempts` is the count from the DB row **before** this failure. The SQL
 /// increments it. If the new count is less than `max_retries`, the job is
 /// rescheduled; otherwise it is permanently failed.
-// TODO: remove once the worker lands
-#[allow(dead_code)]
 pub(crate) async fn apply_failure(
     db: &impl ConnectionTrait,
     job_id: Uuid,
@@ -184,8 +176,6 @@ pub(crate) async fn apply_failure(
 }
 
 /// Marks a job as successfully completed.
-// TODO: remove once the worker lands
-#[allow(dead_code)]
 pub(crate) async fn apply_success(
     db: &impl ConnectionTrait,
     job_id: Uuid,

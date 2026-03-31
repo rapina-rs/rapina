@@ -1,11 +1,12 @@
 //! Background jobs support for Rapina applications.
 //!
-//! This module provides the database foundation for the background jobs system:
-//! a migration to create the `rapina_jobs` table, types for working with job rows,
+//! This module provides the full background jobs system: a migration to create
+//! the `rapina_jobs` table, an in-process worker that polls and dispatches jobs,
 //! and the core types used by the `#[job]` macro.
 //!
 //! **Note:** The migration uses PostgreSQL-specific features (`gen_random_uuid()`,
-//! partial indexes). MySQL and SQLite are not currently supported for background jobs.
+//! partial indexes, `FOR UPDATE SKIP LOCKED`). MySQL and SQLite are not currently
+//! supported for background jobs.
 //!
 //! # Setup
 //!
@@ -48,8 +49,38 @@
 //! ```
 //!
 //! The macro generates a `send_welcome_email(payload) -> JobRequest` helper.
-//! Use the [`Jobs`] extractor in handlers to dispatch jobs via [`Jobs::enqueue`]
+//! Use the [`Jobs`] extractor in HTTP handlers to dispatch jobs via [`Jobs::enqueue`]
 //! or [`Jobs::enqueue_with`] for transactional enqueue.
+//!
+//! # Starting the Worker
+//!
+//! Call `.jobs()` on the application builder before `.listen()`. The worker
+//! spawns in-process alongside the HTTP server and shuts down gracefully on
+//! SIGINT/SIGTERM — it finishes its current batch before stopping.
+//!
+//! ```rust,ignore
+//! use rapina::jobs::JobConfig;
+//!
+//! Rapina::new()
+//!     .with_database(db_config).await?
+//!     .jobs(JobConfig::default().queues(["default", "emails"]))
+//!     .listen("127.0.0.1:3000")
+//!     .await
+//! ```
+//!
+//! # Job Lifecycle
+//!
+//! ```text
+//! pending → running → completed
+//!                   ↘ failed   (or back to pending if retries remain)
+//! ```
+//!
+//! The worker atomically claims a batch of `pending` jobs using
+//! `FOR UPDATE SKIP LOCKED`, so concurrent workers never process the same row.
+//! On success [`apply_success`](retry::apply_success) sets `completed`. On
+//! failure [`apply_failure`](retry::apply_failure) either reschedules as
+//! `pending` with exponential backoff or permanently marks the job `failed`
+//! once `max_retries` is exhausted.
 //!
 //! # DI Limitations
 //!
@@ -58,15 +89,20 @@
 //! directly. Request-bound extractors (`Context`, `Headers`, `Path`, `Query`,
 //! `CurrentUser`) will fail at runtime and must not be used in job handlers.
 //!
-//! Trace propagation happens via the `rapina_jobs.trace_id` column: the worker
-//! reads it from the row and restores it into its own span before calling the handler.
+//! # Trace Propagation
+//!
+//! When a job row has a `trace_id`, the worker opens a tracing span that
+//! includes the original value so all log lines emitted during handler
+//! execution are correlated with the HTTP request that enqueued the job.
 
 pub mod create_rapina_jobs;
 mod model;
 pub(crate) mod retry;
+pub(crate) mod worker;
 
 pub use model::{JobRow, JobStatus};
 pub use retry::RetryPolicy;
+pub use worker::JobConfig;
 
 use std::future::Future;
 use std::pin::Pin;

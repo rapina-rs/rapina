@@ -83,6 +83,9 @@ pub struct Rapina {
     pub(crate) rfc7807_errors: bool,
     /// Custom base URI for RFC 7807 `type` field (default: "about:blank")
     pub(crate) rfc7807_base_uri: String,
+    /// Background job worker configuration. `None` means the worker is disabled.
+    #[cfg(feature = "database")]
+    pub(crate) jobs_config: Option<crate::jobs::JobConfig>,
 }
 
 // Resolves the listen address, preferring RAPINA_HOST/RAPINA_PORT over addr when both are set.
@@ -120,6 +123,8 @@ impl Rapina {
             relay_config: None,
             rfc7807_errors: false,
             rfc7807_base_uri: "about:blank".to_string(),
+            #[cfg(feature = "database")]
+            jobs_config: None,
         }
     }
 
@@ -306,6 +311,34 @@ impl Rapina {
     /// ```
     pub fn public_route(mut self, method: &str, path: &str) -> Self {
         self.public_routes.add(method, path);
+        self
+    }
+
+    /// Enables the in-process background job worker with the given configuration.
+    ///
+    /// The worker spawns alongside the HTTP server during [`listen`](Self::listen)
+    /// and polls `rapina_jobs` on the configured interval. It shuts down
+    /// gracefully when the server receives SIGINT or SIGTERM, finishing the
+    /// current job batch before exiting.
+    ///
+    /// Requires [`with_database`](Self::with_database) to be called first —
+    /// the worker uses the same `DatabaseConnection` stored in `AppState`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use rapina::jobs::JobConfig;
+    /// use std::time::Duration;
+    ///
+    /// Rapina::new()
+    ///     .with_database(db_config).await?
+    ///     .jobs(JobConfig::default().queues(["default", "emails"]))
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "database")]
+    pub fn jobs(mut self, config: crate::jobs::JobConfig) -> Self {
+        self.jobs_config = Some(config);
         self
     }
 
@@ -679,6 +712,17 @@ impl Rapina {
     pub async fn listen(self, addr: &str) -> std::io::Result<()> {
         let addr: SocketAddr = resolve_listen_addr(addr);
         let app = self.prepare();
+
+        // Spawn the background job worker if configured.  The worker receives
+        // a cheap clone of AppState (inner values are Arc-wrapped) so it shares
+        // the same database pool and application state as the HTTP handlers.
+        #[cfg(feature = "database")]
+        if let Some(config) = app.jobs_config.clone() {
+            let state = std::sync::Arc::new(app.state.clone());
+            let worker = crate::jobs::worker::Worker::new(state, config);
+            tokio::spawn(worker.run());
+        }
+
         serve(
             app.router,
             app.state,
@@ -938,5 +982,74 @@ mod tests {
             .on_shutdown(|| async { println!("hook 1") })
             .on_shutdown(|| async { println!("hook 2") });
         assert_eq!(app.shutdown_hooks.len(), 2);
+    }
+
+    // ── jobs builder ─────────────────────────────────────────────────────────
+
+    #[cfg(feature = "database")]
+    mod jobs_tests {
+        use std::time::Duration;
+
+        use super::*;
+        use crate::jobs::JobConfig;
+
+        /// Worker is opt-in — must be `None` until `.jobs()` is called.
+        #[test]
+        fn jobs_config_none_by_default() {
+            let app = Rapina::new();
+            assert!(app.jobs_config.is_none());
+        }
+
+        /// `.jobs()` stores the config so the worker is spawned on `listen()`.
+        #[test]
+        fn jobs_sets_config() {
+            let app = Rapina::new().jobs(JobConfig::default());
+            assert!(app.jobs_config.is_some());
+        }
+
+        /// Calling `.jobs()` a second time replaces the previous config —
+        /// last call wins, no silent merging.
+        #[test]
+        fn jobs_overrides_previous_config() {
+            let app = Rapina::new()
+                .jobs(JobConfig::default().batch_size(5))
+                .jobs(JobConfig::default().batch_size(20));
+            assert_eq!(app.jobs_config.unwrap().batch_size, 20);
+        }
+
+        /// All `JobConfig` fields survive the round-trip through the builder.
+        #[test]
+        fn jobs_config_fields_preserved() {
+            let config = JobConfig::default()
+                .poll_interval(Duration::from_secs(10))
+                .batch_size(25)
+                .queues(["emails", "heavy"])
+                .job_timeout(Duration::from_secs(120));
+
+            let app = Rapina::new().jobs(config);
+            let stored = app.jobs_config.unwrap();
+
+            assert_eq!(stored.poll_interval, Duration::from_secs(10));
+            assert_eq!(stored.batch_size, 25);
+            assert_eq!(stored.queues, vec!["emails", "heavy"]);
+            assert_eq!(stored.job_timeout, Duration::from_secs(120));
+        }
+
+        /// `.jobs()` integrates cleanly with other builder methods —
+        /// chaining order must not matter for unrelated fields.
+        #[test]
+        fn jobs_chains_with_other_builder_methods() {
+            #[derive(Clone)]
+            struct MyState;
+
+            let app = Rapina::new()
+                .state(MyState)
+                .jobs(JobConfig::default())
+                .shutdown_timeout(Duration::from_secs(10));
+
+            assert!(app.jobs_config.is_some());
+            assert!(app.state.get::<MyState>().is_some());
+            assert_eq!(app.shutdown_timeout, Duration::from_secs(10));
+        }
     }
 }
