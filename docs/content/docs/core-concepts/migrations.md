@@ -15,7 +15,7 @@ Your `Cargo.toml` needs the `database` feature and a database driver:
 
 ```toml
 [dependencies]
-rapina = { version = "0.8", features = ["sqlite"] }
+rapina = { version = "0.10.0", features = ["sqlite"] }
 ```
 
 Replace `sqlite` with `postgres` or `mysql` depending on your database. You also need a database connection configured in your app — see the [Database](/docs/core-concepts/database/) page if you haven't set that up yet.

@@ -85,6 +85,16 @@ pub struct Rapina {
     pub(crate) rfc7807_base_uri: String,
 }
 
+// Resolves the listen address, preferring RAPINA_HOST/RAPINA_PORT over addr when both are set.
+pub(crate) fn resolve_listen_addr(addr: &str) -> SocketAddr {
+    match (std::env::var("RAPINA_HOST"), std::env::var("RAPINA_PORT")) {
+        (Ok(host), Ok(port)) => format!("{host}:{port}")
+            .parse()
+            .expect("invalid RAPINA_HOST/RAPINA_PORT"),
+        _ => addr.parse().expect("invalid address"),
+    }
+}
+
 impl Rapina {
     /// Creates a new Rapina application builder.
     ///
@@ -661,9 +671,13 @@ impl Rapina {
     ///
     /// # Panics
     ///
-    /// Panics if the address cannot be parsed.
+    /// Panics if the address is invalid.
+    ///
+    /// When `RAPINA_HOST`/`RAPINA_PORT` env vars are set (e.g. under `rapina dev`),
+    /// they take priority over the `addr` argument so the CLI is always authoritative
+    /// in dev mode and the banner is correct by construction.
     pub async fn listen(self, addr: &str) -> std::io::Result<()> {
-        let addr: SocketAddr = addr.parse().expect("invalid address");
+        let addr: SocketAddr = resolve_listen_addr(addr);
         let app = self.prepare();
         serve(
             app.router,
@@ -700,6 +714,76 @@ mod tests {
     fn test_rapina_default() {
         let app = Rapina::default();
         assert!(app.middlewares.is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_listen_addr_no_env_vars() {
+        unsafe {
+            std::env::remove_var("RAPINA_HOST");
+            std::env::remove_var("RAPINA_PORT");
+        }
+        let addr = resolve_listen_addr("127.0.0.1:8000");
+        assert_eq!(addr.to_string(), "127.0.0.1:8000");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_listen_addr_env_vars_override() {
+        unsafe {
+            std::env::set_var("RAPINA_HOST", "127.0.0.1");
+            std::env::set_var("RAPINA_PORT", "9000");
+        }
+        let addr = resolve_listen_addr("127.0.0.1:8000");
+        assert_eq!(addr.to_string(), "127.0.0.1:9000");
+        unsafe {
+            std::env::remove_var("RAPINA_HOST");
+            std::env::remove_var("RAPINA_PORT");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_listen_addr_env_vars_different_host() {
+        unsafe {
+            std::env::set_var("RAPINA_HOST", "0.0.0.0");
+            std::env::set_var("RAPINA_PORT", "3000");
+        }
+        let addr = resolve_listen_addr("127.0.0.1:3000");
+        assert_eq!(addr.to_string(), "0.0.0.0:3000");
+        unsafe {
+            std::env::remove_var("RAPINA_HOST");
+            std::env::remove_var("RAPINA_PORT");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_listen_addr_partial_env_vars_port_fallback() {
+        unsafe {
+            std::env::set_var("RAPINA_HOST", "127.0.0.1");
+            std::env::remove_var("RAPINA_PORT");
+        }
+        // Only the host var set — port var falls back to the addr argument
+        let addr = resolve_listen_addr("127.0.0.1:8000");
+        assert_eq!(addr.to_string(), "127.0.0.1:8000");
+        unsafe {
+            std::env::remove_var("RAPINA_HOST");
+        }
+    }
+    #[test]
+    #[serial_test::serial]
+    fn test_listen_addr_partial_env_vars_host_fallback() {
+        unsafe {
+            std::env::remove_var("RAPINA_HOST");
+            std::env::set_var("RAPINA_PORT", "8000");
+        }
+        // Only the port var set — host var falls back to the addr argument
+        let addr = resolve_listen_addr("127.0.0.1:8000");
+        assert_eq!(addr.to_string(), "127.0.0.1:8000");
+        unsafe {
+            std::env::remove_var("RAPINA_PORT");
+        }
     }
 
     #[test]

@@ -115,7 +115,7 @@ If you prefer not to use the CLI, add Rapina to an existing project:
 
 ```toml
 [dependencies]
-rapina = "0.8"
+rapina = "0.10.0"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```

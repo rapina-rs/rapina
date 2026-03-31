@@ -870,6 +870,108 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_static_route_after_freeze() {
+        let mut router =
+            Router::new().route(Method::GET, "/health", |_, _, _| async { StatusCode::OK });
+        router.sort_routes();
+        router.freeze();
+
+        let result = router.resolve(&Method::GET, "/health");
+        assert!(result.is_some());
+        let (idx, params) = result.unwrap();
+        assert_eq!(idx, 0);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_dynamic_route_extracts_params_after_freeze() {
+        let mut router = Router::new().route(Method::GET, "/users/:id", |_, _, _| async {
+            StatusCode::OK
+        });
+        router.sort_routes();
+        router.freeze();
+
+        let result = router.resolve(&Method::GET, "/users/42");
+        assert!(result.is_some());
+        let (idx, params) = result.unwrap();
+        assert_eq!(idx, 0);
+        assert_eq!(params.get("id").unwrap(), "42");
+    }
+
+    #[test]
+    fn test_resolve_returns_none_for_unmatched_path() {
+        let mut router =
+            Router::new().route(Method::GET, "/health", |_, _, _| async { StatusCode::OK });
+        router.sort_routes();
+        router.freeze();
+
+        assert!(router.resolve(&Method::GET, "/missing").is_none());
+    }
+
+    #[test]
+    fn test_resolve_returns_none_for_wrong_method() {
+        let mut router =
+            Router::new().route(Method::GET, "/health", |_, _, _| async { StatusCode::OK });
+        router.sort_routes();
+        router.freeze();
+
+        assert!(router.resolve(&Method::POST, "/health").is_none());
+    }
+
+    #[test]
+    fn test_freeze_is_idempotent() {
+        let mut router =
+            Router::new().route(Method::GET, "/health", |_, _, _| async { StatusCode::OK });
+        router.sort_routes();
+        router.freeze();
+        router.freeze(); // second call must not clear or corrupt state
+
+        assert!(router.resolve(&Method::GET, "/health").is_some());
+    }
+
+    #[test]
+    fn test_patch_named_sets_method_and_handler_name() {
+        let router = Router::new().patch_named("/items/:id", "patch_item", |_, _, _| async {
+            StatusCode::OK
+        });
+
+        let routes = router.routes();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].method, "PATCH");
+        assert_eq!(routes[0].path, "/items/:id");
+        assert_eq!(routes[0].handler_name, "patch_item");
+    }
+
+    #[test]
+    fn test_group_preserves_handler_name_from_sub_router() {
+        let inner = Router::new().get_named("/:id", "get_item", |_, _, _| async { StatusCode::OK });
+        let router = Router::new().group("/items", inner);
+
+        let routes = router.routes();
+        assert_eq!(routes[0].path, "/items/:id");
+        assert_eq!(routes[0].handler_name, "get_item");
+    }
+
+    #[test]
+    fn test_resolve_linear_and_resolve_return_same_index() {
+        let mut router = Router::new()
+            .route(Method::GET, "/users", |_, _, _| async { StatusCode::OK })
+            .route(Method::GET, "/users/:id", |_, _, _| async {
+                StatusCode::OK
+            });
+        router.sort_routes();
+        router.freeze();
+
+        let fast_dyn = router.resolve(&Method::GET, "/users/42");
+        let slow_dyn = router.resolve_linear(&Method::GET, "/users/42");
+        assert_eq!(fast_dyn.map(|(i, _)| i), slow_dyn.map(|(i, _)| i));
+
+        let fast_static = router.resolve(&Method::GET, "/users");
+        let slow_static = router.resolve_linear(&Method::GET, "/users");
+        assert_eq!(fast_static.map(|(i, _)| i), slow_static.map(|(i, _)| i));
+    }
+
+    #[test]
     fn test_multiple_router_groups() {
         let users_router = Router::new()
             .get_named("", "list_users", |_req, _params, _state| async {
