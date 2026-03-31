@@ -91,6 +91,10 @@ hyper-tungstenite = { version = "0.19", optional = true }
 tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
 
+# CronJob Scheduler (optional)
+tokio-cron-scheduler = { version = "0.15.1", optional = true }
+tokio-util = { version = "0.7.18", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 matchit = "0.9"
@@ -126,3 +130,4 @@ metrics = ["prometheus"]
 cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
+cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]

@@ -1,10 +1,8 @@
 //! The main application builder for Rapina.
 
-use std::future::Future;
-use std::net::SocketAddr;
-use std::time::Duration;
-
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
+#[cfg(feature = "cron-scheduler")]
+use crate::cron_scheduler::CronScheduler;
 use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
@@ -21,6 +19,9 @@ use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 use crate::router::Router;
 use crate::server::{ShutdownHook, serve};
 use crate::state::AppState;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::time::Duration;
 
 /// The main application type for building Rapina servers.
 ///
@@ -87,6 +88,8 @@ pub struct Rapina {
     /// Background job worker configuration. `None` means the worker is disabled.
     #[cfg(feature = "database")]
     pub(crate) jobs_config: Option<crate::jobs::JobConfig>,
+    #[cfg(feature = "cron-scheduler")]
+    pub(crate) cron_scheduler: Option<CronScheduler>,
 }
 
 // Resolves the listen address, preferring RAPINA_HOST/RAPINA_PORT over addr when both are set.
@@ -126,6 +129,8 @@ impl Rapina {
             rfc7807_base_uri: "about:blank".to_string(),
             #[cfg(feature = "database")]
             jobs_config: None,
+            #[cfg(feature = "cron-scheduler")]
+            cron_scheduler: Some(CronScheduler::new()),
         }
     }
 
@@ -371,6 +376,34 @@ impl Rapina {
     /// Health check is disabled by default.
     pub fn with_health_check(mut self, enabled: bool) -> Self {
         self.health_check = enabled;
+        self
+    }
+
+    /// Registers a new scheduled cronjob.
+    /// The `CronScheduler` instance will be started during Rapina's webserver startup phase.
+    #[cfg(feature = "cron-scheduler")]
+    pub fn cron<F, Fut>(mut self, cron_schedule: &str, task: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = std::io::Result<()>> + Send + 'static,
+    {
+        let cron_scheduler = self.cron_scheduler.as_mut().unwrap();
+        cron_scheduler
+            .schedule(cron_schedule.to_string(), task)
+            .expect("Failed to schedule cron job");
+
+        self
+    }
+
+    /// Starts the Cronjob Scheduler and registers the shutdown hook
+    #[cfg(feature = "cron-scheduler")]
+    async fn start_cronjob_scheduler(mut self) -> Self {
+        if let Some(mut cron_scheduler) = self.cron_scheduler.take() {
+            cron_scheduler.start().await;
+            self = self.on_shutdown(move || async move {
+                cron_scheduler.shutdown().await;
+            });
+        }
         self
     }
 
@@ -725,6 +758,10 @@ impl Rapina {
             tokio::spawn(worker.run());
         }
 
+
+        #[cfg(feature = "cron-scheduler")]
+        let app = app.start_cronjob_scheduler().await;
+
         serve(
             app.router,
             app.state,
@@ -1053,5 +1090,30 @@ mod tests {
             assert!(app.state.get::<MyState>().is_some());
             assert_eq!(app.shutdown_timeout, Duration::from_secs(10));
         }
+    }
+
+    #[cfg(feature = "cron-scheduler")]
+    #[test]
+    fn test_rapina_cron_adds_cronjob() {
+        let app = Rapina::new().cron("1/5 * * * * *", || async {
+            println!("cronjob 1");
+            Ok(())
+        });
+        assert_eq!(app.cron_scheduler.unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "cron-scheduler")]
+    #[test]
+    fn test_rapina_cron_adds_multiple_cronjobs() {
+        let app = Rapina::new()
+            .cron("1/5 * * * * *", || async {
+                println!("cronjob 1");
+                Ok(())
+            })
+            .cron("1/5 * * * * *", || async {
+                println!("cronjob 2");
+                Ok(())
+            });
+        assert_eq!(app.cron_scheduler.unwrap().len(), 2);
     }
 }
