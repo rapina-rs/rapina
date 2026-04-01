@@ -7,6 +7,21 @@ date = 2025-02-13
 
 Extractors automatically parse request data and inject it into your handlers. If parsing fails, they return appropriate error responses.
 
+## Table of Contents
+
+- [Available Extractors](#available-extractors)
+- [Accessing Extractor Values](#accessing-extractor-values)
+- [Path Parameters](#path-parameters)
+- [Query Parameters](#query-parameters)
+- [JSON Body](#json-body)
+- [Form Data](#form-data)
+- [Headers](#headers)
+- [Application State](#application-state)
+- [Cookies](#cookies)
+- [Request Context](#request-context)
+- [Validation](#validation)
+- [Multiple Extractors](#multiple-extractors)
+
 ## Available Extractors
 
 | Extractor | Description |
@@ -241,6 +256,4 @@ async fn create_post(
 }
 ```
 
-Parts-only extractors (`Path`, `Query`, `Headers`, `State`, `Context`, `Cookie`, `CurrentUser`, `Db`) can appear in any order before the last parameter.
-
-> **Note:** Only one body-consuming extractor can be used per handler. If you need both JSON and form data, choose one.
+Parts-only extractors (`Path
