@@ -33,6 +33,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Check version consistency
+        run: |
+          VERSION=$(grep '^version' rapina/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          MINOR="${VERSION%.*}"
+          BAD=$(grep -rn 'rapina = { version = "' docs/ rapina/examples/ \
+            --include="*.md" --include="*.toml" \
+            | grep -v "\"$VERSION\"\|\"$MINOR\"\|\"\.\.\.\"")
+          if [ -n "$BAD" ]; then
+            echo "Outdated version references found (expected $VERSION or $MINOR):"
+            echo "$BAD"
+            exit 1
+          fi
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
