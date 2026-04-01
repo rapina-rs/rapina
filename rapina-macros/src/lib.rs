@@ -732,6 +732,8 @@ pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct JobAttr {
     queue: String,
     max_retries: i32,
+    retry_policy: String,
+    retry_delay_secs: f64,
 }
 
 impl Default for JobAttr {
@@ -739,6 +741,8 @@ impl Default for JobAttr {
         Self {
             queue: "default".to_string(),
             max_retries: 3,
+            retry_policy: "exponential".to_string(),
+            retry_delay_secs: 1.0,
         }
     }
 }
@@ -765,6 +769,32 @@ impl syn::parse::Parse for JobAttr {
                     return Err(syn::Error::new(lit.span(), "max_retries must be >= 0"));
                 }
                 attr.max_retries = val;
+            } else if ident == "retry_policy" {
+                let lit: syn::LitStr = input.parse()?;
+                let val = lit.value();
+                if !matches!(val.as_str(), "exponential" | "fixed" | "none") {
+                    return Err(syn::Error::new(
+                        lit.span(),
+                        "retry_policy must be \"exponential\", \"fixed\", or \"none\"",
+                    ));
+                }
+                attr.retry_policy = val;
+            } else if ident == "retry_delay_secs" {
+                let val: f64 = if input.peek(syn::LitFloat) {
+                    let lit: syn::LitFloat = input.parse()?;
+                    lit.base10_parse()?
+                } else {
+                    let lit: syn::LitInt = input.parse()?;
+                    let v: u64 = lit.base10_parse()?;
+                    v as f64
+                };
+                if val < 0.0 {
+                    return Err(syn::Error::new(
+                        proc_macro2::Span::call_site(),
+                        "retry_delay_secs must be >= 0",
+                    ));
+                }
+                attr.retry_delay_secs = val;
             } else if ident == "timeout" {
                 // Consume the value so the error points at the attribute name, not EOF.
                 let _: syn::LitStr = input.parse()?;
@@ -776,7 +806,7 @@ impl syn::parse::Parse for JobAttr {
                 return Err(syn::Error::new(
                     ident.span(),
                     format!(
-                        "unknown #[job] attribute `{ident}` — supported: `queue`, `max_retries`"
+                        "unknown #[job] attribute `{ident}` — supported: `queue`, `max_retries`, `retry_policy`, `retry_delay_secs`"
                     ),
                 ));
             }
@@ -837,6 +867,8 @@ fn job_macro_impl(
 
     let queue_str = &job_attr.queue;
     let max_retries = job_attr.max_retries;
+    let retry_policy_str = &job_attr.retry_policy;
+    let retry_delay_secs = job_attr.retry_delay_secs;
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
@@ -941,6 +973,8 @@ fn job_macro_impl(
             rapina::jobs::JobDescriptor {
                 job_type: #func_name_str,
                 handle: #handle_fn_name,
+                retry_policy: #retry_policy_str,
+                retry_delay_secs: #retry_delay_secs,
             }
         }
     }
@@ -1109,7 +1143,7 @@ fn derive_config_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStre
 
 #[cfg(test)]
 mod tests {
-    use super::{join_paths, relay_macro_impl, route_macro_core};
+    use super::{job_macro_impl, join_paths, relay_macro_impl, route_macro_core};
     use quote::quote;
 
     #[test]
@@ -1885,5 +1919,81 @@ mod tests {
     fn test_join_paths_empty_prefix() {
         assert_eq!(join_paths("", "/users"), "/users");
         assert_eq!(join_paths("", ""), "/");
+    }
+
+    // -- #[job] retry policy attributes --
+
+    fn minimal_job_fn() -> proc_macro2::TokenStream {
+        quote! {
+            async fn my_job(payload: String) {}
+        }
+    }
+
+    #[test]
+    fn job_macro_defaults_retry_policy_and_delay() {
+        let output = job_macro_impl(quote! {}, minimal_job_fn()).to_string();
+        assert!(
+            output.contains("retry_policy : \"exponential\""),
+            "default retry_policy should be exponential"
+        );
+        assert!(
+            output.contains("retry_delay_secs : 1f64"),
+            "default retry_delay_secs should be 1.0"
+        );
+    }
+
+    #[test]
+    fn job_macro_fixed_retry_policy() {
+        let output =
+            job_macro_impl(quote! { retry_policy = "fixed" }, minimal_job_fn()).to_string();
+        assert!(output.contains("retry_policy : \"fixed\""));
+    }
+
+    #[test]
+    fn job_macro_none_retry_policy() {
+        let output = job_macro_impl(quote! { retry_policy = "none" }, minimal_job_fn()).to_string();
+        assert!(output.contains("retry_policy : \"none\""));
+    }
+
+    #[test]
+    fn job_macro_retry_delay_float_literal() {
+        let output =
+            job_macro_impl(quote! { retry_delay_secs = 30.0 }, minimal_job_fn()).to_string();
+        assert!(output.contains("retry_delay_secs : 30f64"));
+    }
+
+    #[test]
+    fn job_macro_retry_delay_integer_literal() {
+        let output = job_macro_impl(quote! { retry_delay_secs = 30 }, minimal_job_fn()).to_string();
+        assert!(output.contains("retry_delay_secs : 30f64"));
+    }
+
+    #[test]
+    fn job_macro_invalid_retry_policy_is_compile_error() {
+        let output =
+            job_macro_impl(quote! { retry_policy = "random" }, minimal_job_fn()).to_string();
+        assert!(output.contains("compile_error"));
+        assert!(
+            output.contains("exponential") || output.contains("fixed") || output.contains("none")
+        );
+    }
+
+    #[test]
+    fn job_macro_unknown_attr_error_mentions_retry_attrs() {
+        let output = job_macro_impl(quote! { retries = 3 }, minimal_job_fn()).to_string();
+        assert!(output.contains("compile_error"));
+        assert!(output.contains("retry_policy"));
+        assert!(output.contains("retry_delay_secs"));
+    }
+
+    #[test]
+    fn job_macro_all_retry_attrs_combined() {
+        let output = job_macro_impl(
+            quote! { retry_policy = "fixed", retry_delay_secs = 15, max_retries = 5 },
+            minimal_job_fn(),
+        )
+        .to_string();
+        assert!(output.contains("retry_policy : \"fixed\""));
+        assert!(output.contains("retry_delay_secs : 15f64"));
     }
 }
