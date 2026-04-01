@@ -39,7 +39,7 @@ jobs:
           MINOR="${VERSION%.*}"
           BAD=$(grep -rn 'rapina = { version = "' docs/ rapina/examples/ \
             --include="*.md" --include="*.toml" \
-            | grep -v "\"$VERSION\"\|\"$MINOR\"\|\"\.\.\.\"")
+            | grep -v "\"$VERSION\"\|\"$MINOR\"\|\"\.\.\.\"" || true)
           if [ -n "$BAD" ]; then
             echo "Outdated version references found (expected $VERSION or $MINOR):"
             echo "$BAD"
