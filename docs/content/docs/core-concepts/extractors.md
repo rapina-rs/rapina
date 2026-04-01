@@ -19,10 +19,10 @@ Extractors automatically parse request data and inject it into your handlers. If
 | [`State<T>`](#application-state) | Application state |
 | [`Context`](#request-context) | Request context (trace_id) |
 | [`Cookie<T>`](#cookies) | Typed cookie access |
-| `CurrentUser` | Authenticated user (JWT) |
+| [`CurrentUser`](#currentuser) | Authenticated user (JWT) |
 | [`Validated<T>`](#validation) | Validated extractor |
-| `Paginate` | Pagination params (requires feature) |
-| `Db` | Database connection (requires feature) |
+| [`Paginate`](#paginate) | Pagination params (requires feature) |
+| [`Db`](#db) | Database connection (requires feature) |
 
 ## Accessing Extractor Values
 
@@ -189,6 +189,28 @@ async fn dashboard(session: Cookie<Session>) -> String {
 
 Returns 400 Bad Request if required cookies are missing or malformed.
 
+## CurrentUser
+
+Access the authenticated user from JWT claims:
+
+```rust
+#[get("/me")]
+async fn me(user: CurrentUser) -> Json<UserResponse> {
+    Json(UserResponse {
+        id: user.id,
+        email: user.claims.sub.clone(),
+    })
+}
+```
+
+The `CurrentUser` extractor provides:
+- `user.id` - The user ID from the JWT `sub` claim
+- `user.claims` - The full JWT claims
+
+Returns 401 Unauthorized if the request lacks a valid JWT token.
+
+> **Note:** This extractor requires authentication to be configured. See [Authentication](authentication.md) for setup details.
+
 ## Request Context
 
 Access the request context with trace ID:
@@ -225,6 +247,72 @@ async fn create_user(body: Validated<Json<CreateUser>>) -> Json<User> {
 ```
 
 If validation fails, returns 422 with validation error details.
+
+## Paginate
+
+Parse pagination parameters from the query string:
+
+```rust
+use rapina::database::Db;
+
+#[get("/users")]
+async fn list_users(db: Db, page: Paginate) -> Result<Paginated<user::Model>> {
+    page.exec(User::find(), db.conn()).await
+}
+```
+
+The `Paginate` extractor reads `?page=1&per_page=20` from the query string:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number (1-indexed) |
+| `per_page` | 20 | Items per page |
+
+Returns 422 Validation Error when:
+- `page` < 1
+- `per_page` < 1
+- `per_page` exceeds the configured maximum (default: 100)
+
+> **Note:** This extractor requires the database feature. See [Pagination](pagination.md) for complete details and configuration.
+
+## Db
+
+Access the database connection for SeaORM operations:
+
+```rust
+use rapina::database::{Db, DbError};
+use rapina::sea_orm::{EntityTrait, ActiveModelTrait, Set};
+
+#[get("/posts")]
+async fn list_posts(db: Db) -> Result<Json<Vec<PostResponse>>> {
+    let posts = Post::find()
+        .all(db.conn())
+        .await
+        .map_err(DbError::from)?;
+
+    Ok(Json(posts.into_iter().map(PostResponse::from).collect()))
+}
+
+#[post("/posts")]
+async fn create_post(body: Json<CreatePost>, db: Db) -> Result<Json<PostResponse>> {
+    let post = post::ActiveModel {
+        title: Set(body.title.clone()),
+        content: Set(body.content.clone()),
+        ..Default::default()
+    };
+
+    let post = post.insert(db.conn())
+        .await
+        .map_err(DbError::from)?;
+
+    Ok(Json(PostResponse::from(post)))
+}
+```
+
+The `Db` extractor provides:
+- `db.conn()` - A reference to the SeaORM database connection
+
+> **Note:** This extractor requires the database feature. See [Database](database.md) for setup and entity definitions.
 
 ## Multiple Extractors
 
