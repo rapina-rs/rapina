@@ -7,37 +7,22 @@ date = 2025-02-13
 
 Extractors automatically parse request data and inject it into your handlers. If parsing fails, they return appropriate error responses.
 
-## Table of Contents
-
-- [Available Extractors](#available-extractors)
-- [Accessing Extractor Values](#accessing-extractor-values)
-- [Path Parameters](#path-parameters)
-- [Query Parameters](#query-parameters)
-- [JSON Body](#json-body)
-- [Form Data](#form-data)
-- [Headers](#headers)
-- [Application State](#application-state)
-- [Cookies](#cookies)
-- [Request Context](#request-context)
-- [Validation](#validation)
-- [Multiple Extractors](#multiple-extractors)
-
 ## Available Extractors
 
 | Extractor | Description |
 |-----------|-------------|
-| `Path<T>` | URL path parameters |
-| `Query<T>` | Query string parameters |
-| `Json<T>` | JSON request body |
-| `Form<T>` | URL-encoded form data |
-| `Headers` | Request headers |
-| `State<T>` | Application state |
-| `Context` | Request context (trace_id) |
-| `Cookie<T>` | Typed cookie access |
-| `CurrentUser` | Authenticated user (JWT) |
-| `Validated<T>` | Validated extractor |
-| `Paginate` | Pagination params (requires feature) |
-| `Db` | Database connection (requires feature) |
+| [`Path<T>`](#path-parameters) | URL path parameters |
+| [`Query<T>`](#query-parameters) | Query string parameters |
+| [`Json<T>`](#json-body) | JSON request body |
+| [`Form<T>`](#form-data) | URL-encoded form data |
+| [`Headers`](#headers) | Request headers |
+| [`State<T>`](#application-state) | Application state |
+| [`Context`](#request-context) | Request context (trace_id) |
+| [`Cookie<T>`](#cookies) | Typed cookie access |
+| [`CurrentUser`](#multiple-extractors) | Authenticated user (JWT) |
+| [`Validated<T>`](#validation) | Validated extractor |
+| [`Paginate`](#multiple-extractors) | Pagination params (requires feature) |
+| [`Db`](#multiple-extractors) | Database connection (requires feature) |
 
 ## Accessing Extractor Values
 
