@@ -47,15 +47,13 @@ impl CronScheduler {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = std::io::Result<()>> + Send + 'static,
     {
-        tracing::info!("Executing job scheduler at cron schedule {}", cron_schedule);
-
         //Wrap task function in an Arc so it can be safely cloned for every cron tick
         let task = Arc::new(task);
 
         // Clone main cancellation token
         let cronjob_cancellation_token = self.cancellation_token.clone();
 
-        let job = Job::new_async(cron_schedule, move |_uuid, _l| {
+        let job = Job::new_async(&cron_schedule, move |_uuid, _l| {
             let cronjob_cancellation_token = cronjob_cancellation_token.clone();
             let task = task.clone();
             Box::pin(async move {
@@ -73,8 +71,16 @@ impl CronScheduler {
         })
         .expect("Failed to create Rapina background job template");
 
+        let job_uuid = job.guid();
+
         // Store the Job synchronously for later
         self.jobs.push(job);
+
+        tracing::debug!(
+            "Added cron job with uuid '{}' and schedule '{}' to cron job queue",
+            job_uuid,
+            &cron_schedule
+        );
 
         Ok(())
     }
@@ -102,6 +108,8 @@ impl CronScheduler {
             .expect("Failed to start Rapina background job scheduler");
 
         self.scheduler = Some(scheduler);
+
+        tracing::info!("Started Rapina background job scheduler");
     }
 
     /// Initiates a graceful shutdown of the scheduler and its running tasks.
