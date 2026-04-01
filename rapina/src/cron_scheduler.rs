@@ -4,9 +4,6 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use tokio_util::sync::CancellationToken;
 
 /// A background job scheduler that wraps `tokio_cron_scheduler::JobScheduler`.
-///
-/// It provides integrated graceful shutdown capabilities by utilizing a
-/// `CancellationToken` to signal running tasks to stop.
 pub struct CronScheduler {
     jobs: Vec<Job>,
     scheduler: Option<JobScheduler>,
@@ -74,7 +71,7 @@ impl CronScheduler {
                 }
             })
         })
-        .expect("Failed to add Rapina background job");
+        .expect("Failed to create Rapina background job template");
 
         // Store the Job synchronously for later
         self.jobs.push(job);
@@ -116,7 +113,7 @@ impl CronScheduler {
     ///
     /// Panics if the underlying `JobScheduler` fails to shut down properly.
     pub async fn shutdown(&mut self) {
-        // instantly trigger all tokio::select! branches that watch the token cancellation, stopping the next execution to
+        // instantly trigger all tokio::select! branches that watch the token cancellation, stopping the execution immediately in case no blocking code is being executed
         self.cancellation_token.cancel();
 
         if let Some(mut scheduler) = self.scheduler.take() {
@@ -125,7 +122,7 @@ impl CronScheduler {
                 .await
                 .expect("Failed to shutdown Rapina background jobs");
         }
-        tracing::info!("Shutdown signal received, stopping cron scheduler",);
+        tracing::info!("Shutdown signal received, stopping cron scheduler");
     }
 
     /// Returns the number of scheduled jobs, which have not yet been drained by starting the cron scheduler
