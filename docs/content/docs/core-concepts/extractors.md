@@ -19,10 +19,10 @@ Extractors automatically parse request data and inject it into your handlers. If
 | [`State<T>`](#application-state) | Application state |
 | [`Context`](#request-context) | Request context (trace_id) |
 | [`Cookie<T>`](#cookies) | Typed cookie access |
-| [`CurrentUser`](#multiple-extractors) | Authenticated user (JWT) |
+| `CurrentUser` | Authenticated user (JWT) |
 | [`Validated<T>`](#validation) | Validated extractor |
-| [`Paginate`](#multiple-extractors) | Pagination params (requires feature) |
-| [`Db`](#multiple-extractors) | Database connection (requires feature) |
+| `Paginate` | Pagination params (requires feature) |
+| `Db` | Database connection (requires feature) |
 
 ## Accessing Extractor Values
 
