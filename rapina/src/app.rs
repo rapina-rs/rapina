@@ -758,7 +758,6 @@ impl Rapina {
             tokio::spawn(worker.run());
         }
 
-
         #[cfg(feature = "cron-scheduler")]
         let app = app.start_cronjob_scheduler().await;
 
