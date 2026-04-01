@@ -28,9 +28,10 @@ release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "Preparing release v{{VERSION}}..."
+    VERSION="{{VERSION}}"
+    echo "Preparing release v${VERSION}..."
 
-    MINOR="${{VERSION%.*}}"
+    MINOR="${VERSION%.*}"
 
     # Bump Cargo.toml package versions
     sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' rapina/Cargo.toml rapina-macros/Cargo.toml rapina-cli/Cargo.toml
