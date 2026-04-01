@@ -9,7 +9,7 @@ Background jobs let you defer work to run outside the request cycle. Sending ema
 
 Rapina's job system uses your existing PostgreSQL database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by in-process workers with `FOR UPDATE SKIP LOCKED` for safe concurrent processing.
 
-This page covers the foundation: the database table, the types, and the CLI setup. The `#[job]` macro, `Jobs` extractor, and worker runtime are coming in future releases.
+This page covers setup, defining jobs, enqueuing, running the worker, and the retry system.
 
 ## Prerequisites
 
@@ -77,6 +77,8 @@ The macro generates a `send_welcome_email(payload) -> JobRequest` helper used fo
 |-----------|---------|-------------|
 | `queue` | `"default"` | Queue to place the job in |
 | `max_retries` | `3` | Total execution count before permanent failure (includes the initial run) |
+| `retry_policy` | `"exponential"` | Retry strategy: `"exponential"`, `"fixed"`, or `"none"` |
+| `retry_delay_secs` | `1.0` | Base delay in seconds — used as the backoff base for `"exponential"` and the fixed interval for `"fixed"` |
 
 ## Enqueuing Jobs
 
@@ -146,7 +148,14 @@ pending → running → completed
 
 The worker atomically transitions each job from `pending` to `running` in a single SQL statement. On completion the job moves to `completed` or `failed`.
 
-Failed jobs are retried with exponential backoff:
+Failed jobs are retried according to the `retry_policy` set on the handler.
+
+### Exponential backoff (default)
+
+```rust
+#[job(max_retries = 5, retry_policy = "exponential", retry_delay_secs = 1.0)]
+async fn send_welcome_email(payload: EmailPayload) -> JobResult { ... }
+```
 
 | Attempt | Delay (base = 1s) |
 |---------|-------------------|
@@ -155,7 +164,26 @@ Failed jobs are retried with exponential backoff:
 | 3 | 4s + jitter |
 | 4 | 16s + jitter |
 
-Jitter is seeded from the job's UUID so concurrent failures don't retry in lockstep. Delay is capped at one week. Once `max_retries` is exhausted the job is permanently marked `failed`.
+Jitter is seeded from the job's UUID so concurrent failures don't retry in lockstep. Delay is capped at one week.
+
+### Fixed delay
+
+```rust
+#[job(max_retries = 10, retry_policy = "fixed", retry_delay_secs = 30.0)]
+async fn sync_inventory(payload: SyncPayload) -> JobResult { ... }
+```
+
+Every retry waits the same `retry_delay_secs`. The first retry is always immediate regardless of the configured delay.
+
+### No retries
+
+```rust
+#[job(max_retries = 1, retry_policy = "none")]
+async fn charge_card(payload: ChargePayload) -> JobResult { ... }
+```
+
+The job is permanently marked `failed` on the first error. Use this for operations that must not be duplicated.
+
 
 ## DI Limitations
 

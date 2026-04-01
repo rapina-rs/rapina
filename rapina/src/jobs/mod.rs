@@ -160,6 +160,12 @@ pub struct JobDescriptor {
     /// The generated wrapper function.
     #[doc(hidden)]
     pub handle: JobHandlerFn,
+    /// Retry policy for this job type: `"exponential"`, `"fixed"`, or `"none"`.
+    #[doc(hidden)]
+    pub retry_policy: &'static str,
+    /// Base delay in seconds for `"exponential"` and `"fixed"` policies.
+    #[doc(hidden)]
+    pub retry_delay_secs: f64,
 }
 
 inventory::collect!(JobDescriptor);

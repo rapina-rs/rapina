@@ -32,9 +32,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement, Value};
+use tracing::Instrument;
 
 use crate::jobs::retry::{apply_failure, apply_success};
-use crate::jobs::{JobDescriptor, JobRow, RetryPolicy};
+use crate::jobs::{JobDescriptor, JobResult, JobRow, RetryPolicy};
 use crate::state::AppState;
 
 /// Configuration for the in-process background job worker.
@@ -109,8 +110,13 @@ impl JobConfig {
     /// ```rust,ignore
     /// JobConfig::default().queues(["default", "emails", "heavy"])
     /// ```
+    ///
+    /// check if queues are empty
+    /// if someone calls .queues([]), the build_claim_stmt generates `IN ()` which is invalid
     pub fn queues(mut self, queues: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.queues = queues.into_iter().map(Into::into).collect();
+        let q: Vec<String> = queues.into_iter().map(Into::into).collect();
+        assert!(!q.is_empty(), "queues must not be empty");
+        self.queues = q;
         self
     }
 
@@ -252,14 +258,16 @@ impl Worker {
             trace_id = job.trace_id.as_deref().unwrap_or(""),
         );
 
-        let result = {
-            let _guard = span.enter();
-            (descriptor.handle)(job.payload.clone(), self.state.clone()).await
-        };
-
-        // The retry policy type defaults to exponential; max_retries comes from
-        // the job row so each handler's `#[job(max_retries = N)]` is respected.
-        let policy = RetryPolicy::exponential(job.max_retries, Duration::from_secs(1));
+        let result: JobResult = (descriptor.handle)(job.payload.clone(), self.state.clone())
+            .instrument(span)
+            .await;
+        // Policy type and base delay come from the descriptor (set by `#[job]`
+        // attributes at compile time); max_retries comes from the job row.
+        let policy = build_policy(
+            descriptor.retry_policy,
+            job.max_retries,
+            descriptor.retry_delay_secs,
+        );
 
         match result {
             Ok(()) => {
@@ -284,6 +292,17 @@ impl Worker {
                 }
             }
         }
+    }
+}
+
+/// Constructs a [`RetryPolicy`] from the descriptor's compile-time attributes
+/// and the job row's `max_retries`.
+fn build_policy(retry_policy: &str, max_retries: i32, delay_secs: f64) -> RetryPolicy {
+    let delay = Duration::from_secs_f64(delay_secs);
+    match retry_policy {
+        "fixed" => RetryPolicy::fixed(max_retries, delay),
+        "none" => RetryPolicy::none(),
+        _ => RetryPolicy::exponential(max_retries, delay),
     }
 }
 
@@ -361,6 +380,57 @@ mod tests {
     use std::sync::Arc;
 
     use crate::state::AppState;
+
+    // ── retry policy resolution ───────────────────────────────────────────────
+
+    #[test]
+    fn descriptor_exponential_produces_exponential_policy() {
+        let policy = build_policy("exponential", 5, 2.0);
+        assert!(matches!(
+            policy,
+            RetryPolicy::Exponential { max_retries: 5, .. }
+        ));
+    }
+
+    #[test]
+    fn descriptor_fixed_produces_fixed_policy() {
+        let policy = build_policy("fixed", 3, 30.0);
+        assert!(matches!(policy, RetryPolicy::Fixed { max_retries: 3, .. }));
+    }
+
+    #[test]
+    fn descriptor_none_produces_none_policy() {
+        let policy = build_policy("none", 0, 0.0);
+        assert!(matches!(policy, RetryPolicy::None));
+    }
+
+    #[test]
+    fn descriptor_unknown_policy_falls_back_to_exponential() {
+        let policy = build_policy("bogus", 3, 1.0);
+        assert!(matches!(policy, RetryPolicy::Exponential { .. }));
+    }
+
+    #[test]
+    fn descriptor_base_delay_is_forwarded() {
+        let policy = build_policy("exponential", 3, 5.0);
+        match policy {
+            RetryPolicy::Exponential { base_delay, .. } => {
+                assert_eq!(base_delay, Duration::from_secs(5));
+            }
+            _ => panic!("expected Exponential"),
+        }
+    }
+
+    #[test]
+    fn descriptor_fixed_delay_is_forwarded() {
+        let policy = build_policy("fixed", 3, 20.0);
+        match policy {
+            RetryPolicy::Fixed { delay, .. } => {
+                assert_eq!(delay, Duration::from_secs(20));
+            }
+            _ => panic!("expected Fixed"),
+        }
+    }
 
     // ── no-database exit ─────────────────────────────────────────────────────
 
