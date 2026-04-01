@@ -256,4 +256,6 @@ async fn create_post(
 }
 ```
 
-Parts-only extractors (`Path
+Parts-only extractors (`Path`, `Query`, `Headers`, `State`, `Context`, `Cookie`, `CurrentUser`, `Db`) can appear in any order before the last parameter.
+
+> **Note:** Only one body-consuming extractor can be used per handler. If you need both JSON and form data, choose one.
