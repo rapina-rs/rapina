@@ -21,7 +21,7 @@ If your app uses a database, make sure the correct feature flag is enabled in yo
 
 ```toml
 [dependencies]
-rapina = { version = "0.10.0", features = ["postgres"] }
+rapina = { version = "0.11.0", features = ["postgres"] }
 ```
 
 Available database features: `postgres`, `mysql`, `sqlite`.
@@ -343,7 +343,7 @@ Enable Prometheus metrics for monitoring:
 
 ```toml
 [dependencies]
-rapina = { version = "0.10.0", features = ["metrics"] }
+rapina = { version = "0.11.0", features = ["metrics"] }
 ```
 
 ```rust

@@ -13,7 +13,7 @@ Add the feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = { version = "0.10.0", features = ["metrics"] }
+rapina = { version = "0.11.0", features = ["metrics"] }
 ```
 
 Enable the endpoint in your application:

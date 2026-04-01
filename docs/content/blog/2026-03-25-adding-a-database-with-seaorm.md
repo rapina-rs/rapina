@@ -19,7 +19,7 @@ Rapina's database integration is opt-in. Add the feature flag for your database 
 
 ```toml
 [dependencies]
-rapina = { version = "0.10", features = ["postgres"] }
+rapina = { version = "0.11", features = ["postgres"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
