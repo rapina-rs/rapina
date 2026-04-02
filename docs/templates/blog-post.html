@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} - Rapina{% endblock %}
+
+{% block content %}
+<div class="blog-layout">
+    <article class="blog-content blog-post-full">
+        <nav class="blog-breadcrumb">
+            <a href="/blog/">Blog</a>
+            <span>/</span>
+            <span>{{ page.title }}</span>
+        </nav>
+
+        <div class="blog-post-header">
+            <h1>{{ page.title }}</h1>
+            <div class="blog-post-meta">
+                <time datetime="{{ page.date }}">{{ page.date | date(format="%B %d, %Y") }}</time>
+                {% if page.extra.author %}
+                <span class="author">by {{ page.extra.author }}</span>
+                {% endif %}
+                {% if page.taxonomies.categories %}
+                {% for cat in page.taxonomies.categories %}
+                <span class="category">{{ cat | replace(from="-", to=" ") | title }}</span>
+                {% endfor %}
+                {% endif %}
+            </div>
+            {% if page.description %}
+            <p class="page-description">{{ page.description }}</p>
+            {% endif %}
+        </div>
+
+        <div class="blog-post-body">
+            {{ page.content | safe }}
+        </div>
+
+        <div class="page-footer">
+            <a href="{{ config.extra.github }}/edit/main/docs/content/{{ page.relative_path }}" target="_blank" rel="noopener" class="edit-on-github">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Edit this page on GitHub
+            </a>
+        </div>
+    </article>
+
+    <aside class="blog-sidebar">
+        <div class="sidebar-widget">
+            <h3>Categories</h3>
+            <ul>
+                <li><a href="/blog/" class="category-link">All Posts</a></li>
+                <li><a href="/categories/announcements/" class="category-link">Announcements</a></li>
+                <li><a href="/categories/release-notes/" class="category-link">Release Notes</a></li>
+                <li><a href="/categories/tutorials/" class="category-link">Tutorials</a></li>
+                <li><a href="/categories/community/" class="category-link">Community</a></li>
+            </ul>
+        </div>
+    </aside>
+</div>
+{% endblock %}
