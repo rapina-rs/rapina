@@ -107,6 +107,10 @@ harness = false
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
 [[example]]
+name = "middleware"
+required-features = ["compression", "rate-limit"]
+
+[[example]]
 name = "multipart"
 required-features = ["multipart"]
 
