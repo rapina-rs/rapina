@@ -55,7 +55,7 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
-# Rate Limiting
+# Concurrent map (used by cache + rate-limit)
 dashmap = "6.1.0"
 
 # SmallVec for stack-allocated path params
@@ -111,7 +111,8 @@ name = "multipart"
 required-features = ["multipart"]
 
 [features]
-default = ["compression"]
+default = ["compression", "rate-limit"]
+rate-limit = []
 compression = ["flate2"]
 database = ["sea-orm", "sea-orm-migration", "async-trait"]
 postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]

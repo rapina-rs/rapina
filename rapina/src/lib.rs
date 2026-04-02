@@ -67,7 +67,7 @@
 //! - [`BodyLimitMiddleware`](middleware::BodyLimitMiddleware) - Limit request body size
 //! - [`TraceIdMiddleware`](middleware::TraceIdMiddleware) - Add trace IDs to requests
 //! - [`RequestLogMiddleware`](middleware::RequestLogMiddleware) - Structured request logging
-//! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting
+//! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting (requires `rate-limit` feature)
 //!
 //! ## Introspection
 //!
@@ -142,9 +142,9 @@ pub mod prelude {
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
     pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus, Jobs};
-    pub use crate::middleware::{
-        KeyExtractor, Middleware, Next, RateLimitConfig, RequestLogConfig,
-    };
+    pub use crate::middleware::{Middleware, Next, RequestLogConfig};
+    #[cfg(feature = "rate-limit")]
+    pub use crate::middleware::{KeyExtractor, RateLimitConfig};
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
