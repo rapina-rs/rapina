@@ -1,11 +1,11 @@
 //! Integration tests for middleware functionality.
 
 use http::StatusCode;
+#[cfg(feature = "compression")]
+use rapina::middleware::CompressionConfig;
 use rapina::middleware::{
     BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
 };
-#[cfg(feature = "compression")]
-use rapina::middleware::CompressionConfig;
 #[cfg(feature = "rate-limit")]
 use rapina::middleware::{RateLimitConfig, RateLimitMiddleware};
 use rapina::prelude::*;

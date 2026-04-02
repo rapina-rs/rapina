@@ -142,9 +142,9 @@ pub mod prelude {
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
     pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus, Jobs};
-    pub use crate::middleware::{Middleware, Next, RequestLogConfig};
     #[cfg(feature = "rate-limit")]
     pub use crate::middleware::{KeyExtractor, RateLimitConfig};
+    pub use crate::middleware::{Middleware, Next, RequestLogConfig};
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};

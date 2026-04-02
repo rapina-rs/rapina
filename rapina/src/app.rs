@@ -12,8 +12,7 @@ use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
 #[cfg(feature = "compression")]
 use crate::middleware::{CompressionConfig, CompressionMiddleware};
 use crate::middleware::{
-    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RequestLogConfig,
-    RequestLogMiddleware,
+    CorsConfig, CorsMiddleware, Middleware, MiddlewareStack, RequestLogConfig, RequestLogMiddleware,
 };
 #[cfg(feature = "rate-limit")]
 use crate::middleware::{RateLimitConfig, RateLimitMiddleware};
