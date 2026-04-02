@@ -784,8 +784,8 @@ impl Default for Rapina {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::Error;
     use crate::middleware::TimeoutMiddleware;
+    use crate::prelude::Error;
     use http::StatusCode;
     use std::time::Duration;
 

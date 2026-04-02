@@ -89,7 +89,7 @@ pub mod cache_redis;
 pub mod config;
 pub mod context;
 #[cfg(feature = "cron-scheduler")]
-pub mod cron_scheduler;
+pub(crate) mod cron_scheduler;
 #[cfg(feature = "database")]
 pub mod database;
 pub(crate) mod date_cache;

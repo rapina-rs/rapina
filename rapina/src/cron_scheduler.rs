@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 pub struct CronSchedulerError {
     pub cron_schedule: String,
-    pub error: tokio_cron_scheduler::JobSchedulerError,
+    pub error_message: String,
 }
 
 impl std::fmt::Display for CronSchedulerError {
@@ -17,7 +17,7 @@ impl std::fmt::Display for CronSchedulerError {
         write!(
             f,
             "Failed to create cron job for schedule '{}': {}",
-            self.cron_schedule, self.error
+            self.cron_schedule, self.error_message
         )
     }
 }
@@ -87,7 +87,7 @@ impl CronScheduler {
                 }
                 result = task() => {
                     if let Err(e) = result {
-                        tracing::error!("Error while running Rapina background job: {:?}", e);
+                        tracing::error!("Error while running Rapina background job: {}", e);
                     }
                 }
                 }
@@ -95,7 +95,7 @@ impl CronScheduler {
         })
         .map_err(|error| CronSchedulerError {
             cron_schedule: cron_schedule.clone(),
-            error,
+            error_message: error.to_string(),
         })?;
 
         let job_uuid = job.guid();
@@ -163,17 +163,20 @@ impl CronScheduler {
     }
 
     /// Returns the number of scheduled jobs, which have not yet been drained by starting the cron scheduler
-    pub fn len(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
         self.jobs.len()
     }
 
     /// Returns whether the list of scheduled jobs, which have not yet been drained by starting the cron scheduler, is empty
-    pub fn is_empty(&self) -> bool {
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
         self.jobs.is_empty()
     }
 
     /// Returns whether the cron scheduler has been started
-    pub fn is_started(&self) -> bool {
+    #[cfg(test)]
+    fn is_started(&self) -> bool {
         self.started
     }
 }
