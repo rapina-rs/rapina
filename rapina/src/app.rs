@@ -130,7 +130,7 @@ impl Rapina {
             #[cfg(feature = "database")]
             jobs_config: None,
             #[cfg(feature = "cron-scheduler")]
-            cron_scheduler: Some(CronScheduler::new()),
+            cron_scheduler: None,
         }
     }
 
@@ -387,6 +387,11 @@ impl Rapina {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = std::io::Result<()>> + Send + 'static,
     {
+        // Initialize cron_scheduler upon first .cron() call because it's set to None in Rapina::new()
+        if self.cron_scheduler.is_none() {
+            self.cron_scheduler = Some(CronScheduler::new());
+        }
+
         let cron_scheduler = self.cron_scheduler.as_mut().unwrap();
         cron_scheduler
             .schedule(cron_schedule.to_string(), task)
