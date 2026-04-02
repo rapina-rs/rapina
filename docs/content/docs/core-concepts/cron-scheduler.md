@@ -139,8 +139,8 @@ async fn main() -> std::io::Result<()> {
 
     Rapina::new()
         .discover()
-        .cron("1/5 * * * * *", first_cronjob)
-        .cron("1/10 * * * * *", second_cronjob)
+        .cron("*/5 * * * * *", first_cronjob)
+        .cron("*/10 * * * * *", second_cronjob)
         .listen("127.0.0.1:3000")
         .await
 }
