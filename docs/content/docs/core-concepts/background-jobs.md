@@ -17,7 +17,7 @@ You need the `database` feature with PostgreSQL. The jobs migration uses Postgre
 
 ```toml
 [dependencies]
-rapina = { version = "0.10", features = ["postgres"] }
+rapina = { version = "0.11.0", features = ["postgres"] }
 ```
 
 You also need a database connection configured in your app — see the [Database](/docs/core-concepts/database/) page.

@@ -9,6 +9,8 @@ Middleware intercepts requests before they reach your handler and responses befo
 
 ## Rate Limiting
 
+> **Feature flag:** Rate limiting requires the `rate-limit` feature, which is enabled by default. To opt out, use `default-features = false` in your `Cargo.toml`.
+
 Protects your API from abuse using the **token bucket** algorithm. Each client gets a quota of tokens that refills continuously at the configured rate.
 
 ```rust

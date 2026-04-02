@@ -14,6 +14,7 @@ mod body_limit;
 #[cfg(feature = "compression")]
 mod compression;
 mod cors;
+#[cfg(feature = "rate-limit")]
 mod rate_limit;
 mod request_log;
 mod timeout;
@@ -23,6 +24,7 @@ pub use body_limit::BodyLimitMiddleware;
 #[cfg(feature = "compression")]
 pub use compression::{CompressionConfig, CompressionMiddleware};
 pub use cors::{AllowedHeaders, AllowedMethods, AllowedOrigins, CorsConfig, CorsMiddleware};
+#[cfg(feature = "rate-limit")]
 pub use rate_limit::{KeyExtractor, RateLimitConfig, RateLimitMiddleware};
 pub use request_log::{RequestLogConfig, RequestLogMiddleware};
 pub use timeout::TimeoutMiddleware;
