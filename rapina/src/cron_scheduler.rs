@@ -3,7 +3,6 @@
 //! For durable, persistent work use [`crate::jobs`] instead. This scheduler
 //! is in-memory only and does not survive process restarts.
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tokio_util::sync::CancellationToken;
 
@@ -12,6 +11,7 @@ pub struct CronScheduler {
     jobs: Vec<Job>,
     scheduler: Option<JobScheduler>,
     cancellation_token: CancellationToken,
+    started: bool,
 }
 
 impl Default for CronScheduler {
@@ -27,6 +27,7 @@ impl CronScheduler {
             jobs: Vec::new(),
             scheduler: None,
             cancellation_token: CancellationToken::new(),
+            started: false,
         }
     }
 
@@ -113,6 +114,8 @@ impl CronScheduler {
 
         self.scheduler = Some(scheduler);
 
+        self.started = true;
+
         tracing::info!("Started Rapina background job scheduler");
     }
 
@@ -149,11 +152,7 @@ impl CronScheduler {
 
     /// Returns whether the cron scheduler has been started
     pub fn is_started(&self) -> bool {
-        if let Some(scheduler) = &self.scheduler {
-            scheduler.inited.load(Ordering::Relaxed)
-        } else {
-            false
-        }
+        self.started
     }
 }
 
