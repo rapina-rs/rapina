@@ -67,7 +67,7 @@
 //! - [`BodyLimitMiddleware`](middleware::BodyLimitMiddleware) - Limit request body size
 //! - [`TraceIdMiddleware`](middleware::TraceIdMiddleware) - Add trace IDs to requests
 //! - [`RequestLogMiddleware`](middleware::RequestLogMiddleware) - Structured request logging
-//! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting
+//! - [`RateLimitMiddleware`](middleware::RateLimitMiddleware) - Token bucket rate limiting (requires `rate-limit` feature)
 //!
 //! ## Introspection
 //!
