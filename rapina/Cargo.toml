@@ -16,7 +16,7 @@ categories = ["web-programming::http-server", "asynchronous"]
 tokio = { version = "1.50.0", features = ["full"] }
 
 # HTTP server
-hyper = { version = "1.8.1", features = ["server", "http1", "http2"] }
+hyper = { version = "1.9.0", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1.19", features = [
   "tokio",
   "client-legacy",
@@ -91,6 +91,10 @@ hyper-tungstenite = { version = "0.19", optional = true }
 tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
 
+# Cron Scheduler (optional)
+tokio-cron-scheduler = { version = "0.15.1", optional = true }
+tokio-util = { version = "0.7.18", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 matchit = "0.9"
@@ -126,3 +130,4 @@ metrics = ["prometheus"]
 cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
+cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]
