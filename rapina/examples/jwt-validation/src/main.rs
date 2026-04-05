@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
         JwksClient::oidc(discovery_url.to_string(), cron_refresh_schedule.to_string());
 
     /*
-    Alternatively use the direct JWKS url to fetch JwksClient::Direct
+    Alternatively use the direct JWKS url to fetch the content (using JwksClient::Direct)
 
     let jwks_client = JwksClient::direct(
         "https://www.googleapis.com/oauth2/v3/certs".to_string(),

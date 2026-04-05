@@ -216,7 +216,7 @@ mod tests {
 
     fn setup_jwks_client_direct(addr: SocketAddr) -> JwksClient {
         let jwks_url = format!("http://{}/realms/master/protocol/openid-connect/cert", addr);
-        JwksClient::direct(jwks_url.to_string(), "* * * * * */5".to_string())
+        JwksClient::direct(jwks_url.to_string(), "0 0 0 0 0 0".to_string())
     }
 
     fn setup_jwks_client_oidc_discovery(addr: SocketAddr) -> JwksClient {
@@ -224,7 +224,7 @@ mod tests {
             "http://{}/realms/master/.well-known/openid-configuration",
             addr
         );
-        JwksClient::oidc(oidc_discovery_url.to_string(), "* * * * * */5".to_string())
+        JwksClient::oidc(oidc_discovery_url.to_string(), "0 0 0 0 0 0".to_string())
     }
 
     #[test]
