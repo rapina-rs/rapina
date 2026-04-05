@@ -29,7 +29,7 @@ The **payload** contains claims: `sub` (subject/user ID), `iss` (issuer), `aud` 
 
 The **signature** is created by the issuer using their private key. To verify it, you need the corresponding public key.
 
-A **JWKS (JSON Web Key Set)** is a JSON document published by the identity provider that lists their current public keys, each identified by a `kid`. Rapina fetches this document at runtime, looks up the key matching the token's `kid`, and uses it to verify the token's signature.
+A **JWKS (JSON Web Key Set)** is a JSON document published by the identity provider that lists their current public keys, each identified by a `kid`. Rapina fetches this document, caches it in memory, and uses the matching key to verify incoming tokens.
 
 ### OIDC Discovery
 
@@ -55,15 +55,25 @@ Add the `jwks` feature to your `Cargo.toml`:
 rapina = { version = "0.11", features = ["jwks"] }
 ```
 
-This pulls in `hyper-rustls` for HTTPS fetching of the JWKS endpoint using your system's native root CA certificates.
+This pulls in Rapina's `cron-scheduler` for automatic periodic cache refresh and `hyper-rustls` for HTTPS fetching of the JWKS endpoint using your system's native root CA certificates.
 
 ---
 
 ## JWKS Client
 
-`JwksClient` is responsible for fetching the JSON Web Key Set from the identity provider. It is registered as application state and used automatically by the `JsonWebToken` extractor on every request.
+`JwksClient` is responsible for fetching and caching the JSON Web Key Set from the identity provider. It is registered as application state and used automatically by the `JsonWebToken` extractor on every request.
 
-There are two variants:
+### Caching and Automatic Refresh
+
+The JWKS content is **cached in memory** so that each incoming request does not trigger a network call to the identity provider. The cache is refreshed automatically based on a **cron schedule** you provide when creating the client.
+
+When the application starts:
+1. Rapina **warms up the cache** by immediately fetching the JWKS from the configured endpoint.
+2. Rapina **schedules a background cronjob** that periodically refreshes the cache according to the cron schedule.
+
+If the cache warmup fails on startup (e.g. the identity provider is temporarily unavailable), the `JsonWebToken` extractor will **fall back to a live fetch** on the first request. If that also fails, it returns a `500 Internal Server Error`.
+
+There are two variants of the JWKS client:
 
 ### Direct JWKS URL
 
@@ -73,11 +83,10 @@ Use this when you know the exact URL of the JWKS endpoint:
 use rapina::jwt::JwksClient;
 
 let jwks_client = JwksClient::direct(
-    "https://www.googleapis.com/oauth2/v3/certs".to_string()
+    "https://www.googleapis.com/oauth2/v3/certs".to_string(),
+    "0 */5 * * * *".to_string(), // Refresh every 5 minutes
 );
 ```
-
-On each request that uses the `JsonWebToken` extractor, Rapina fetches the JWKS document from this URL and uses it to validate the token.
 
 ### OIDC Discovery
 
@@ -87,17 +96,24 @@ Use this when the provider publishes an OpenID Connect discovery document. Rapin
 use rapina::jwt::JwksClient;
 
 let jwks_client = JwksClient::oidc(
-    "https://accounts.google.com/.well-known/openid-configuration".to_string()
+    "https://accounts.google.com/.well-known/openid-configuration".to_string(),
+    "0 */5 * * * *".to_string(), // Refresh every 5 minutes
 );
 ```
 
-This is the **recommended approach** for standard OIDC providers, as it is more robust: if the provider rotates their JWKS URL, the discovery document is updated automatically and your application keeps working.
+This is the **recommended approach** for standard OIDC providers, as it is more robust: if the provider rotates their JWKS URL, the discovery document is updated automatically and your application continues to work.
 
 **OIDC discovery flow:**
 1. Fetch `discovery_url` → parse `jwks_uri`
 2. Fetch `jwks_uri` → get the `JwkSet`
-3. Look up the JWK matching the token's `kid`
-4. Verify the token signature
+3. Cache the `JwkSet` in memory
+4. Look up the JWK matching the token's `kid`
+5. Verify the token signature
+
+### Cron Schedule Format
+
+The `refresh_schedule` parameter accepts a **6-field cron expression** (seconds granularity).
+Rapina's [Cron Scheduler](cron-scheduler.md#cron-expression-syntax) docs outline more information and common examples.
 
 ---
 
@@ -107,7 +123,7 @@ This is the **recommended approach** for standard OIDC providers, as it is more 
 
 1. Reads the `Authorization` header (strips an optional `Bearer ` prefix)
 2. Parses the JWT header to get the `kid` and `alg`
-3. Fetches the JWKS from the configured `JwksClient`
+3. Reads the JWKS from the in-memory cache (falls back to a live fetch if the cache is empty)
 4. Finds the matching JWK by `kid`
 5. Validates the token using the configured `Validation` settings
 6. Returns the decoded claims as `JsonWebToken<T>`
@@ -183,7 +199,7 @@ The algorithm (`alg`) is always taken from the JWT header itself — you do not 
 
 ### Audience Validation
 
-> ⚠️ **Always configure audience validation in production.** Without it, a valid token issued for a different application (same Identity Provider, different `aud`) would be accepted by your service.
+> ⚠️ **Always configure audience validation in production.** Without it, a valid token issued for a different application (same Identity Provider, different `aud`) would be accepted by your server.
 
 ```rust
 let mut validation = jwt::default_validation();
@@ -240,9 +256,10 @@ async fn get_email(token: JsonWebToken<MyClaims>) -> Json<String> {
 async fn main() -> std::io::Result<()> {
     let router = Router::new().get("/email", get_email);
 
-    // Configure the JWKS source
+    // Configure the JWKS source (with a 5-minute refresh schedule)
     let jwks_client = JwksClient::oidc(
-        "https://accounts.google.com/.well-known/openid-configuration".to_string()
+        "https://accounts.google.com/.well-known/openid-configuration".to_string(),
+        "0 */5 * * * *".to_string(),
     );
 
     // Configure validation
@@ -261,22 +278,29 @@ async fn main() -> std::io::Result<()> {
 
 Both `.state()` calls are required. If `JwksClient` is not registered, the extractor returns `500 Internal Server Error`.
 
+On startup, Rapina will:
+1. **Warm up the JWKS cache** by fetching the key set immediately
+2. **Schedule a background cronjob** to refresh the cache, based on the configured schedule
+
+This ensures the JWKS keys are available from the very first request without any cold-start latency.
+
 ---
 
 ## Error Responses
 
 The `JsonWebToken` extractor produces the following errors:
 
-| Condition | HTTP Status Code | Message                                              |
-|---|------------------|------------------------------------------------------|
-| `Authorization` header missing | 401              | `missing authorization header`                       |
-| Header value is not valid UTF-8 | 401              | `authorization header could not be parsed as String` |
-| JWT structure is invalid / not parseable | 401              | `invalid token`                                      |
-| JWT is expired (header parse stage) | 401              | `token expired`                                      |
-| JWT header parse failed for another reason | 401              | `token header validation failed: <detail>`           |
-| Token's `kid` is not present in the JWKS | 401              | `no matching JWK found for the given 'kid'`          |
-| Token signature / claims validation failed | 401              | `failed to decode token: <detail>`                   |
-| `JwksClient` not registered in state | 500              | `internal authentication error`                      |
+| Condition                                                              | HTTP Status Code | Message                                              |
+|------------------------------------------------------------------------|------------------|------------------------------------------------------|
+| `Authorization` header missing                                         | 401              | `missing authorization header`                       |
+| Header value is not valid UTF-8                                        | 401              | `authorization header could not be parsed as String` |
+| JWT structure is invalid / not parseable                               | 401              | `invalid token`                                      |
+| JWT is expired (header parse stage)                                    | 401              | `token expired`                                      |
+| JWT header parse failed for another reason                             | 401              | `token header validation failed: <detail>`           |
+| Token's `kid` is not present in the JWKS                               | 401              | `no matching JWK found for the given 'kid'`          |
+| Token signature / claims validation failed                             | 401              | `failed to decode token: <detail>`                   |
+| `JwksClient` not registered in state                                   | 500              | `internal authentication error`                      |
+| JWKS server is unhealthy/unreachable (cache empty + live fetch failed) | 500              | `internal authentication error`                      |
 
 All errors follow the standard Rapina error envelope:
 
@@ -321,4 +345,4 @@ For a complete example, please see [folder `jwt-validation` in the Rapina exampl
 | Azure AD | `https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration` |
 | Okta | `https://<your-domain>.okta.com/oauth2/default/.well-known/openid-configuration` |
 
-For providers that do not support OIDC discovery, use `JwksClient::direct(jwks_url)` with the direct JWKS URL from their documentation.
+For providers that do not support OIDC discovery, use `JwksClient::direct(jwks_url, refresh_schedule)` with the direct JWKS URL from their documentation.
