@@ -18,7 +18,7 @@ async fn main() -> std::io::Result<()> {
     To try this with Google's API Playground -- the code given below --, use the following steps:
 
     1) Navigate to https://developers.google.com/oauthplayground
-    2) In "Step 1, Select & authorize APIs" enter: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+    2) In "Step 1, Select & authorize APIs" copy the following string into the text field with label "Input your own scopes": "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
     3) Press "Authorize APIs", proceed with the Google account login
     4) Authorization code grant should be successful, "Step 2" should be uncollapsed now. Press "Exchange authorization code for tokens".
     5) In "Request / Response" section of the website, you will see Google's token output.
