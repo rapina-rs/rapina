@@ -92,13 +92,15 @@ where
             v
         };
 
-        let decoding_key =
-            DecodingKey::from_jwk(jwk).map_err(|_| Error::unauthorized("Failed to decode JWKS"));
+        let decoding_key = DecodingKey::from_jwk(jwk).map_err(|e| {
+            tracing::debug!("Failed to decode JWKS: {}", e);
+            Error::unauthorized("Failed to decode JWKS")
+        });
 
         match decode::<JsonWebToken<T>>(token, &decoding_key?, &validation) {
             Ok(decoded_token) => Ok(decoded_token.claims),
             Err(e) => Err(Error::unauthorized(format!(
-                "failed to decode token: {:?}",
+                "failed to decode token: {}",
                 e
             ))),
         }
