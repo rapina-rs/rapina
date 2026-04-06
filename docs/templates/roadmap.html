@@ -18,52 +18,8 @@ block content %}
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
-                    <h4>GraphQL Support</h4>
-                    <p>
-                        Optional GraphQL layer with async-graphql integration.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Background Jobs</h4>
-                    <p>Async task queue with Redis backend and <code>rapina seed</code> for database seeding.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>OpenTelemetry Tracing</h4>
-                    <p>Export traces and metrics to OpenTelemetry-compatible backends.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
                     <h4>Pluggable Authorization</h4>
                     <p>Role-based and policy-based access control for endpoints beyond JWT authentication.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>JWKS URL Verification</h4>
-                    <p>Verify JWTs against a remote JWKS endpoint for integration with external identity providers.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Schema Improvements</h4>
-                    <p>Relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Multipart File Uploads</h4>
-                    <p>Streaming multipart extractor with <code>multer</code> for file uploads and form data.</p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
@@ -78,9 +34,73 @@ block content %}
             </div>
             <div class="column-cards">
                 <div class="roadmap-card">
+                    <h4>Background Jobs</h4>
+                    <p>Async task queue with Redis backend and <code>rapina seed</code> for database seeding.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Schema Improvements</h4>
+                    <p>Relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
                     <h4>Redis TLS Support</h4>
                     <p>
                         TLS and client certificates for Redis cache backend.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>JWKS URL Verification</h4>
+                    <p>Verify JWTs against a remote JWKS endpoint for integration with external identity providers.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>OpenTelemetry Tracing</h4>
+                    <p>Export traces and metrics to OpenTelemetry-compatible backends.</p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>Scalar OpenAPI UI</h4>
+                    <p>
+                        Built-in Scalar API documentation UI served from the framework. Currently being explored and may evolve.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+                <div class="roadmap-card">
+                    <h4>GraphQL Support</h4>
+                    <p>
+                        Optional GraphQL layer with async-graphql integration. Under active exploration; API and scope are still being refined.
+                    </p>
+                    <div class="card-tags">
+                        <span class="card-tag">Feature</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator done"></span>
+                <h3>Done</h3>
+            </div>
+            <div class="column-cards">
+                <div class="roadmap-card">
+                    <h4>Health Check Endpoints</h4>
+                    <p>
+                        Built-in health check routes for readiness and liveness probes.
                     </p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
@@ -96,32 +116,12 @@ block content %}
                     </div>
                 </div>
                 <div class="roadmap-card">
-                    <h4>Scalar OpenAPI UI</h4>
-                    <p>
-                        Built-in Scalar API documentation UI served from the framework.
-                    </p>
+                    <h4>Multipart File Uploads</h4>
+                    <p>Streaming multipart extractor with <code>multer</code> for file uploads and form data.</p>
                     <div class="card-tags">
                         <span class="card-tag">Feature</span>
                     </div>
                 </div>
-                <div class="roadmap-card">
-                    <h4>Health Check Endpoints</h4>
-                    <p>
-                        Built-in health check routes for readiness and liveness probes.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="roadmap-column">
-            <div class="column-header">
-                <span class="column-indicator done"></span>
-                <h3>Done</h3>
-            </div>
-            <div class="column-cards">
                 <div class="roadmap-card">
                     <h4>Serde-based Path Extraction</h4>
                     <p>
