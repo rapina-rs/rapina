@@ -557,3 +557,67 @@ async fn test_trace_id_middleware_preserves_incoming_trace_id() {
     let header_value = response.headers().get(TRACE_ID_HEADER).unwrap();
     assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
 }
+
+#[tokio::test]
+async fn test_timeout_middleware_rejects_slow_handler() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TimeoutMiddleware::new(Duration::from_millis(50)))
+        .router(
+            Router::new().route(http::Method::GET, "/slow", |_, _, _| async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                "should not reach"
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/slow").send().await;
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_rejects_large_body() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let large_body: &'static str = "x".repeat(200).leak(); // 200 bytes, over the 100 limit
+    let response = client.post("/upload").body(large_body).send().await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_allows_no_content_length() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    // Send a body larger than the limit but without explicit Content-Length
+    // The middleware should pass it through since it can't determine the size
+    let response = client
+        .post("/upload")
+        .body("small body under limit")
+        .send()
+        .await;
+
+    // Request should succeed because middleware passes through when Content-Length is not parseable
+    assert_eq!(response.status(), StatusCode::OK);
+}

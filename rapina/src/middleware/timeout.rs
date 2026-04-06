@@ -53,3 +53,33 @@ impl Middleware for TimeoutMiddleware {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_timeout_middleware_new() {
+        let mw = TimeoutMiddleware::new(Duration::from_secs(60));
+        assert_eq!(mw.duration, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_timeout_middleware_default() {
+        let mw = TimeoutMiddleware::default();
+        assert_eq!(mw.duration, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_timeout_millisecond_duration() {
+        let mw = TimeoutMiddleware::new(Duration::from_millis(500));
+        assert_eq!(mw.duration, Duration::from_millis(500));
+    }
+
+    #[test]
+    fn test_timeout_zero_duration() {
+        let mw = TimeoutMiddleware::new(Duration::ZERO);
+        assert_eq!(mw.duration, Duration::ZERO);
+    }
+}
