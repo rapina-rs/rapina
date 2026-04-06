@@ -11,6 +11,19 @@ Rapina's job system uses your existing PostgreSQL database as the queue. No Redi
 
 This page covers setup, defining jobs, enqueuing, running the worker, and the retry system.
 
+## Cron Scheduler vs Background Jobs
+
+tl;dr: Use Background Jobs for durable, transactional work that must complete reliably. Use the [Cron Scheduler](cron-scheduler.md) for lightweight, periodic tasks that are safe to miss if the server restarts.
+
+| | Cron Scheduler                               | Background Jobs                                                |
+|---|----------------------------------------------|----------------------------------------------------------------|
+| **Trigger** | Time-based (cron expression)                 | Event-based (enqueued from code)                               |
+| **Persistence** | None, in-memory only                         | PostgreSQL-backed                                              |
+| **Retries** | None built-in                                | Configurable (exponential, fixed, none)                        |
+| **Survives restarts** | No. Schedule restarts with the process       | Yes. Pending jobs persist in the database                      |
+| **Use case** | Periodic maintenance, polling, cache refresh | Durable, transactional deferred work: emails, uploads, reports |
+| **Infrastructure** | No extra dependencies                        | Requires PostgreSQL                                            |
+
 ## Prerequisites
 
 You need the `database` feature with PostgreSQL. The jobs migration uses PostgreSQL-specific features (`gen_random_uuid()`, partial indexes) and does not support MySQL or SQLite.
