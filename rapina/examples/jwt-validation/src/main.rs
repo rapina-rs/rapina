@@ -8,7 +8,7 @@ struct GoogleClaims {
 }
 #[get("/email")]
 async fn get_email(token: JsonWebToken<GoogleClaims>) -> Json<String> {
-    println!("Token subject: {}", token.sub);
+    tracing::info!(sub = %token.sub, "authenticated request");
     Json(token.claims.email)
 }
 
@@ -34,7 +34,7 @@ async fn main() -> std::io::Result<()> {
     let discovery_url = "https://accounts.google.com/.well-known/openid-configuration";
 
     // Cron schedule of 5 minutes to periodically refresh the JWKS content
-    let cron_refresh_schedule = "* */5 * * * *";
+    let cron_refresh_schedule = "0 */5 * * * *";
 
     let jwks_client =
         JwksClient::oidc(discovery_url.to_string(), cron_refresh_schedule.to_string());
