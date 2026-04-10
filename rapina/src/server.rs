@@ -81,7 +81,7 @@ pub(crate) async fn serve(
                     req.extensions_mut().insert(ctx.clone());
 
                     async move {
-                        let mut response = middlewares.execute(req, &router, &state, &ctx).await;
+                        let mut response = middlewares.execute(req, router, state, &ctx).await;
                         response
                             .headers_mut()
                             .insert(http::header::DATE, date_cache.header_value());

@@ -389,6 +389,59 @@ impl Middleware for SecurityHeadersMiddleware {
 
 ---
 
+## Tower Compatibility
+
+Rapina can interop with the [Tower](https://docs.rs/tower) ecosystem via the `tower` feature flag. This lets you use battle-tested Tower layers (retry, circuit breakers, concurrency limits, etc.) as Rapina middleware.
+
+```toml
+rapina = { version = "0.11.0", features = ["tower"] }
+```
+
+### Using Tower layers as middleware
+
+Use `.layer()` to add any Tower `Layer` to the middleware stack:
+
+```rust
+use rapina::prelude::*;
+use tower::timeout::TimeoutLayer;
+use std::time::Duration;
+
+Rapina::new()
+    .layer(TimeoutLayer::new(Duration::from_secs(30)))
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Or wrap it explicitly with `TowerLayerMiddleware`:
+
+```rust
+use rapina::middleware::TowerLayerMiddleware;
+use tower::timeout::TimeoutLayer;
+use std::time::Duration;
+
+Rapina::new()
+    .middleware(TowerLayerMiddleware::new(TimeoutLayer::new(Duration::from_secs(30))))
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Tower layers that preserve the response body type (`Response<BoxBody>`) work directly. Errors from Tower services are logged and converted to `500 Internal Server Error` responses.
+
+### Rapina as a Tower Service
+
+`RapinaService` wraps Rapina's middleware + router stack as a `tower::Service`, useful for embedding Rapina in Tower-based infrastructure:
+
+```rust
+use rapina::middleware::RapinaService;
+
+let service = RapinaService::new(router, state, middlewares);
+// `service` implements tower::Service<Request<Incoming>>
+```
+
+---
+
 ## Middleware ordering
 
 Middleware executes in **FIFO order** — first registered, first to run on the request and last to run on the response.

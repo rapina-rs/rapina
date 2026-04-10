@@ -89,6 +89,10 @@ prometheus = { version = '0.13', optional = true }
 # Redis cache backend (optional)
 redis = { version = "1.1", optional = true, features = ["tokio-comp"] }
 
+# Tower compatibility (optional)
+tower-service = { version = "0.3", optional = true }
+tower-layer = { version = "0.3", optional = true }
+
 # WebSocket (optional)
 hyper-tungstenite = { version = "0.19", optional = true }
 tokio-tungstenite = { version = "0.28", optional = true }
@@ -104,6 +108,7 @@ matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 tempfile = "3"
+tower = { version = "0.5", features = ["limit"] }
 
 [[bench]]
 name = "router"
@@ -132,6 +137,7 @@ sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
 cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
+tower = ["tower-service", "tower-layer"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
 cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]
 jwks = ["cron-scheduler", "hyper-rustls"]

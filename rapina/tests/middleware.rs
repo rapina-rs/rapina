@@ -3,6 +3,8 @@
 use http::StatusCode;
 #[cfg(feature = "compression")]
 use rapina::middleware::CompressionConfig;
+#[cfg(feature = "tower")]
+use rapina::middleware::TowerLayerMiddleware;
 use rapina::middleware::{
     BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
 };
@@ -556,4 +558,83 @@ async fn test_trace_id_middleware_preserves_incoming_trace_id() {
 
     let header_value = response.headers().get(TRACE_ID_HEADER).unwrap();
     assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_tower_layer_with_rapina_middleware() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TraceIdMiddleware::new())
+        .middleware(TowerLayerMiddleware::new(tower_layer::Identity::new()))
+        .router(
+            Router::new().route(http::Method::GET, "/mixed", |_, _, _| async {
+                "tower + rapina"
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/mixed").send().await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "tower + rapina");
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_rapina_service_direct_construction() {
+    use rapina::middleware::{MiddlewareStack, RapinaService};
+    use tower_service::Service;
+
+    let router = Router::new().route(http::Method::GET, "/direct", |_, _, _| async {
+        "from service"
+    });
+    let state = rapina::state::AppState::new();
+    let middlewares = MiddlewareStack::new();
+
+    let mut svc = RapinaService::new(router, state, middlewares);
+
+    let _cloned = svc.clone();
+
+    let ready = std::future::poll_fn(|cx| svc.poll_ready(cx)).await;
+    assert!(ready.is_ok());
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_tower_concurrency_limit_integration() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tower::limit::ConcurrencyLimitLayer;
+
+    let max_concurrent = Arc::new(AtomicUsize::new(0));
+    let current = Arc::new(AtomicUsize::new(0));
+    let max_c = max_concurrent.clone();
+    let cur = current.clone();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .layer(ConcurrencyLimitLayer::new(1))
+        .router(
+            Router::new().route(http::Method::GET, "/slow", move |_, _, _| {
+                let max_c = max_c.clone();
+                let cur = cur.clone();
+                async move {
+                    let c = cur.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_c.fetch_max(c, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    cur.fetch_sub(1, Ordering::SeqCst);
+                    "done"
+                }
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+
+    let (r1, r2) = tokio::join!(client.get("/slow").send(), client.get("/slow").send());
+
+    assert_eq!(r1.status(), StatusCode::OK);
+    assert_eq!(r2.status(), StatusCode::OK);
+    assert_eq!(max_concurrent.load(Ordering::SeqCst), 1);
 }
