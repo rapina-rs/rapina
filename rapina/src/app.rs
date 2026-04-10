@@ -16,6 +16,8 @@ use crate::middleware::{
 use crate::middleware::{RateLimitConfig, RateLimitMiddleware};
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
+#[cfg(feature = "jwks")]
+use crate::prelude::JwksClient;
 use crate::router::Router;
 use crate::server::{ShutdownHook, serve};
 use crate::state::AppState;
@@ -186,6 +188,32 @@ impl Rapina {
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
         self
+    }
+
+    /// Adds a tower layer as middleware.
+    ///
+    /// This is a convenience method equivalent to
+    /// `.middleware(TowerLayerMiddleware::new(layer))`.
+    ///
+    /// Requires the `tower` feature.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::prelude::*;
+    ///
+    /// Rapina::new()
+    ///     .layer(my_tower_layer)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "tower")]
+    pub fn layer<L>(self, layer: L) -> Self
+    where
+        L: tower_layer::Layer<crate::middleware::NextService>,
+        crate::middleware::TowerLayerMiddleware<L>: Middleware,
+    {
+        self.middleware(crate::middleware::TowerLayerMiddleware::new(layer))
     }
 
     /// Enables CORS for the application.
@@ -406,6 +434,48 @@ impl Rapina {
                 cron_scheduler.shutdown().await;
             });
         }
+        self
+    }
+
+    /// Warms up the JWKS cache immediately without waiting for the next cronjob tick
+    #[cfg(feature = "jwks")]
+    async fn warmup_jwks_cache(&self) -> () {
+        let Some(jwks_client) = self.state.get::<JwksClient>().cloned() else {
+            tracing::error!(
+                "Skipped warmup of JWKS cache because the Rapina state for JwksClient is empty. Did you forget to call .state(jwks_client)?"
+            );
+
+            return;
+        };
+
+        match jwks_client.refresh_jwks_cache().await {
+            Ok(_) => tracing::info!("Successfully warmed up JWKS cache"),
+            Err(e) => tracing::error!("Failed warmup of JWKS cache: {}", e),
+        }
+    }
+
+    /// Schedules the JWKS refresh cronjob
+    #[cfg(feature = "jwks")]
+    fn schedule_jwks_cronjob(mut self) -> Self {
+        let Some(jwks_client) = self.state.get::<JwksClient>().cloned() else {
+            tracing::error!(
+                "Skipped scheduling the JWKS refresh cronjob because the Rapina state for JwksClient is empty. Did you forget to call .state(jwks_client)?"
+            );
+            return self;
+        };
+
+        let refresh_schedule = jwks_client.refresh_schedule().to_owned();
+        let jwks_client = jwks_client.clone();
+
+        self = self.cron(&refresh_schedule, move || {
+            let jwks_client = jwks_client.clone();
+            async move { jwks_client.refresh_jwks_cache().await }
+        });
+
+        tracing::info!(
+            "Scheduled JWKS refresh cronjob with schedule '{}'",
+            refresh_schedule
+        );
         self
     }
 
@@ -760,6 +830,14 @@ impl Rapina {
             tokio::spawn(worker.run());
         }
 
+        #[cfg(feature = "jwks")]
+        // Warms up the JWKS cache so it is available immediately when the webserver starts up
+        // and registers the JWKS refresh cronjob
+        let app = {
+            app.warmup_jwks_cache().await;
+            app.schedule_jwks_cronjob()
+        };
+
         #[cfg(feature = "cron-scheduler")]
         let app = app.start_cronjob_scheduler().await;
 
@@ -785,6 +863,7 @@ impl Default for Rapina {
 mod tests {
     use super::*;
     use crate::middleware::TimeoutMiddleware;
+    #[cfg(feature = "cron-scheduler")]
     use crate::prelude::Error;
     use http::StatusCode;
     use std::time::Duration;

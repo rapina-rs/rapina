@@ -95,7 +95,7 @@ impl TestClient {
                                         req.extensions_mut().insert(ctx.clone());
 
                                         async move {
-                                            let response = middlewares.execute(req, &router, &state, &ctx).await;
+                                            let response = middlewares.execute(req, router, state, &ctx).await;
                                             Ok::<_, std::convert::Infallible>(response)
                                         }
                                     });

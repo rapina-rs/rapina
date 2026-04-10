@@ -57,6 +57,7 @@
 //! - [`Context`](extract::Context) - Access request context with trace_id
 //! - [`Validated`](extract::Validated) - Validate extracted data
 //! - [`Multipart`](extract::Multipart) - Parse multipart form data (e.g. file uploads)
+//! - [`JsonWebToken`](jwt::JsonWebToken) - Parse and validate Json Web Tokens with configurable JWKS
 
 //!
 //! ## Middleware
@@ -101,6 +102,8 @@ pub mod health;
 pub mod introspection;
 #[cfg(feature = "database")]
 pub mod jobs;
+#[cfg(feature = "jwks")]
+pub mod jwt;
 #[cfg(feature = "metrics")]
 pub mod metrics;
 pub mod middleware;
@@ -144,9 +147,13 @@ pub mod prelude {
     pub use crate::introspection::RouteInfo;
     #[cfg(feature = "database")]
     pub use crate::jobs::{JobDescriptor, JobId, JobRequest, JobResult, JobRow, JobStatus, Jobs};
+    #[cfg(feature = "jwks")]
+    pub use crate::jwt::{JsonWebToken, JwksClient};
     #[cfg(feature = "rate-limit")]
     pub use crate::middleware::{KeyExtractor, RateLimitConfig};
     pub use crate::middleware::{Middleware, Next, RequestLogConfig};
+    #[cfg(feature = "tower")]
+    pub use crate::middleware::{RapinaService, TowerLayerMiddleware};
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
