@@ -152,6 +152,8 @@ pub mod prelude {
     #[cfg(feature = "rate-limit")]
     pub use crate::middleware::{KeyExtractor, RateLimitConfig};
     pub use crate::middleware::{Middleware, Next, RequestLogConfig};
+    #[cfg(feature = "tower")]
+    pub use crate::middleware::{RapinaService, TowerLayerMiddleware};
     pub use crate::observability::TracingConfig;
     #[cfg(feature = "database")]
     pub use crate::pagination::{Paginate, Paginated, PaginationConfig};
