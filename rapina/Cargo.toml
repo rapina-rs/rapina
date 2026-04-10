@@ -55,6 +55,9 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
+# JWKS (optional)
+hyper-rustls = { version = "0.27.7", optional = true, features = ["http1", "http2"] }
+
 # Concurrent map (used by cache + rate-limit)
 dashmap = "6.1.0"
 
@@ -131,3 +134,4 @@ cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
 cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]
+jwks = ["cron-scheduler", "hyper-rustls"]
