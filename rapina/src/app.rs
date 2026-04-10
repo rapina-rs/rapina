@@ -190,6 +190,32 @@ impl Rapina {
         self
     }
 
+    /// Adds a tower layer as middleware.
+    ///
+    /// This is a convenience method equivalent to
+    /// `.middleware(TowerLayerMiddleware::new(layer))`.
+    ///
+    /// Requires the `tower` feature.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::prelude::*;
+    ///
+    /// Rapina::new()
+    ///     .layer(my_tower_layer)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "tower")]
+    pub fn layer<L>(self, layer: L) -> Self
+    where
+        L: tower_layer::Layer<crate::middleware::NextService>,
+        crate::middleware::TowerLayerMiddleware<L>: Middleware,
+    {
+        self.middleware(crate::middleware::TowerLayerMiddleware::new(layer))
+    }
+
     /// Enables CORS for the application.
     ///
     /// Use `CorsConfig::permisive()` for development (it allows all origins),
