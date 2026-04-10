@@ -590,7 +590,7 @@ async fn test_body_limit_middleware_rejects_large_body() {
         );
 
     let client = TestClient::new(app).await;
-    let large_body: &'static str = "x".repeat(200).leak(); // 200 bytes, over the 100 limit
+    let large_body = "x".repeat(200);
     let response = client.post("/upload").body(large_body).send().await;
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);

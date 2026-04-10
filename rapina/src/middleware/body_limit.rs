@@ -61,32 +61,3 @@ impl Middleware for BodyLimitMiddleware {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_body_limit_middleware_new() {
-        let mw = BodyLimitMiddleware::new(2048);
-        assert_eq!(mw.max_size, 2048);
-    }
-
-    #[test]
-    fn test_body_limit_middleware_default() {
-        let mw = BodyLimitMiddleware::default();
-        assert_eq!(mw.max_size, 1024 * 1024); // 1MB default
-    }
-
-    #[test]
-    fn test_body_limit_custom_size() {
-        let mw = BodyLimitMiddleware::new(5 * 1024 * 1024); // 5MB
-        assert_eq!(mw.max_size, 5 * 1024 * 1024);
-    }
-
-    #[test]
-    fn test_body_limit_zero_size() {
-        let mw = BodyLimitMiddleware::new(0);
-        assert_eq!(mw.max_size, 0);
-    }
-}
