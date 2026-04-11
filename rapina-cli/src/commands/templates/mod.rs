@@ -109,7 +109,7 @@ pub fn generate_db_import(db_type: Option<&DatabaseType>) -> &'static str {
 /// Uses `DatabaseConfig::from_env()` for all database types since `.env` is auto-generated.
 /// Returns an empty string if no database is configured.
 pub fn generate_database_config(db_type: Option<&DatabaseType>) -> &'static str {
-    db_type.map_or("", |_| "let db_config = DatabaseConfig::from_env()?;\n")
+    db_type.map_or("", |_| "let db_config = DatabaseConfig::from_env().expect(\"Failed to configure database\");\n")
 }
 
 /// Generate the `.with_database(db_config)` builder line.
@@ -150,11 +150,11 @@ pub fn generate_env_content(db_type: Option<&DatabaseType>, extra_vars: Option<&
 /// Generate the `.gitignore` extras for a given database type.
 /// Always includes `.env`. Adds `*.db` for SQLite.
 pub fn generate_gitignore_extras(db_type: Option<&DatabaseType>) -> Vec<&'static str> {
-    match db_type {
-        Some(DatabaseType::Sqlite) => vec!["*.db", ".env"],
-        Some(DatabaseType::Postgres) | Some(DatabaseType::Mysql) => vec![".env"],
-        None => vec![],
+    let mut extra = vec![".env"];
+    if let Some(DatabaseType::Sqlite) = db_type {
+        extra.push("*.db");
     }
+    extra
 }
 
 #[cfg(test)]
@@ -204,7 +204,9 @@ mod tests {
     fn test_generate_database_config_with_db() {
         let config = generate_database_config(Some(&DatabaseType::Postgres));
         assert!(config.contains("let db_config ="));
-        assert!(config.contains("DatabaseConfig::from_env()"));
+        assert!(
+            config.contains("DatabaseConfig::from_env().expect(\"Failed to configure database\");")
+        );
     }
 
     #[test]
@@ -264,9 +266,17 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_gitignore_extras_mysql() {
+        let extras = generate_gitignore_extras(Some(&DatabaseType::Mysql));
+        assert!(extras.contains(&".env"));
+        assert!(!extras.contains(&"*.db"));
+    }
+
+    #[test]
     fn test_generate_gitignore_extras_none() {
         let extras = generate_gitignore_extras(None);
-        assert!(extras.is_empty());
+        assert!(extras.contains(&".env"));
+        assert!(!extras.contains(&"*.db"));
     }
 
     #[test]

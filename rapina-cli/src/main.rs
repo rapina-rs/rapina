@@ -7,6 +7,8 @@ mod common;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
+use crate::commands::templates::DatabaseType;
+
 #[derive(Parser)]
 #[command(name = "rapina")]
 #[command(author, version, about = "CLI tool for the Rapina web framework", long_about = None)]
@@ -29,7 +31,7 @@ enum Commands {
         template: Option<String>,
         /// Database type (sqlite, postgres, mysql). Required when using `--template crud`.
         #[arg(long, value_name = "DB")]
-        db: Option<String>,
+        db: Option<DatabaseType>,
         /// Skip generating AI assistant config files (AGENT.md, .claude/, .cursor/)
         #[arg(long)]
         no_ai: bool,
@@ -262,20 +264,7 @@ fn main() {
             db,
             no_ai,
         }) => {
-            use crate::commands::templates::DatabaseType as DbType;
-            let db_type = match db {
-                Some(db_str) => match db_str.parse::<DbType>() {
-                    Ok(dt) => Some(dt),
-                    Err(e) => {
-                        eprintln!("{} {}", "Error:".red().bold(), e);
-                        std::process::exit(1);
-                    }
-                },
-                None => None,
-            };
-            if let Err(e) =
-                commands::new::execute(&name, template.as_deref(), db_type.as_ref(), no_ai)
-            {
+            if let Err(e) = commands::new::execute(&name, template.as_deref(), db.as_ref(), no_ai) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }

@@ -71,12 +71,14 @@ async fn hello() -> Json<MessageResponse> {{
 #[tokio::main]
 async fn main() -> std::io::Result<()> {{
     {load_dotenv_line}
+    let router = Router::new()
+        .get("/", hello);
     {db_config}
     Rapina::new()
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
         .with_health_check(true)
-{with_database_line}        .discover()
+{with_database_line}        .router(router)
         .listen("127.0.0.1:3000")
         .await
 }}
