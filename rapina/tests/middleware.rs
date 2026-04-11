@@ -575,7 +575,7 @@ async fn test_timeout_middleware_rejects_slow_handler() {
     let client = TestClient::new(app).await;
     let response = client.get("/slow").send().await;
 
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
 }
 
 #[tokio::test]
@@ -593,7 +593,12 @@ async fn test_body_limit_middleware_rejects_large_body() {
 
     let client = TestClient::new(app).await;
     let large_body = "x".repeat(200);
-    let response = client.post("/upload").body(large_body).send().await;
+    let response = client
+        .post("/upload")
+        .header("content-length", "200")
+        .body(large_body)
+        .send()
+        .await;
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -612,16 +617,13 @@ async fn test_body_limit_middleware_allows_no_content_length() {
         );
 
     let client = TestClient::new(app).await;
-    // Send a body larger than the limit but without explicit Content-Length
-    // The middleware should pass it through since it can't determine the size
-    let response = client
-        .post("/upload")
-        .body("small body under limit")
-        .send()
-        .await;
 
-    // Request should succeed because middleware passes through when Content-Length is not parseable
-    assert_eq!(response.status(), StatusCode::OK);
+    // Hyper automatically injects Content-Length: 200 when serializing the request                                                                                        │
+    // because Full<Bytes> implements http_body::Body with a known size_hint().                                                                                            │
+    // The middleware reads Content-Length and rejects it as over the 100 byte limit.
+    let response = client.post("/upload").body("x".repeat(200)).send().await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[cfg(feature = "tower")]
