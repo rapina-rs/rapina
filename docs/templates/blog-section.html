@@ -8,26 +8,33 @@
         <h1>{{ section.title }}</h1>
         <p class="section-description">{{ section.content | safe }}</p>
 
-        {% if section.pages %}
+        {% if paginator %}
         <div class="blog-posts">
-            {% for page in section.pages %}
-            <article class="blog-post-preview">
-                <h2><a href="{{ page.permalink }}">{{ page.title }}</a></h2>
-                <div class="blog-post-meta">
-                    <time datetime="{{ page.date }}">{{ page.date | date(format="%B %d, %Y") }}</time>
-                    {% if page.extra.author %}
-                    <span class="author">by {{ page.extra.author }}</span>
+            {% for page in paginator.pages %}
+            <article class="blog-post-preview{% if page.extra.image %} has-image{% endif %}">
+                <div class="blog-post-preview-body">
+                    <h2><a href="{{ page.permalink }}">{{ page.title }}</a></h2>
+                    <div class="blog-post-meta">
+                        <time datetime="{{ page.date }}">{{ page.date | date(format="%B %d, %Y") }}</time>
+                        {% if page.extra.author %}
+                        <span class="author">by {{ page.extra.author }}</span>
+                        {% endif %}
+                        {% if page.taxonomies.categories %}
+                        {% for cat in page.taxonomies.categories %}
+                        <span class="category">{{ cat | replace(from="-", to=" ") | title }}</span>
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                    {% if page.description %}
+                    <p class="blog-post-description">{{ page.description }}</p>
                     {% endif %}
-                    {% if page.taxonomies.categories %}
-                    {% for cat in page.taxonomies.categories %}
-                    <span class="category">{{ cat | replace(from="-", to=" ") | title }}</span>
-                    {% endfor %}
-                    {% endif %}
+                    <a href="{{ page.permalink }}" class="read-more">Read more →</a>
                 </div>
-                {% if page.description %}
-                <p class="blog-post-description">{{ page.description }}</p>
+                {% if page.extra.image %}
+                <a href="{{ page.permalink }}" class="blog-post-preview-thumb">
+                    <img src="{{ page.extra.image }}" alt="{{ page.title }}">
+                </a>
                 {% endif %}
-                <a href="{{ page.permalink }}" class="read-more">Read more →</a>
             </article>
             {% endfor %}
         </div>
@@ -52,9 +59,8 @@
             <h3>Categories</h3>
             <ul>
                 <li><a href="/blog/" class="category-link">All Posts</a></li>
-                <li><a href="/categories/announcements/" class="category-link">Announcements</a></li>
-                <li><a href="/categories/release-notes/" class="category-link">Release Notes</a></li>
                 <li><a href="/categories/tutorials/" class="category-link">Tutorials</a></li>
+                <li><a href="/categories/community/" class="category-link">Community</a></li>
             </ul>
         </div>
     </aside>

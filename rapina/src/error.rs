@@ -276,6 +276,11 @@ impl Error {
         Self::new(500, "INTERNAL_ERROR", message)
     }
 
+    /// Creates a 503 Service Unavailable error.
+    pub fn service_unavailable(message: impl Into<String>) -> Self {
+        Self::new(503, "SERVICE_UNAVAILABLE", message)
+    }
+
     /// Converts this error to a ProblemDetails response with the given trace ID and base URI.
     pub fn to_rfc7807_response(&self, trace_id: String, base_uri: &str) -> rfc7807::ProblemDetails {
         rfc7807::ProblemDetails {
