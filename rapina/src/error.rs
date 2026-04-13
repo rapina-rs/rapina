@@ -271,6 +271,11 @@ impl Error {
         Self::new(429, "RATE_LIMITED", message)
     }
 
+    /// Creates a 408 Request Timeout error.
+    pub fn request_timeout(message: impl Into<String>) -> Self {
+        Self::new(408, "REQUEST_TIMEOUT", message)
+    }
+
     /// Creates a 500 Internal Server Error.
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(500, "INTERNAL_ERROR", message)
@@ -591,6 +596,13 @@ mod tests {
         let err = Error::rate_limited("too many requests");
         assert_eq!(err.status(), 429);
         assert_eq!(err.code(), "RATE_LIMITED");
+    }
+
+    #[test]
+    fn test_error_request_timeout() {
+        let err = Error::request_timeout("request timeout");
+        assert_eq!(err.status(), 408);
+        assert_eq!(err.code(), "REQUEST_TIMEOUT");
     }
 
     #[test]
