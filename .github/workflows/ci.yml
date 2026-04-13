@@ -37,7 +37,7 @@ jobs:
         run: |
           VERSION=$(grep '^version' rapina/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
           MINOR="${VERSION%.*}"
-          BAD=$(grep -rn 'rapina = { version = "' docs/ rapina/examples/ \
+          BAD=$(grep -rn 'rapina = { version = "' docs/ rapina/examples/ --exclude-dir="blog" \
             --include="*.md" --include="*.toml" \
             | grep -v "\"$VERSION\"\|\"$MINOR\"\|\"\.\.\.\"" || true)
           if [ -n "$BAD" ]; then
