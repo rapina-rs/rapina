@@ -560,6 +560,72 @@ async fn test_trace_id_middleware_preserves_incoming_trace_id() {
     assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
 }
 
+#[tokio::test]
+async fn test_timeout_middleware_rejects_slow_handler() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TimeoutMiddleware::new(Duration::from_millis(50)))
+        .router(
+            Router::new().route(http::Method::GET, "/slow", |_, _, _| async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                "should not reach"
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/slow").send().await;
+
+    assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_rejects_large_body() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let large_body = "x".repeat(200);
+    let response = client
+        .post("/upload")
+        .header("content-length", "200")
+        .body(large_body)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_allows_no_content_length() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+
+    // Hyper automatically injects Content-Length: 200 when serializing the request                                                                                        │
+    // because Full<Bytes> implements http_body::Body with a known size_hint().                                                                                            │
+    // The middleware reads Content-Length and rejects it as over the 100 byte limit.
+    let response = client.post("/upload").body("x".repeat(200)).send().await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
 #[cfg(feature = "tower")]
 #[tokio::test]
 async fn test_tower_layer_with_rapina_middleware() {
