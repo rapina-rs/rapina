@@ -1,0 +1,12 @@
+[package]
+name = "cron-scheduler"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+rapina = { path = "../../", features = ["cron-scheduler"] }
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = "0.3.23"

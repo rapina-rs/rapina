@@ -13,7 +13,7 @@ categories = ["web-programming::http-server", "asynchronous"]
 
 [dependencies]
 # Async
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.51.1", features = ["full"] }
 
 # HTTP server
 hyper = { version = "1.9.0", features = ["server", "http1", "http2"] }
@@ -55,6 +55,9 @@ schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"
 # JWT Authentication
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
+# JWKS (optional)
+hyper-rustls = { version = "0.27.7", optional = true, features = ["http1", "http2"] }
+
 # Concurrent map (used by cache + rate-limit)
 dashmap = "6.1.0"
 
@@ -84,12 +87,20 @@ async-trait = { version = "0.1", optional = true }
 prometheus = { version = '0.13', optional = true }
 
 # Redis cache backend (optional)
-redis = { version = "1.1", optional = true, features = ["tokio-comp"] }
+redis = { version = "1.2", optional = true, features = ["tokio-comp"] }
+
+# Tower compatibility (optional)
+tower-service = { version = "0.3", optional = true }
+tower-layer = { version = "0.3", optional = true }
 
 # WebSocket (optional)
 hyper-tungstenite = { version = "0.19", optional = true }
 tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
+
+# Cron Scheduler (optional)
+tokio-cron-scheduler = { version = "0.15.1", optional = true }
+tokio-util = { version = "0.7.18", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -97,6 +108,7 @@ matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 serial_test = "3"
 tempfile = "3"
+tower = { version = "0.5", features = ["limit"] }
 
 [[bench]]
 name = "router"
@@ -125,4 +137,7 @@ sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
 cache-redis = ["redis"]
 multipart = ["multer", "futures-util"]
+tower = ["tower-service", "tower-layer"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite", "futures-util"]
+cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]
+jwks = ["cron-scheduler", "hyper-rustls"]

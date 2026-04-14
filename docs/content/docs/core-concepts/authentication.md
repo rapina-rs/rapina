@@ -147,3 +147,11 @@ async fn token_info(user: CurrentUser) -> Json<Claims> {
     Json(user.claims)
 }
 ```
+
+## External Identity Providers (JWKS)
+
+For validating JWTs issued by **external identity providers** such as Google, Auth0, Keycloak, or Azure AD — where you often not control the signing key — Rapina provides the `jwks` feature.
+
+Instead of a shared `JWT_SECRET`, it fetches the provider's public keys from their JWKS or OIDC discovery endpoint and verifies token signatures cryptographically.
+
+See the [JWKS Authentication](jwks.md) page for full documentation.

@@ -1,10 +1,8 @@
 //! The main application builder for Rapina.
 
-use std::future::Future;
-use std::net::SocketAddr;
-use std::time::Duration;
-
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
+#[cfg(feature = "cron-scheduler")]
+use crate::cron_scheduler::CronScheduler;
 use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
 use crate::introspection::{RouteRegistry, list_routes};
 #[cfg(feature = "metrics")]
@@ -18,9 +16,14 @@ use crate::middleware::{
 use crate::middleware::{RateLimitConfig, RateLimitMiddleware};
 use crate::observability::TracingConfig;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
+#[cfg(feature = "jwks")]
+use crate::prelude::JwksClient;
 use crate::router::Router;
 use crate::server::{ShutdownHook, serve};
 use crate::state::AppState;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::time::Duration;
 
 /// The main application type for building Rapina servers.
 ///
@@ -87,6 +90,8 @@ pub struct Rapina {
     /// Background job worker configuration. `None` means the worker is disabled.
     #[cfg(feature = "database")]
     pub(crate) jobs_config: Option<crate::jobs::JobConfig>,
+    #[cfg(feature = "cron-scheduler")]
+    pub(crate) cron_scheduler: Option<CronScheduler>,
 }
 
 // Resolves the listen address, preferring RAPINA_HOST/RAPINA_PORT over addr when both are set.
@@ -126,6 +131,8 @@ impl Rapina {
             rfc7807_base_uri: "about:blank".to_string(),
             #[cfg(feature = "database")]
             jobs_config: None,
+            #[cfg(feature = "cron-scheduler")]
+            cron_scheduler: None,
         }
     }
 
@@ -181,6 +188,32 @@ impl Rapina {
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
         self
+    }
+
+    /// Adds a tower layer as middleware.
+    ///
+    /// This is a convenience method equivalent to
+    /// `.middleware(TowerLayerMiddleware::new(layer))`.
+    ///
+    /// Requires the `tower` feature.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rapina::prelude::*;
+    ///
+    /// Rapina::new()
+    ///     .layer(my_tower_layer)
+    ///     .listen("127.0.0.1:3000")
+    ///     .await
+    /// ```
+    #[cfg(feature = "tower")]
+    pub fn layer<L>(self, layer: L) -> Self
+    where
+        L: tower_layer::Layer<crate::middleware::NextService>,
+        crate::middleware::TowerLayerMiddleware<L>: Middleware,
+    {
+        self.middleware(crate::middleware::TowerLayerMiddleware::new(layer))
     }
 
     /// Enables CORS for the application.
@@ -371,6 +404,78 @@ impl Rapina {
     /// Health check is disabled by default.
     pub fn with_health_check(mut self, enabled: bool) -> Self {
         self.health_check = enabled;
+        self
+    }
+
+    /// Registers a new scheduled cronjob.
+    /// The `CronScheduler` instance will be started during Rapina's webserver startup phase.
+    #[cfg(feature = "cron-scheduler")]
+    pub fn cron<F, Fut, E>(mut self, cron_schedule: &str, task: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), E>> + Send + 'static,
+        E: std::error::Error + Send + 'static,
+    {
+        // Lazily initialize the scheduler if it's still None and get a mutable reference
+        let cron_scheduler = self.cron_scheduler.get_or_insert_with(CronScheduler::new);
+        cron_scheduler
+            .schedule(cron_schedule.to_string(), task)
+            .expect("Failed to schedule cron job");
+
+        self
+    }
+
+    /// Starts the Cronjob Scheduler and registers the shutdown hook
+    #[cfg(feature = "cron-scheduler")]
+    async fn start_cronjob_scheduler(mut self) -> Self {
+        if let Some(mut cron_scheduler) = self.cron_scheduler.take() {
+            cron_scheduler.start().await;
+            self = self.on_shutdown(move || async move {
+                cron_scheduler.shutdown().await;
+            });
+        }
+        self
+    }
+
+    /// Warms up the JWKS cache immediately without waiting for the next cronjob tick
+    #[cfg(feature = "jwks")]
+    async fn warmup_jwks_cache(&self) -> () {
+        let Some(jwks_client) = self.state.get::<JwksClient>().cloned() else {
+            tracing::error!(
+                "Skipped warmup of JWKS cache because the Rapina state for JwksClient is empty. Did you forget to call .state(jwks_client)?"
+            );
+
+            return;
+        };
+
+        match jwks_client.refresh_jwks_cache().await {
+            Ok(_) => tracing::info!("Successfully warmed up JWKS cache"),
+            Err(e) => tracing::error!("Failed warmup of JWKS cache: {}", e),
+        }
+    }
+
+    /// Schedules the JWKS refresh cronjob
+    #[cfg(feature = "jwks")]
+    fn schedule_jwks_cronjob(mut self) -> Self {
+        let Some(jwks_client) = self.state.get::<JwksClient>().cloned() else {
+            tracing::error!(
+                "Skipped scheduling the JWKS refresh cronjob because the Rapina state for JwksClient is empty. Did you forget to call .state(jwks_client)?"
+            );
+            return self;
+        };
+
+        let refresh_schedule = jwks_client.refresh_schedule().to_owned();
+        let jwks_client = jwks_client.clone();
+
+        self = self.cron(&refresh_schedule, move || {
+            let jwks_client = jwks_client.clone();
+            async move { jwks_client.refresh_jwks_cache().await }
+        });
+
+        tracing::info!(
+            "Scheduled JWKS refresh cronjob with schedule '{}'",
+            refresh_schedule
+        );
         self
     }
 
@@ -725,6 +830,17 @@ impl Rapina {
             tokio::spawn(worker.run());
         }
 
+        #[cfg(feature = "jwks")]
+        // Warms up the JWKS cache so it is available immediately when the webserver starts up
+        // and registers the JWKS refresh cronjob
+        let app = {
+            app.warmup_jwks_cache().await;
+            app.schedule_jwks_cronjob()
+        };
+
+        #[cfg(feature = "cron-scheduler")]
+        let app = app.start_cronjob_scheduler().await;
+
         serve(
             app.router,
             app.state,
@@ -747,6 +863,8 @@ impl Default for Rapina {
 mod tests {
     use super::*;
     use crate::middleware::TimeoutMiddleware;
+    #[cfg(feature = "cron-scheduler")]
+    use crate::prelude::Error;
     use http::StatusCode;
     use std::time::Duration;
 
@@ -1053,5 +1171,38 @@ mod tests {
             assert!(app.state.get::<MyState>().is_some());
             assert_eq!(app.shutdown_timeout, Duration::from_secs(10));
         }
+    }
+
+    #[cfg(feature = "cron-scheduler")]
+    #[test]
+    fn test_rapina_cron_adds_cronjob() {
+        let app = Rapina::new().cron("1/5 * * * * *", || async {
+            println!("cronjob 1");
+            Ok::<(), Error>(())
+        });
+        assert_eq!(app.cron_scheduler.unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "cron-scheduler")]
+    #[test]
+    fn test_rapina_cron_adds_multiple_cronjobs() {
+        let app = Rapina::new()
+            .cron("1/5 * * * * *", || async {
+                println!("cronjob 1");
+                Ok::<(), Error>(())
+            })
+            .cron("1/5 * * * * *", || async {
+                println!("cronjob 2");
+                Ok::<(), Error>(())
+            });
+        assert_eq!(app.cron_scheduler.unwrap().len(), 2);
+    }
+
+    #[cfg(feature = "cron-scheduler")]
+    #[test]
+    #[should_panic]
+    fn test_rapina_cron_broken_cronjob_panics() {
+        let broken_schedule = "";
+        Rapina::new().cron(broken_schedule, || async { Ok::<(), Error>(()) });
     }
 }

@@ -18,6 +18,8 @@ mod cors;
 mod rate_limit;
 mod request_log;
 mod timeout;
+#[cfg(feature = "tower")]
+mod tower;
 mod trace_id;
 
 pub use body_limit::BodyLimitMiddleware;
@@ -28,6 +30,12 @@ pub use cors::{AllowedHeaders, AllowedMethods, AllowedOrigins, CorsConfig, CorsM
 pub use rate_limit::{KeyExtractor, RateLimitConfig, RateLimitMiddleware};
 pub use request_log::{RequestLogConfig, RequestLogMiddleware};
 pub use timeout::TimeoutMiddleware;
+#[cfg(feature = "tower")]
+pub use tower::{RapinaService, TowerLayerMiddleware};
+// NextService intentionally not re-exported — it is an implementation detail.
+// Users interact through .layer() and never need to name NextService directly.
+#[cfg(feature = "tower")]
+pub(crate) use tower::NextService;
 pub use trace_id::{TRACE_ID_HEADER, TraceIdMiddleware};
 
 use std::future::Future;
@@ -82,18 +90,19 @@ pub trait Middleware: Send + Sync + 'static {
 }
 
 /// Represents the next middleware or handler in the chain.
+#[derive(Clone)]
 pub struct Next<'a> {
     middlewares: &'a [Arc<dyn Middleware>],
-    router: &'a Router,
-    state: &'a Arc<AppState>,
+    router: Arc<Router>,
+    state: Arc<AppState>,
     ctx: &'a RequestContext,
 }
 
 impl<'a> Next<'a> {
     pub(crate) fn new(
         middlewares: &'a [Arc<dyn Middleware>],
-        router: &'a Router,
-        state: &'a Arc<AppState>,
+        router: Arc<Router>,
+        state: Arc<AppState>,
         ctx: &'a RequestContext,
     ) -> Self {
         Self {
@@ -109,13 +118,13 @@ impl<'a> Next<'a> {
         if let Some((current, rest)) = self.middlewares.split_first() {
             let next = Next {
                 middlewares: rest,
-                router: self.router,
-                state: self.state,
+                router: self.router.clone(),
+                state: self.state.clone(),
                 ctx: self.ctx,
             };
             current.handle(req, self.ctx, next).await
         } else {
-            self.router.handle(req, self.state).await
+            self.router.handle(req, &self.state).await
         }
     }
 }
@@ -140,11 +149,11 @@ impl MiddlewareStack {
         self.middlewares.push(middleware);
     }
 
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         req: Request<Incoming>,
-        router: &Router,
-        state: &Arc<AppState>,
+        router: Arc<Router>,
+        state: Arc<AppState>,
         ctx: &RequestContext,
     ) -> Response<BoxBody> {
         let config = state
