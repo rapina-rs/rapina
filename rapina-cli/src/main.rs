@@ -7,6 +7,8 @@ mod common;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
+use crate::commands::templates::DatabaseType;
+
 #[derive(Parser)]
 #[command(name = "rapina")]
 #[command(author, version, about = "CLI tool for the Rapina web framework", long_about = None)]
@@ -23,9 +25,13 @@ enum Commands {
     New {
         /// Name of the project to create
         name: String,
-        /// Starter template (crud, auth). Defaults to a REST API scaffold when omitted.
-        #[arg(long)]
+        /// Starter template (rest-api, crud, auth). Defaults to a REST API scaffold when omitted.
+        /// Requires `--db` when using `crud` template.
+        #[arg(long, value_parser = ["rest-api", "crud", "auth"], requires_if("crud", "db"))]
         template: Option<String>,
+        /// Database type (sqlite, postgres, mysql). Required when using `--template crud`.
+        #[arg(long, value_name = "DB")]
+        db: Option<DatabaseType>,
         /// Skip generating AI assistant config files (AGENT.md, .claude/, .cursor/)
         #[arg(long)]
         no_ai: bool,
@@ -255,9 +261,10 @@ fn main() {
         Some(Commands::New {
             name,
             template,
+            db,
             no_ai,
         }) => {
-            if let Err(e) = commands::new::execute(&name, template.as_deref(), no_ai) {
+            if let Err(e) = commands::new::execute(&name, template.as_deref(), db.as_ref(), no_ai) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }

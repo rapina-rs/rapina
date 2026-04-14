@@ -12,7 +12,7 @@ use super::{BoxFuture, Middleware, Next};
 /// Middleware that enforces a maximum duration for each request.
 ///
 /// If a handler does not respond within the configured duration the request is
-/// cancelled and a `500 Internal Server Error` is returned to the client.
+/// cancelled and a `408 Request Timeout` is returned to the client.
 /// Defaults to 30 seconds.
 ///
 /// # Example
@@ -48,7 +48,7 @@ impl Middleware for TimeoutMiddleware {
         Box::pin(async move {
             match tokio::time::timeout(self.duration, next.run(req)).await {
                 Ok(response) => response,
-                Err(_) => Error::internal("request timeout").into_response(),
+                Err(_) => Error::request_timeout("request timeout").into_response(),
             }
         })
     }
