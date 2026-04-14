@@ -217,7 +217,10 @@ impl Rapina {
     ///         .await
     /// }
     /// ```
-    pub fn state_arc<T: ?Sized + Send + Sync + 'static>(mut self, value: std::sync::Arc<T>) -> Self {
+    pub fn state_arc<T: ?Sized + Send + Sync + 'static>(
+        mut self,
+        value: std::sync::Arc<T>,
+    ) -> Self {
         self.state = self.state.with_arc(value);
         self
     }

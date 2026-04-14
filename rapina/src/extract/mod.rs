@@ -1253,14 +1253,15 @@ mod tests {
         }
 
         let greeter: std::sync::Arc<dyn Greeter> = std::sync::Arc::new(Hello);
-        let state = std::sync::Arc::new(
-            crate::state::AppState::new().with_arc(greeter),
-        );
+        let state = std::sync::Arc::new(crate::state::AppState::new().with_arc(greeter));
         let (parts, _) = TestRequest::get("/").into_parts();
 
-        let result =
-            State::<std::sync::Arc<dyn Greeter>>::from_request_parts(&parts, &empty_params(), &state)
-                .await;
+        let result = State::<std::sync::Arc<dyn Greeter>>::from_request_parts(
+            &parts,
+            &empty_params(),
+            &state,
+        )
+        .await;
 
         assert!(result.is_ok());
         // Deref chain: State<Arc<dyn Greeter>> -> Arc<dyn Greeter> -> dyn Greeter

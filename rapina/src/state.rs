@@ -295,9 +295,7 @@ mod tests {
         let concrete = Config { val: 1 };
         let arc = Arc::new(Config { val: 2 });
 
-        let state = AppState::new()
-            .with(concrete)
-            .with_arc(Arc::clone(&arc));
+        let state = AppState::new().with(concrete).with_arc(Arc::clone(&arc));
 
         assert_eq!(state.get::<Config>().unwrap().val, 1);
         assert_eq!(state.get_arc::<Arc<Config>>().unwrap().val, 2);
@@ -327,9 +325,7 @@ mod tests {
         let first: Arc<dyn Counter> = Arc::new(CounterImpl(1));
         let second: Arc<dyn Counter> = Arc::new(CounterImpl(2));
 
-        let state = AppState::new()
-            .with_arc(first)
-            .with_arc(second);
+        let state = AppState::new().with_arc(first).with_arc(second);
 
         let extracted = state.get_arc::<Arc<dyn Counter>>().unwrap();
         assert_eq!(extracted.count(), 2);
