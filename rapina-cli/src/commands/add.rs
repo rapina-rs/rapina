@@ -36,7 +36,11 @@ fn parse_field(input: &str) -> Result<FieldInfo, String> {
         "i64" | "bigint" => ("i64", "i64", ".big_integer().not_null()"),
         "f32" | "float" => ("f32", "f32", ".float().not_null()"),
         "f64" | "double" => ("f64", "f64", ".double().not_null()"),
-        "bool" | "boolean" => ("bool", "bool", ".boolean().not_null()"),
+        "bool" | "boolean" => (
+            "bool",
+            "bool",
+            ".boolean().not_null().default(Expr::value(false))",
+        ),
         "uuid" => ("Uuid", "Uuid", ".uuid().not_null()"),
         "datetime" | "timestamptz" => (
             "DateTimeUtc",
@@ -107,7 +111,7 @@ fn print_next_steps(pascal: &str) {
     println!();
 }
 
-pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
+pub fn resource(name: &str, field_args: &[String], with_timestamps: bool) -> Result<(), String> {
     validate_resource_name(name)?;
     codegen::verify_rapina_project()?;
 
@@ -134,9 +138,11 @@ pub fn resource(name: &str, field_args: &[String]) -> Result<(), String> {
 
     let pk_type = "i32"; // New resources default to i32 PK
 
+    let timestamps = if with_timestamps { None } else { Some("none") };
+
     codegen::create_feature_module(singular, plural, pascal, &fields, pk_type, false)?;
-    codegen::update_entity_file(pascal, &fields, None, None, false)?;
-    codegen::create_migration_file(plural, pascal_plural, &fields, pk_type)?;
+    codegen::update_entity_file(pascal, &fields, timestamps, None, false)?;
+    codegen::create_migration_file(plural, pascal_plural, &fields, pk_type, with_timestamps)?;
 
     if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
         eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
@@ -263,7 +269,7 @@ mod tests {
                 name: "active".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
-                column_method: ".boolean().not_null()".to_string(),
+                column_method: ".boolean().not_null().default(Expr::value(false))".to_string(),
                 nullable: false,
             },
         ];
@@ -515,11 +521,11 @@ mod tests {
                 name: "published".to_string(),
                 rust_type: "bool".to_string(),
                 schema_type: "bool".to_string(),
-                column_method: ".boolean().not_null()".to_string(),
+                column_method: ".boolean().not_null().default(Expr::value(false))".to_string(),
                 nullable: false,
             },
         ];
-        let content = codegen::generate_migration("posts", "Posts", &fields, "i32");
+        let content = codegen::generate_migration("posts", "Posts", &fields, "i32", false);
 
         assert!(content.contains("MigrationTrait for Migration"));
         assert!(content.contains("Posts::Table"));
@@ -527,8 +533,97 @@ mod tests {
         assert!(content.contains("Posts::Title"));
         assert!(content.contains("Posts::Published"));
         assert!(content.contains(".string().not_null()"));
-        assert!(content.contains(".boolean().not_null()"));
+        assert!(content.contains(".boolean().not_null().default(Expr::value(false))"));
         assert!(content.contains("enum Posts {"));
         assert!(content.contains("drop_table"));
+        // no timestamps when with_timestamps=false
+        assert!(!content.contains("CreatedAt"));
+        assert!(!content.contains("UpdatedAt"));
+    }
+
+    #[test]
+    fn test_boolean_field_has_default_false() {
+        let f = parse_field("active:bool").unwrap();
+        assert!(
+            f.column_method.contains(".default(Expr::value(false))"),
+            "boolean column_method must include default(false), got: {}",
+            f.column_method
+        );
+
+        let f2 = parse_field("enabled:boolean").unwrap();
+        assert!(
+            f2.column_method.contains(".default(Expr::value(false))"),
+            "boolean column_method must include default(false), got: {}",
+            f2.column_method
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_with_timestamps() {
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: ".string().not_null()".to_string(),
+            nullable: false,
+        }];
+        let content = codegen::generate_migration("posts", "Posts", &fields, "i32", true);
+
+        assert!(content.contains("Posts::CreatedAt"));
+        assert!(content.contains("Posts::UpdatedAt"));
+        assert!(content.contains("CreatedAt,"));
+        assert!(content.contains("UpdatedAt,"));
+        assert!(
+            content.contains(
+                ".timestamp_with_time_zone().not_null().default(Expr::current_timestamp())"
+            )
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_no_timestamps() {
+        let fields = vec![FieldInfo {
+            name: "name".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: ".string().not_null()".to_string(),
+            nullable: false,
+        }];
+        let content = codegen::generate_migration("things", "Things", &fields, "i32", false);
+
+        assert!(!content.contains("CreatedAt"));
+        assert!(!content.contains("UpdatedAt"));
+        assert!(!content.contains("current_timestamp"));
+    }
+
+    #[test]
+    fn test_schema_block_no_timestamps_attr_when_with_timestamps() {
+        // When with_timestamps=true, entity gets no #[timestamps] attr
+        // → schema! macro defaults to both created_at/updated_at (matches migration)
+        let fields = vec![FieldInfo {
+            name: "name".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let block = codegen::generate_schema_block("User", &fields, None, None);
+        assert!(!block.contains("#[timestamps"));
+    }
+
+    #[test]
+    fn test_schema_block_timestamps_none_when_no_timestamps() {
+        // When with_timestamps=false, entity must get #[timestamps(none)]
+        // to prevent schema! macro from auto-generating timestamp columns
+        // that don't exist in the migration → would cause runtime mismatch
+        let fields = vec![FieldInfo {
+            name: "name".to_string(),
+            rust_type: "String".to_string(),
+            schema_type: "String".to_string(),
+            column_method: String::new(),
+            nullable: false,
+        }];
+        let block = codegen::generate_schema_block("User", &fields, Some("none"), None);
+        assert!(block.contains("#[timestamps(none)]"));
     }
 }
