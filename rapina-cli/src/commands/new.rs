@@ -5,12 +5,19 @@ use std::fs;
 use std::path::Path;
 
 use super::templates;
+use super::templates::DatabaseType;
 
 /// Execute the `new` command to create a new Rapina project.
 ///
 /// `template` is `None` for the default starter and `Some("crud")` / `Some("auth")`
 /// for the optional starter templates.
-pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), String> {
+/// `db_type` specifies the database to configure for the project.
+pub fn execute(
+    name: &str,
+    template: Option<&str>,
+    db_type: Option<&DatabaseType>,
+    no_ai: bool,
+) -> Result<(), String> {
     validate_project_name(name)?;
 
     let project_path = Path::new(name);
@@ -24,25 +31,33 @@ pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), St
         "Creating new Rapina project:".bright_cyan(),
         name.bold()
     );
+    if let Some(ref db) = db_type {
+        println!(
+            "  {} Database: {}",
+            "📦".bright_cyan(),
+            db.to_string().bold()
+        );
+    }
     println!();
 
     let src_path = project_path.join("src");
     fs::create_dir_all(&src_path).map_err(|e| format!("Failed to create directory: {}", e))?;
 
     match template {
-        None | Some("rest-api") => templates::rest_api::generate(name, project_path, &src_path)?,
-        Some("crud") => templates::crud::generate(name, project_path, &src_path)?,
-        Some("auth") => templates::auth::generate(name, project_path, &src_path)?,
-        Some(other) => {
-            return Err(format!(
-                "Unknown template '{}'. Available: rest-api, crud, auth",
-                other
-            ));
+        None | Some("rest-api") => {
+            templates::rest_api::generate(name, project_path, &src_path, db_type)?
         }
+        Some("crud") => {
+            // Clap validation ensures --db is present for crud template
+            // Safe to unwrap because it has been validated in clap
+            templates::crud::generate(name, project_path, &src_path, db_type.unwrap())?
+        }
+        Some("auth") => templates::auth::generate(name, project_path, &src_path, db_type)?,
+        _ => unreachable!(),
     }
 
     // Create README.md
-    let readme = generate_readme(name);
+    let readme = generate_readme(name, db_type);
     fs::write(project_path.join("README.md"), readme)
         .map_err(|e| format!("Failed to write README.md: {}", e))?;
     println!("  {} Created {}", "✓".green(), "README.md".cyan());
@@ -72,6 +87,10 @@ pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), St
     println!();
     println!("  {}:", "Next steps".bright_yellow());
     println!("    cd {}", name.cyan());
+    if db_type.is_some() {
+        println!("    # Configure your database URL in .env or source");
+        println!("    export DATABASE_URL=\"your-database-url\"");
+    }
     println!("    rapina dev");
     println!();
 
@@ -80,9 +99,76 @@ pub fn execute(name: &str, template: Option<&str>, no_ai: bool) -> Result<(), St
 
 // ── README ───────────────────────────────────────────────────────────────────
 
-fn generate_readme(name: &str) -> String {
+fn generate_readme(name: &str, db_type: Option<&DatabaseType>) -> String {
+    let db_section = if let Some(db) = db_type {
+        match db {
+            DatabaseType::Sqlite => {
+                r#"
+## Database
+
+This project uses **SQLite** for data persistence. The database file is created automatically at `app.db`.
+
+To configure a different SQLite database or adjust connection pool settings, edit `src/main.rs`:
+
+```rust
+.with_database(DatabaseConfig::new("sqlite://app.db?mode=rwc"))
+```
+
+Run migrations:
+```bash
+rapina migrate new create_your_table
+```
+"#
+            }
+            DatabaseType::Postgres => {
+                r#"
+## Database
+
+This project is configured for **PostgreSQL**. Set the `DATABASE_URL` environment variable before running:
+
+```bash
+export DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+```
+
+Or create a `.env` file:
+```env
+DATABASE_URL=postgres://user:password@localhost:5432/dbname
+```
+
+Run migrations:
+```bash
+rapina migrate new create_your_table
+```
+"#
+            }
+            DatabaseType::Mysql => {
+                r#"
+## Database
+
+This project is configured for **MySQL**. Set the `DATABASE_URL` environment variable before running:
+
+```bash
+export DATABASE_URL="mysql://user:password@localhost:3306/dbname"
+```
+
+Or create a `.env` file:
+```env
+DATABASE_URL=mysql://user:password@localhost:3306/dbname
+```
+
+Run migrations:
+```bash
+rapina migrate new create_your_table
+```
+"#
+            }
+        }
+    } else {
+        ""
+    };
+
     format!(
-        "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /__rapina/health` — Health check (built-in)\n"
+        "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /__rapina/health` — Health check (built-in)\n{db_section}"
     )
 }
 
@@ -470,5 +556,39 @@ mod tests {
         assert!(content.contains("IntoApiError"));
         assert!(content.contains("DocumentedError"));
         assert!(content.contains("rapina add resource"));
+    }
+
+    #[test]
+    fn test_generate_readme_without_db() {
+        let content = generate_readme("test-app", None);
+        assert!(content.contains("# test-app"));
+        assert!(content.contains("rapina dev"));
+        assert!(!content.contains("## Database"));
+    }
+
+    #[test]
+    fn test_generate_readme_with_sqlite() {
+        let content = generate_readme("test-app", Some(&DatabaseType::Sqlite));
+        assert!(content.contains("## Database"));
+        assert!(content.contains("**SQLite**"));
+        assert!(content.contains("app.db"));
+    }
+
+    #[test]
+    fn test_generate_readme_with_postgres() {
+        let content = generate_readme("test-app", Some(&DatabaseType::Postgres));
+        assert!(content.contains("## Database"));
+        assert!(content.contains("**PostgreSQL**"));
+        assert!(content.contains("DATABASE_URL"));
+        assert!(content.contains("postgres://"));
+    }
+
+    #[test]
+    fn test_generate_readme_with_mysql() {
+        let content = generate_readme("test-app", Some(&DatabaseType::Mysql));
+        assert!(content.contains("## Database"));
+        assert!(content.contains("**MySQL**"));
+        assert!(content.contains("DATABASE_URL"));
+        assert!(content.contains("mysql://"));
     }
 }

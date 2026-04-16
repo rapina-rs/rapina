@@ -106,13 +106,14 @@ rapina openapi export -o openapi.json
 rapina openapi diff --base main
 ```
 
-**Production middleware** — rate limiting, compression, CORS, and Prometheus metrics out of the box.
+**Production middleware** — rate limiting, compression, CORS out of the box. Prometheus metrics available with the `metrics` feature flag.
 
 ```rust
 Rapina::new()
     .with_rate_limit(RateLimitConfig::per_minute(100))
     .with_compression(CompressionConfig::default())
     .with_cors(CorsConfig::permissive())
+    .with_metrics(true)  // Requires `metrics` feature flag
     .discover()
     .listen("0.0.0.0:3000")
     .await
@@ -131,11 +132,13 @@ rapina migrate new             # Create a migration
 rapina add resource Post       # Full CRUD scaffolding
 ```
 
-## 10 extractors
+## Built-in extractors
 
 Everything you need to pick apart a request, type-safe and compile-time checked.
 
-`Json<T>` · `Form<T>` · `Path<T>` · `Query<T>` · `Headers` · `Cookie<T>` · `State<T>` · `Validated<T>` · `CurrentUser` · `Db`
+`Json<T>` · `Path<T>` · `Query<T>` · `Headers` · `Cookie<T>` · `State<T>` · `CurrentUser` · `Db`  · `... and more`
+
+See the [extractors documentation](https://userapina.com/docs/core-concepts/extractors/) for the full list.
 
 ## Standardized errors
 
@@ -150,7 +153,7 @@ Every error includes a `trace_id`. No more guessing in production.
 
 ## Project status
 
-Rapina is in active development. We ship fast and we ship often — 9 releases since January 2026. The API is stabilizing but breaking changes may still occur before `1.0.0`.
+Rapina is in active development with a rapid release cadence. The API is stabilizing but breaking changes may still occur before `1.0.0`.
 
 See the [roadmap](https://userapina.com/roadmap/) for what's coming next.
 
