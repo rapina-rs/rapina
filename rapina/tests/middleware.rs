@@ -3,6 +3,8 @@
 use http::StatusCode;
 #[cfg(feature = "compression")]
 use rapina::middleware::CompressionConfig;
+#[cfg(feature = "tower")]
+use rapina::middleware::TowerLayerMiddleware;
 use rapina::middleware::{
     BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
 };
@@ -556,4 +558,149 @@ async fn test_trace_id_middleware_preserves_incoming_trace_id() {
 
     let header_value = response.headers().get(TRACE_ID_HEADER).unwrap();
     assert_eq!(header_value.to_str().unwrap(), custom_trace_id);
+}
+
+#[tokio::test]
+async fn test_timeout_middleware_rejects_slow_handler() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TimeoutMiddleware::new(Duration::from_millis(50)))
+        .router(
+            Router::new().route(http::Method::GET, "/slow", |_, _, _| async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                "should not reach"
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/slow").send().await;
+
+    assert_eq!(response.status(), StatusCode::REQUEST_TIMEOUT);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_rejects_large_body() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let large_body = "x".repeat(200);
+    let response = client
+        .post("/upload")
+        .header("content-length", "200")
+        .body(large_body)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_body_limit_middleware_allows_no_content_length() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(BodyLimitMiddleware::new(100)) // 100 bytes limit
+        .router(
+            Router::new().route(http::Method::POST, "/upload", |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                format!("Received {} bytes", body.len())
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+
+    // Hyper automatically injects Content-Length: 200 when serializing the request                                                                                        │
+    // because Full<Bytes> implements http_body::Body with a known size_hint().                                                                                            │
+    // The middleware reads Content-Length and rejects it as over the 100 byte limit.
+    let response = client.post("/upload").body("x".repeat(200)).send().await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_tower_layer_with_rapina_middleware() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .middleware(TraceIdMiddleware::new())
+        .middleware(TowerLayerMiddleware::new(tower_layer::Identity::new()))
+        .router(
+            Router::new().route(http::Method::GET, "/mixed", |_, _, _| async {
+                "tower + rapina"
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+    let response = client.get("/mixed").send().await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.text(), "tower + rapina");
+    assert!(response.headers().get(TRACE_ID_HEADER).is_some());
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_rapina_service_direct_construction() {
+    use rapina::middleware::{MiddlewareStack, RapinaService};
+    use tower_service::Service;
+
+    let router = Router::new().route(http::Method::GET, "/direct", |_, _, _| async {
+        "from service"
+    });
+    let state = rapina::state::AppState::new();
+    let middlewares = MiddlewareStack::new();
+
+    let mut svc = RapinaService::new(router, state, middlewares);
+
+    let _cloned = svc.clone();
+
+    let ready = std::future::poll_fn(|cx| svc.poll_ready(cx)).await;
+    assert!(ready.is_ok());
+}
+
+#[cfg(feature = "tower")]
+#[tokio::test]
+async fn test_tower_concurrency_limit_integration() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tower::limit::ConcurrencyLimitLayer;
+
+    let max_concurrent = Arc::new(AtomicUsize::new(0));
+    let current = Arc::new(AtomicUsize::new(0));
+    let max_c = max_concurrent.clone();
+    let cur = current.clone();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .layer(ConcurrencyLimitLayer::new(1))
+        .router(
+            Router::new().route(http::Method::GET, "/slow", move |_, _, _| {
+                let max_c = max_c.clone();
+                let cur = cur.clone();
+                async move {
+                    let c = cur.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_c.fetch_max(c, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    cur.fetch_sub(1, Ordering::SeqCst);
+                    "done"
+                }
+            }),
+        );
+
+    let client = TestClient::new(app).await;
+
+    let (r1, r2) = tokio::join!(client.get("/slow").send(), client.get("/slow").send());
+
+    assert_eq!(r1.status(), StatusCode::OK);
+    assert_eq!(r2.status(), StatusCode::OK);
+    assert_eq!(max_concurrent.load(Ordering::SeqCst), 1);
 }
