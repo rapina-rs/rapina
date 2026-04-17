@@ -80,7 +80,7 @@ impl AppState {
     /// Internally the value is stored under `TypeId::of::<Arc<T>>()` wrapped in
     /// one additional `Arc` (as required by the state map). Handlers receive
     /// `State<Arc<dyn MyTrait>>` and can call methods directly via auto-deref,
-    /// or clone the inner arc with `(*state).clone()`.
+    /// or clone the inner arc with `Arc::clone(&*state)`.
     ///
     /// # Examples
     ///
