@@ -184,6 +184,47 @@ impl Rapina {
         self
     }
 
+    /// Adds a pre-existing `Arc<T>` as shared state.
+    ///
+    /// This is the preferred way to register trait objects for dependency
+    /// injection.  Without this method, passing an `Arc<dyn MyTrait>` to
+    /// [`.state()`](Self::state) requires a newtype wrapper; with `state_arc`
+    /// you can register the arc directly.
+    ///
+    /// With `state_arc` the `Arc` is registered under its own [`TypeId`], so
+    /// no newtype wrapper is required.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    /// use std::sync::Arc;
+    ///
+    /// trait MyRepo: Send + Sync {
+    ///     fn find_all(&self) -> Vec<String>;
+    /// }
+    ///
+    /// struct PgRepo;
+    /// impl MyRepo for PgRepo {
+    ///     fn find_all(&self) -> Vec<String> { vec![] }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     Rapina::new()
+    ///         .state_arc(Arc::new(PgRepo) as Arc<dyn MyRepo>)
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    pub fn state_arc<T: ?Sized + Send + Sync + 'static>(
+        mut self,
+        value: std::sync::Arc<T>,
+    ) -> Self {
+        self.state = self.state.with_arc(value);
+        self
+    }
+
     /// Adds a middleware to the application.
     pub fn middleware<M: Middleware>(mut self, middleware: M) -> Self {
         self.middlewares.add(middleware);
