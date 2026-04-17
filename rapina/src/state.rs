@@ -71,6 +71,42 @@ impl AppState {
             .and_then(|arc| arc.downcast_ref::<T>())
     }
 
+    /// Registers a pre-existing `Arc<T>` as shared state.
+    ///
+    /// Use this when `T` is a trait object (e.g. `Arc<dyn MyTrait>`) and you
+    /// want to access it via [`State<Arc<dyn MyTrait>>`](crate::extract::State)
+    /// in handlers without needing a newtype wrapper.
+    ///
+    /// Internally the value is stored under `TypeId::of::<Arc<T>>()` wrapped in
+    /// one additional `Arc` (as required by the state map). Handlers receive
+    /// `State<Arc<dyn MyTrait>>` and can call methods directly via auto-deref,
+    /// or clone the inner arc with `Arc::clone(&*state)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rapina::state::AppState;
+    /// use std::sync::Arc;
+    ///
+    /// trait Greeter: Send + Sync {
+    ///     fn greet(&self) -> String;
+    /// }
+    ///
+    /// struct HelloGreeter;
+    /// impl Greeter for HelloGreeter {
+    ///     fn greet(&self) -> String { "hello".to_string() }
+    /// }
+    ///
+    /// let greeter: Arc<dyn Greeter> = Arc::new(HelloGreeter);
+    /// let state = AppState::new().with_arc(greeter);
+    ///
+    /// // Access via State<Arc<dyn Greeter>> in handlers; deref gives Arc<dyn Greeter>
+    /// ```
+    pub fn with_arc<T: ?Sized + Send + Sync + 'static>(mut self, value: Arc<T>) -> Self {
+        self.inner.insert(TypeId::of::<Arc<T>>(), Arc::new(value));
+        self
+    }
+
     /// Retrieves a shared `Arc<T>` for a value of type `T`, if registered.
     ///
     /// This is useful when you want to share state without cloning the
@@ -210,5 +246,88 @@ mod tests {
         assert_eq!(state.get::<i64>(), Some(&2));
         assert_eq!(state.get::<f64>(), Some(&3.0));
         assert_eq!(state.get::<String>(), Some(&"test".to_string()));
+    }
+
+    #[test]
+    fn test_with_arc_concrete_type() {
+        #[derive(Debug, PartialEq)]
+        struct Repo {
+            name: &'static str,
+        }
+
+        let arc = Arc::new(Repo { name: "pg" });
+        let state = AppState::new().with_arc(Arc::clone(&arc));
+
+        // Extracted via get_arc::<Arc<Repo>>()
+        let extracted = state.get_arc::<Arc<Repo>>().unwrap();
+        assert_eq!(extracted.name, "pg");
+    }
+
+    #[test]
+    fn test_with_arc_trait_object() {
+        trait Greeter: Send + Sync {
+            fn greet(&self) -> &'static str;
+        }
+
+        struct Hello;
+        impl Greeter for Hello {
+            fn greet(&self) -> &'static str {
+                "hello"
+            }
+        }
+
+        let greeter: Arc<dyn Greeter> = Arc::new(Hello);
+        let state = AppState::new().with_arc(greeter);
+
+        let extracted = state.get_arc::<Arc<dyn Greeter>>().unwrap();
+        assert_eq!(extracted.greet(), "hello");
+    }
+
+    #[test]
+    fn test_with_arc_does_not_conflict_with_with() {
+        // with() and with_arc() on same logical type use different TypeIds
+        // (TypeId::of::<T>() vs TypeId::of::<Arc<T>>()) so they coexist.
+        #[derive(Debug, PartialEq)]
+        struct Config {
+            val: i32,
+        }
+
+        let concrete = Config { val: 1 };
+        let arc = Arc::new(Config { val: 2 });
+
+        let state = AppState::new().with(concrete).with_arc(Arc::clone(&arc));
+
+        assert_eq!(state.get::<Config>().unwrap().val, 1);
+        assert_eq!(state.get_arc::<Arc<Config>>().unwrap().val, 2);
+    }
+
+    #[test]
+    fn test_with_arc_missing_returns_none() {
+        trait Repo: Send + Sync {}
+
+        let state = AppState::new();
+        assert!(state.get_arc::<Arc<dyn Repo>>().is_none());
+    }
+
+    #[test]
+    fn test_with_arc_overwrites_same_arc_type() {
+        trait Counter: Send + Sync {
+            fn count(&self) -> u32;
+        }
+
+        struct CounterImpl(u32);
+        impl Counter for CounterImpl {
+            fn count(&self) -> u32 {
+                self.0
+            }
+        }
+
+        let first: Arc<dyn Counter> = Arc::new(CounterImpl(1));
+        let second: Arc<dyn Counter> = Arc::new(CounterImpl(2));
+
+        let state = AppState::new().with_arc(first).with_arc(second);
+
+        let extracted = state.get_arc::<Arc<dyn Counter>>().unwrap();
+        assert_eq!(extracted.count(), 2);
     }
 }

@@ -83,6 +83,45 @@ async fn main() -> std::io::Result<()> {
 }
 ```
 
+### Trait Objects
+
+`.state()` requires a concrete type at registration time. When you want handlers to depend on an **interface** rather than an implementation, use `.state_arc()` instead.
+
+`.state_arc()` accepts a pre-built `Arc<T>` where `T` can be an unsized trait object (`Arc<dyn MyTrait>`), with no newtype wrapper required:
+
+```rust
+use rapina::prelude::*;
+use std::sync::Arc;
+
+trait UserRepo: Send + Sync {
+    async fn find_all(&self) -> Vec<User>;
+}
+
+struct PgUserRepo { /* pool */ }
+
+impl UserRepo for PgUserRepo {
+    async fn find_all(&self) -> Vec<User> { /* ... */ }
+}
+
+#[get("/users")]
+async fn list_users(repo: State<Arc<dyn UserRepo>>) -> Json<Vec<User>> {
+    Json(repo.find_all().await)
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let repo: Arc<dyn UserRepo> = Arc::new(PgUserRepo { /* pool */ });
+
+    Rapina::new()
+        .state_arc(repo)
+        .discover()
+        .listen("127.0.0.1:3000")
+        .await
+}
+```
+
+Handlers receive `State<Arc<dyn UserRepo>>`. The `Deref` chain (`State` → `Arc` → `dyn UserRepo`) lets you call trait methods directly without any extra unwrapping.
+
 ### Mutable Shared State
 
 `AppState` already wraps every value in `Arc`, so nothing is copied per-request. When you need to **mutate** state at runtime — not just read it — use `Arc<RwLock<T>>` or `Arc<Mutex<T>>` for interior mutability:
@@ -120,7 +159,7 @@ async fn main() -> std::io::Result<()> {
 If a handler requests `State<T>` but `T` was never registered, the request returns `500 Internal Server Error`:
 
 ```
-State not registered for type 'my_crate::AppConfig'. Did you forget to call .state()?
+State not registered for type 'my_crate::AppConfig'. Did you forget to call .state() or .state_arc()?
 ```
 
 ### Overwriting State
