@@ -541,7 +541,7 @@ impl<T: Send + Sync + 'static> FromRequestParts for State<T> {
     ) -> Result<Self, Error> {
         let arc = state.get_arc::<T>().ok_or_else(|| {
             Error::internal(format!(
-                "State not registered for type '{}'. Did you forget to call .state()?",
+                "State not registered for type '{}'. Did you forget to call .state() or .state_arc()?",
                 std::any::type_name::<T>()
             ))
         })?;
@@ -1237,6 +1237,35 @@ mod tests {
             State::<MissingState>::from_request_parts(&parts, &empty_params(), &state).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_state_extractor_arc_trait_object() {
+        trait Greeter: Send + Sync {
+            fn greet(&self) -> &'static str;
+        }
+
+        struct Hello;
+        impl Greeter for Hello {
+            fn greet(&self) -> &'static str {
+                "hello"
+            }
+        }
+
+        let greeter: std::sync::Arc<dyn Greeter> = std::sync::Arc::new(Hello);
+        let state = std::sync::Arc::new(crate::state::AppState::new().with_arc(greeter));
+        let (parts, _) = TestRequest::get("/").into_parts();
+
+        let result = State::<std::sync::Arc<dyn Greeter>>::from_request_parts(
+            &parts,
+            &empty_params(),
+            &state,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        // Deref chain: State<Arc<dyn Greeter>> -> Arc<dyn Greeter> -> dyn Greeter
+        assert_eq!(result.unwrap().greet(), "hello");
     }
 
     // into_inner tests
