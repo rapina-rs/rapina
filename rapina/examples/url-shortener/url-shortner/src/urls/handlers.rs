@@ -5,6 +5,7 @@ use rapina::response::BoxBody;
 use super::dto::{CreateUrlRequest, CreateUrlResponse, DeleteUrlResponse};
 use super::error::UrlsError;
 use super::service;
+use crate::AppConfig;
 
 #[get("/", group = "/api/v1/shorten")]
 #[errors(UrlsError)]
@@ -39,11 +40,13 @@ pub async fn redirect(db: Db, code: Path<String>) -> Result<http::Response<BoxBo
 #[public]
 #[post("/", group = "/api/v1/shorten")]
 #[errors(UrlsError)]
-pub async fn create_url(db: Db, body: Validated<Json<CreateUrlRequest>>) -> Result<Json<CreateUrlResponse>> {
+pub async fn create_url(db: Db, config: State<AppConfig>, body: Validated<Json<CreateUrlRequest>>) -> Result<Json<CreateUrlResponse>> {
     let input = body.into_inner().into_inner();
     let result = service::create(db.conn(), input).await?;
+    let short_url = format!("http://{}:{}/api/v1/shorten/{}", config.host, config.port, result.short_code);
     Ok(Json(CreateUrlResponse {
         short_code: result.short_code,
+        short_url,
         long_url: result.long_url,
     }))
 }
