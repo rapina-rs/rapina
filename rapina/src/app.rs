@@ -426,15 +426,35 @@ impl Rapina {
 
     /// Enables or disables the introspection endpoint.
     ///
-    /// When enabled, a `GET /.__rapina/routes` endpoint is registered
+    /// When enabled, a `GET /__rapina/routes` endpoint is registered
     /// that returns all routes as JSON.
     ///
     /// Introspection is enabled by default in debug builds.
+    /// Use this when the value is dynamic (e.g. read from config/env).
+    /// For literal call sites, prefer [`enable_introspection`](Self::enable_introspection)
+    /// or [`disable_introspection`](Self::disable_introspection).
     pub fn with_introspection(mut self, enabled: bool) -> Self {
         self.introspection = enabled;
         self
     }
 
+    /// Enables the introspection endpoint.
+    ///
+    /// Convenience wrapper for `.with_introspection(true)`.
+    pub fn enable_introspection(self) -> Self {
+        self.with_introspection(true)
+    }
+
+    /// Disables the introspection endpoint.
+    ///
+    /// Convenience wrapper for `.with_introspection(false)`.
+    /// Useful in tests or production builds where introspection should be
+    /// suppressed even when debug assertions are active.
+    pub fn disable_introspection(self) -> Self {
+        self.with_introspection(false)
+    }
+
+    /// Health check is disabled by default.
     /// Enables or disables the built-in health check endpoints.
     ///
     /// When enabled, registers readiness and liveness health check endpoints:
@@ -442,10 +462,38 @@ impl Rapina {
     /// - `GET /__rapina/health/live` — liveness probe, always returns `200 OK`
     /// - `GET /__rapina/health/ready` — readiness probe, runs DB and custom checks
     ///
-    /// Health check is disabled by default.
+    /// Prefer this when the value is dynamic (e.g. read from config/env):
+    ///
+    /// ```ignore
+    /// let cfg = Config::from_env();
+    /// Rapina::new().with_health_check(cfg.health_check_enabled);
+    /// ```
+    ///
+    /// For fixed call sites, [`enable_health_check`](Self::enable_health_check) reads more clearly:
+    ///
+    /// ```rust,no_run
+    /// # use rapina::prelude::*;
+    /// Rapina::new().enable_health_check();
+    /// ```
     pub fn with_health_check(mut self, enabled: bool) -> Self {
         self.health_check = enabled;
         self
+    }
+
+    /// Enables the built-in health check endpoints.
+    ///
+    /// Convenience wrapper for `.with_health_check(true)`. See
+    /// [`with_health_check`](Self::with_health_check) for the dynamic-config form.
+    pub fn enable_health_check(self) -> Self {
+        self.with_health_check(true)
+    }
+
+    /// Disables the built-in health check endpoints.
+    ///
+    /// Convenience wrapper for `.with_health_check(false)`. See
+    /// [`with_health_check`](Self::with_health_check) for the dynamic-config form.
+    pub fn disable_health_check(self) -> Self {
+        self.with_health_check(false)
     }
 
     /// Registers a new scheduled cronjob.
@@ -520,12 +568,19 @@ impl Rapina {
         self
     }
 
+    /// The function is called on every `GET /__rapina/health` request.
     /// Registers a custom health check function.
     ///
-    /// The function is called on every `GET /__rapina/health` request.
-    /// Return `true` if healthy, `false` if not.
+    /// Registers a named async health check function.
     ///
-    /// Requires `.with_health_check(true)` to be set.
+    /// The function is called on every `GET /__rapina/health/ready` request.
+    /// Return `true` if the dependency is healthy, `false` otherwise.
+    ///
+    /// Note: this registers a check function — it does **not** enable the health
+    /// endpoints. You still need to call `.enable_health_check()` (or
+    /// `.with_health_check(true)` for dynamic config) to activate the endpoints.
+    /// A warning is emitted at startup if checks are registered but the endpoint
+    /// is disabled.
     pub fn add_health_check<F, Fut>(mut self, name: &'static str, f: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -601,15 +656,32 @@ impl Rapina {
         self
     }
 
+    /// Metrics is disabled by default unless you call `with_metrics(true)`.
     /// Enables or disables the metrics endpoint.
     ///
     /// When enabled, a `GET /metrics` endpoint is registered
     /// that returns all metrics to Prometheus.
     ///
-    /// Metrics is disabled by default unless you call `with_metrics(true)`.
+    /// Use this when the value is dynamic (e.g. read from config/env).
+    /// For literal call sites, prefer [`enable_metrics`](Self::enable_metrics)
+    /// or [`disable_metrics`](Self::disable_metrics).
     pub fn with_metrics(mut self, enabled: bool) -> Self {
         self.metrics = enabled;
         self
+    }
+
+    /// Enables the metrics endpoint.
+    ///
+    /// Convenience wrapper for `.with_metrics(true)`.
+    pub fn enable_metrics(self) -> Self {
+        self.with_metrics(true)
+    }
+
+    /// Disables the metrics endpoint.
+    ///
+    /// Convenience wrapper for `.with_metrics(false)`.
+    pub fn disable_metrics(self) -> Self {
+        self.with_metrics(false)
     }
 
     /// Enables or disables openapi endpoint
@@ -807,6 +879,13 @@ impl Rapina {
             self.router = self
                 .router
                 .get_named("/__rapina/routes", "list_routes", list_routes);
+        }
+
+        if !self.health_check && !self.health_registry.checks.is_empty() {
+            tracing::warn!(
+                "add_health_check() was called but the health check endpoint is disabled. \
+                Call .enable_health_check() or .with_health_check(true) to activate it."
+            );
         }
 
         if self.health_check {
@@ -1111,6 +1190,18 @@ mod tests {
     fn test_rapina_with_introspection_disabled() {
         let app = Rapina::new().with_introspection(false);
         assert!(!app.introspection);
+    }
+
+    #[test]
+    fn test_rapina_with_health_check_enabled() {
+        let app = Rapina::new().with_health_check(true);
+        assert!(app.health_check);
+    }
+
+    #[test]
+    fn test_rapina_with_health_check_disabled() {
+        let app = Rapina::new().with_health_check(false);
+        assert!(!app.health_check);
     }
 
     #[test]
