@@ -3,6 +3,12 @@
 {% block title %}Roadmap - {{ page.title }}{% endblock %}
 
 {% block content %}
+<!--
+    Roadmap section template used by filtered pages:
+    /roadmap/planned/, /roadmap/in-progress/, and /roadmap/done/.
+    Card layout/content is sourced from templates/shortcodes/roadmap-*-cards.html.
+    Editing those shortcodes affects this template and the /roadmap/ All view.
+-->
 <div class="roadmap-page">
     <div class="roadmap-header">
         <h1>{{ page.title }}</h1>
@@ -26,6 +32,7 @@
                 <span class="column-indicator planned"></span>
                 <h3>Planned</h3>
             </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-planned-cards.html for card updates. -->
             {% include "shortcodes/roadmap-planned-cards.html" %}
         </div>
         {% elif page.extra.section == "in-progress" %}
@@ -34,6 +41,7 @@
                 <span class="column-indicator in-progress"></span>
                 <h3>In Progress</h3>
             </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-in-progress-cards.html for card updates. -->
             {% include "shortcodes/roadmap-in-progress-cards.html" %}
         </div>
         {% elif page.extra.section == "done" %}
@@ -42,6 +50,7 @@
                 <span class="column-indicator done"></span>
                 <h3>Done</h3>
             </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-done-cards.html for card updates. -->
             {% include "shortcodes/roadmap-done-cards.html" %}
         </div>
         {% endif %}

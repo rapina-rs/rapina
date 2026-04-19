@@ -3,6 +3,12 @@
 {% block title %}Roadmap - Rapina{% endblock %}
 
 {% block content %}
+<!--
+    Roadmap template used by /roadmap/ (All view).
+    This page includes card shortcodes from templates/shortcodes/.
+    Edit roadmap card content and card markup in templates/shortcodes/roadmap-*-cards.html.
+    Changes to those shortcodes affect this page and the filtered roadmap pages.
+-->
 <div class="roadmap-page">
     <div class="roadmap-header">
         <h1>Rolling Roadmap</h1>
@@ -26,6 +32,7 @@
                 <span class="column-indicator planned"></span>
                 <h3>Planned</h3>
             </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/planned/. -->
             {% include "shortcodes/roadmap-planned-cards.html" %}
 
             <div class="roadmap-column-footer">
@@ -38,6 +45,7 @@
                 <span class="column-indicator in-progress"></span>
                 <h3>In Progress</h3>
             </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/in-progress/. -->
             {% include "shortcodes/roadmap-in-progress-cards.html" %}
 
             <div class="roadmap-column-footer">
@@ -50,6 +58,7 @@
                 <span class="column-indicator done"></span>
                 <h3>Done</h3>
             </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/done/. -->
             {% include "shortcodes/roadmap-done-cards.html" %}
 
             <div class="roadmap-column-footer">
