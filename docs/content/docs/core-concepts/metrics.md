@@ -24,7 +24,7 @@ use rapina::prelude::*;
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     Rapina::new()
-        .with_metrics(true)
+        .enable_metrics()
         .router(router)
         .listen("127.0.0.1:3000")
         .await
@@ -32,6 +32,22 @@ async fn main() -> std::io::Result<()> {
 ```
 
 That's all. A `GET /metrics` route is registered automatically and returns the collected metrics in Prometheus text format.
+
+## Dynamic configuration
+
+When the value comes from a config struct or environment variable, use `with_metrics(bool)` to keep the builder chain intact:
+
+```rust
+let cfg = Config::from_env();
+
+Rapina::new()
+    .with_metrics(cfg.metrics_enabled)
+    .router(router)
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Both forms are equivalent, `enable_metrics()` and `disable_metrics()` are convenience wrappers around `with_metrics(true/false)`.
 
 ## Collected Metrics
 
