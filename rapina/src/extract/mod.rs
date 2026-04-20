@@ -1118,6 +1118,38 @@ mod tests {
         assert_eq!(err.status(), 400);
     }
 
+    #[tokio::test]
+    async fn test_query_extractor_uuid() {
+        #[derive(serde::Deserialize, PartialEq, Debug)]
+        struct Params {
+            id: uuid::Uuid,
+        }
+
+        let id = uuid::Uuid::new_v4();
+        let (parts, _) = TestRequest::get(&format!("/users?id={id}")).into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0.id, id);
+    }
+
+    #[tokio::test]
+    async fn test_query_extractor_uuid_invalid() {
+        #[allow(dead_code)]
+        #[derive(serde::Deserialize, Debug)]
+        struct Params {
+            id: uuid::Uuid,
+        }
+
+        let (parts, _) = TestRequest::get("/users?id=not-a-uuid").into_parts();
+        let result =
+            Query::<Params>::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
+    }
+
     // Headers extractor tests
     #[tokio::test]
     async fn test_headers_extractor() {
@@ -1185,6 +1217,27 @@ mod tests {
 
         let result = Path::<u64>::from_request_parts(&parts, &params, &empty_state()).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_extractor_uuid() {
+        let id = uuid::Uuid::new_v4();
+        let (parts, _) = TestRequest::get(&format!("/users/{id}")).into_parts();
+        let params = params(&[("id", &id.to_string())]);
+
+        let result = Path::<uuid::Uuid>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().0, id);
+    }
+
+    #[tokio::test]
+    async fn test_path_extractor_uuid_invalid() {
+        let (parts, _) = TestRequest::get("/users/not-a-uuid").into_parts();
+        let params = params(&[("id", "not-a-uuid")]);
+
+        let result = Path::<uuid::Uuid>::from_request_parts(&parts, &params, &empty_state()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 
     // Context extractor tests

@@ -40,7 +40,7 @@ validator = { version = "0.20.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 httpdate = "1"
 # FIXME: move behind a `snapshot` feature flag
 regex = "1"

@@ -661,3 +661,70 @@ async fn test_cookie_extraction_missing() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+// UUID serde Tests
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct Resource {
+    id: rapina::uuid::Uuid,
+    name: String,
+}
+
+#[tokio::test]
+async fn test_uuid_in_json_body() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(Router::new().route(
+            http::Method::POST,
+            "/resources",
+            |req, _, _| async move {
+                use http_body_util::BodyExt;
+                let body = req.into_body().collect().await.unwrap().to_bytes();
+                let resource: Resource = serde_json::from_slice(&body).unwrap();
+                Json(resource)
+            },
+        ));
+
+    let id = rapina::uuid::Uuid::new_v4();
+    let client = TestClient::new(app).await;
+    let response = client
+        .post("/resources")
+        .json(&Resource {
+            id,
+            name: "test".to_string(),
+        })
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let resource: Resource = response.json();
+    assert_eq!(resource.id, id);
+    assert_eq!(resource.name, "test");
+}
+
+#[tokio::test]
+async fn test_uuid_in_json_response() {
+    let id = rapina::uuid::Uuid::new_v4();
+    let app = Rapina::new()
+        .with_introspection(false)
+        .router(Router::new().route(
+            http::Method::GET,
+            "/resources/:id",
+            move |_, _, _| async move {
+                Json(Resource {
+                    id,
+                    name: "example".to_string(),
+                })
+            },
+        ));
+
+    let client = TestClient::new(app).await;
+    let response = client
+        .get(&format!("/resources/{id}"))
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let resource: Resource = response.json();
+    assert_eq!(resource.id, id);
+}
