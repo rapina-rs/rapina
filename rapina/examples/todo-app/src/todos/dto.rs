@@ -1,8 +1,10 @@
 use rapina::schemars::{self, JsonSchema};
 use serde::Deserialize;
+use validator::Validate;
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, Validate, JsonSchema)]
 pub struct CreateTodo {
+    #[validate(length(min = 1, max = 100))]
     pub title: String,
 }
 

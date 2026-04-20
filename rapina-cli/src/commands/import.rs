@@ -112,7 +112,9 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
         ColumnType::Json | ColumnType::JsonBinary => NormalizedType::Json,
         ColumnType::Uuid => NormalizedType::Uuid,
         ColumnType::Time => NormalizedType::Time,
-        ColumnType::Blob | ColumnType::Binary(_) | ColumnType::VarBinary(_) => NormalizedType::Bytes,
+        ColumnType::Blob | ColumnType::Binary(_) | ColumnType::VarBinary(_) => {
+            NormalizedType::Bytes
+        }
         ColumnType::Custom(name) => {
             let name_str = name.to_string();
             // Strip length/precision like BINARY(16) -> BINARY
