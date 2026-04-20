@@ -65,6 +65,7 @@ pub struct Rapina {
     /// Custom health checks
     pub(crate) health_registry: HealthRegistry,
     /// Whether metrics is enabled.
+    #[cfg(feature = "metrics")]
     pub(crate) metrics: bool,
     /// Whether OpenAPI is enabled
     pub(crate) openapi: bool,
@@ -116,6 +117,7 @@ impl Rapina {
             introspection: cfg!(debug_assertions),
             health_check: false,
             health_registry: HealthRegistry::new(),
+            #[cfg(feature = "metrics")]
             metrics: false,
             openapi: false,
             openapi_title: "API".to_string(),
@@ -665,6 +667,7 @@ impl Rapina {
     /// Use this when the value is dynamic (e.g. read from config/env).
     /// For literal call sites, prefer [`enable_metrics`](Self::enable_metrics)
     /// or [`disable_metrics`](Self::disable_metrics).
+    #[cfg(feature = "metrics")]
     pub fn with_metrics(mut self, enabled: bool) -> Self {
         self.metrics = enabled;
         self
@@ -673,6 +676,7 @@ impl Rapina {
     /// Enables the metrics endpoint.
     ///
     /// Convenience wrapper for `.with_metrics(true)`.
+    #[cfg(feature = "metrics")]
     pub fn enable_metrics(self) -> Self {
         self.with_metrics(true)
     }
@@ -680,6 +684,7 @@ impl Rapina {
     /// Disables the metrics endpoint.
     ///
     /// Convenience wrapper for `.with_metrics(false)`.
+    #[cfg(feature = "metrics")]
     pub fn disable_metrics(self) -> Self {
         self.with_metrics(false)
     }
@@ -1205,12 +1210,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "metrics")]
     fn test_rapina_with_metrics_enabled() {
         let app = Rapina::new().with_metrics(true);
         assert!(app.metrics);
     }
 
     #[test]
+    #[cfg(feature = "metrics")]
     fn test_rapina_with_metrics_disabled() {
         let app = Rapina::new().with_metrics(false);
         assert!(!app.metrics);
