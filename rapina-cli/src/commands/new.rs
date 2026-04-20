@@ -209,6 +209,7 @@ Use proc macros for route registration. Handler names follow `verb_resource` con
 - `Query<T>` — query string parameters
 - `State<T>` — shared application state
 - `Validated<Json<T>>` — JSON body with validation (T must also derive Validate, returns 422 on failure)
+  - When using `#[derive(Validate)]`, add `#[validate(crate = "rapina::validator")]` to your struct
 - `CurrentUser` — authenticated user identity (requires auth to be configured)
 - `Db` — database connection (requires database feature)
 
@@ -295,6 +296,7 @@ Rapina is an opinionated Rust web framework built on hyper. Routes are protected
 // Body (only one per handler)
 body: Json<T>              // JSON body, T: Deserialize + JsonSchema
 body: Validated<Json<T>>   // JSON body with validation, T: Deserialize + JsonSchema + Validate
+                           // Note: add #[validate(crate = "rapina::validator")] to the struct
 body: Form<T>              // Form data
 
 // Parts (multiple allowed)
@@ -424,6 +426,7 @@ This is a Rust project using the Rapina web framework.
 
 - `Json<T>` for request/response bodies (T: Serialize/Deserialize + JsonSchema)
 - `Validated<Json<T>>` for validated bodies (T: also Validate, returns 422)
+  - Add `#[validate(crate = "rapina::validator")]` to the struct deriving `Validate`
 - `Path<T>` for URL params (`:id` syntax)
 - `Query<T>` for query strings
 - `State<T>` for shared app state
