@@ -223,11 +223,22 @@ The default timeout is 30 seconds. After the timeout, remaining connections are 
 
 ## Health Checks
 
-Enable built-in health endpoints with `.with_health_check(true)`:
+Enable built-in health endpoints with `.enable_health_check()`:
 
 ```rust
 Rapina::new()
-    .with_health_check(true)
+    .enable_health_check()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+When the value comes from config or environment, use `.with_health_check(bool)` to keep the builder chain intact:
+
+```rust
+let cfg = Config::from_env();
+
+Rapina::new()
+    .with_health_check(cfg.health_check_enabled)
     .listen("127.0.0.1:3000")
     .await
 ```
@@ -256,11 +267,16 @@ readinessProbe:
 
 The liveness probe **never** checks external dependencies — a DB outage should pull the pod from the load balancer (readiness failure), not restart it (liveness failure).
 
-Register custom checks for Redis, external APIs, or any dependency:
+Custom checks
+
+`.enable_health_check()` registers the HTTP endpoints. `.add_health_check()` registers a function that runs inside those endpoints — they do different things:
+
+- **`.enable_health_check()`** (or `.with_health_check(bool)` for dynamic config) — turns on the `/__rapina/health` routes. Without it, those paths return 404.
+- **`.add_health_check("name", fn)`** — adds a dependency check (Redis, Stripe, etc.) that runs on every `/ready` request. Optional — the endpoint works fine without any custom checks.
 
 ```rust
 Rapina::new()
-    .with_health_check(true)
+    .enable_health_check()                          // or: .with_health_check(cfg.health_check_enabled)
     .add_health_check("redis", || async {
         redis_ping().await.is_ok()
     })

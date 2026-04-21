@@ -16,7 +16,7 @@ pub type HealthCheckFn = Box<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Sen
 ///
 /// Each check is an async function that returns `true` when healthy.
 /// The registry is populated via [`Rapina::add_health_check`](crate::app::Rapina::add_health_check)
-/// and automatically placed in state when `.with_health_check(true)` is set.
+/// and automatically placed in state when `.enable_health_check()`/`.with_health_check(true)` is set.
 ///
 /// On each request to `/__rapina/health`, all registered checks are called
 /// and their results are included in the response under the `"checks"` key.

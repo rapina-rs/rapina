@@ -181,6 +181,7 @@ pub use rust_decimal;
 pub use schemars;
 pub use serde_json;
 pub use uuid;
+pub use validator;
 
 #[doc(hidden)]
 pub use inventory;

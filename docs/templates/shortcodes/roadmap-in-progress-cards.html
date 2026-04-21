@@ -1,0 +1,63 @@
+<!--
+    Shared roadmap shortcode for In Progress cards.
+    Used by: /roadmap/ and /roadmap/in-progress/ via templates/roadmap.html and templates/roadmap-section.html.
+    Editing this shortcode affects multiple pages.
+    Keep roadmap card layout logic in templates/shortcodes/ (this file), not in page templates.
+-->
+<div class="column-cards">
+    <div class="roadmap-card">
+        <h4>Background Jobs</h4>
+        <p>Async task queue with Redis backend and <code>rapina seed</code> for database seeding.</p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>Schema Improvements</h4>
+        <p>Relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>Redis TLS Support</h4>
+        <p>
+            TLS and client certificates for Redis cache backend.
+        </p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>JWKS URL Verification</h4>
+        <p>Verify JWTs against a remote JWKS endpoint for integration with external identity providers.</p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>OpenTelemetry Tracing</h4>
+        <p>Export traces and metrics to OpenTelemetry-compatible backends.</p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>Scalar OpenAPI UI</h4>
+        <p>
+            Built-in Scalar API documentation UI served from the framework. Currently being explored and may evolve.
+        </p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+    <div class="roadmap-card">
+        <h4>GraphQL Support</h4>
+        <p>
+            Optional GraphQL layer with async-graphql integration. Under active exploration; API and scope are still being refined.
+        </p>
+        <div class="card-tags">
+            <span class="card-tag">Feature</span>
+        </div>
+    </div>
+</div>

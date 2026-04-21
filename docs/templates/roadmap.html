@@ -1,5 +1,14 @@
-{% extends "base.html" %} {% block title %}Roadmap - Rapina{% endblock %} {%
-block content %}
+{% extends "base.html" %}
+
+{% block title %}Roadmap - Rapina{% endblock %}
+
+{% block content %}
+<!--
+    Roadmap template used by /roadmap/ (All view).
+    This page includes card shortcodes from templates/shortcodes/.
+    Edit roadmap card content and card markup in templates/shortcodes/roadmap-*-cards.html.
+    Changes to those shortcodes affect this page and the filtered roadmap pages.
+-->
 <div class="roadmap-page">
     <div class="roadmap-header">
         <h1>Rolling Roadmap</h1>
@@ -10,20 +19,24 @@ block content %}
         </p>
     </div>
 
+    <div class="roadmap-tabs">
+        <a href="/roadmap/" class="roadmap-tab active">All</a>
+        <a href="/roadmap/planned/" class="roadmap-tab">Planned</a>
+        <a href="/roadmap/in-progress/" class="roadmap-tab">In Progress</a>
+        <a href="/roadmap/done/" class="roadmap-tab">Done</a>
+    </div>
+
     <div class="roadmap-board">
         <div class="roadmap-column">
             <div class="column-header">
                 <span class="column-indicator planned"></span>
                 <h3>Planned</h3>
             </div>
-            <div class="column-cards">
-                <div class="roadmap-card">
-                    <h4>Pluggable Authorization</h4>
-                    <p>Role-based and policy-based access control for endpoints beyond JWT authentication.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/planned/. -->
+            {% include "shortcodes/roadmap-planned-cards.html" %}
+
+            <div class="roadmap-column-footer">
+                <a href="/roadmap/planned/" class="roadmap-see-all">See all planned</a>
             </div>
         </div>
 
@@ -32,62 +45,11 @@ block content %}
                 <span class="column-indicator in-progress"></span>
                 <h3>In Progress</h3>
             </div>
-            <div class="column-cards">
-                <div class="roadmap-card">
-                    <h4>Background Jobs</h4>
-                    <p>Async task queue with Redis backend and <code>rapina seed</code> for database seeding.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Schema Improvements</h4>
-                    <p>Relationship fields from foreign keys, <code>--diff</code> mode against live databases, and nullable <code>Option&lt;T&gt;</code> columns in generated DTOs.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Redis TLS Support</h4>
-                    <p>
-                        TLS and client certificates for Redis cache backend.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>JWKS URL Verification</h4>
-                    <p>Verify JWTs against a remote JWKS endpoint for integration with external identity providers.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>OpenTelemetry Tracing</h4>
-                    <p>Export traces and metrics to OpenTelemetry-compatible backends.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Scalar OpenAPI UI</h4>
-                    <p>
-                        Built-in Scalar API documentation UI served from the framework. Currently being explored and may evolve.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>GraphQL Support</h4>
-                    <p>
-                        Optional GraphQL layer with async-graphql integration. Under active exploration; API and scope are still being refined.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/in-progress/. -->
+            {% include "shortcodes/roadmap-in-progress-cards.html" %}
+
+            <div class="roadmap-column-footer">
+                <a href="/roadmap/in-progress/" class="roadmap-see-all">See all in progress</a>
             </div>
         </div>
 
@@ -96,211 +58,11 @@ block content %}
                 <span class="column-indicator done"></span>
                 <h3>Done</h3>
             </div>
-            <div class="column-cards">
-                <div class="roadmap-card">
-                    <h4>Health Check Endpoints</h4>
-                    <p>
-                        Built-in health check routes for readiness and liveness probes.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Deployment Guide</h4>
-                    <p>
-                        Documentation for deploying Rapina apps to production.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">Docs</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Multipart File Uploads</h4>
-                    <p>Streaming multipart extractor with <code>multer</code> for file uploads and form data.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">Feature</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Serde-based Path Extraction</h4>
-                    <p>
-                        <code>Path&lt;T&gt;</code> supports scalars, tuples, and structs
-                        via a custom serde deserializer.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Database Seeding</h4>
-                    <p>
-                        <code>rapina seed load</code>, <code>dump</code>, and
-                        <code>generate</code> for managing seed data.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Snapshot Testing</h4>
-                    <p>
-                        Golden-file testing with <code>--bless</code> mode and automatic
-                        UUID/timestamp redaction.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>RFC 7807 Problem Details</h4>
-                    <p>
-                        Standardized error responses with configurable base URI
-                        and per-request scoping.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Three-layer Router</h4>
-                    <p>
-                        O(1) static route lookup, SmallVec path params, and
-                        criterion benchmarks.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Compression Feature Flag</h4>
-                    <p>
-                        Compression gated behind <code>compression</code> feature,
-                        <code>--force</code> flag for import, and improved codegen pluralization.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.10.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>WebSocket &amp; Relay</h4>
-                    <p>
-                        Real-time communication with raw WebSocket support,
-                        pub/sub Relay system, channel handlers, and presence tracking.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Interactive Tutorial</h4>
-                    <p>
-                        6-chapter browser-based tutorial with CodeMirror editor,
-                        pattern-based validation, and simulated HTTP responses.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Cross-Platform Shutdown</h4>
-                    <p>
-                        Graceful shutdown now works on Windows in addition to Unix.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>OpenAPI Import</h4>
-                    <p>
-                        <code>rapina import openapi</code> to generate handlers
-                        and types from external API specs.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Endpoint Groups</h4>
-                    <p>
-                        Group parameter in route macros for auto-discovery:
-                        <code>#[get("/users", group = "/api")]</code>.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Starter Templates</h4>
-                    <p>
-                        <code>rapina new --template crud</code> and
-                        <code>--template auth</code> for faster project setup.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.9.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Response Caching</h4>
-                    <p>Built-in caching with in-memory and Redis backends.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.8.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Built-in Pagination</h4>
-                    <p>
-                        <code>Paginate</code> extractor for cursor and offset pagination.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.8.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Database Import</h4>
-                    <p>
-                        Reverse-engineer a live database into feature modules
-                        with <code>rapina import database</code>.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.7.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Route Auto-Discovery</h4>
-                    <p>
-                        Automatic route registration via
-                        <code>.discover()</code> method.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.6.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>CRUD Scaffolding</h4>
-                    <p>
-                        Generate complete CRUD resources with
-                        <code>rapina add resource</code>.
-                    </p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.5.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>Database Integration</h4>
-                    <p>SeaORM integration with <code>schema!</code> macro and connection pooling.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.4.0</span>
-                    </div>
-                </div>
-                <div class="roadmap-card">
-                    <h4>OpenAPI Generation</h4>
-                    <p>Automatic OpenAPI spec from route definitions with breaking change detection.</p>
-                    <div class="card-tags">
-                        <span class="card-tag">v0.2.0</span>
-                    </div>
-                </div>
+            <!-- Shared shortcode: editing this include content/layout affects /roadmap/ and /roadmap/done/. -->
+            {% include "shortcodes/roadmap-done-cards.html" %}
+
+            <div class="roadmap-column-footer">
+                <a href="/roadmap/done/" class="roadmap-see-all">See all completed</a>
             </div>
         </div>
     </div>

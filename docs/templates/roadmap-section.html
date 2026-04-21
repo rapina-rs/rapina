@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Roadmap - {{ page.title }}{% endblock %}
+
+{% block content %}
+<!--
+    Roadmap section template used by filtered pages:
+    /roadmap/planned/, /roadmap/in-progress/, and /roadmap/done/.
+    Card layout/content is sourced from templates/shortcodes/roadmap-*-cards.html.
+    Editing those shortcodes affects this template and the /roadmap/ All view.
+-->
+<div class="roadmap-page">
+    <div class="roadmap-header">
+        <h1>{{ page.title }}</h1>
+        <p>
+            Browse all items in this roadmap section. For a complete list of released
+            features and updates, check out our <a href="/changelog/">changelog</a>.
+        </p>
+    </div>
+
+    <div class="roadmap-tabs">
+        <a href="/roadmap/" class="roadmap-tab">All</a>
+        <a href="/roadmap/planned/" class="roadmap-tab{% if page.extra.section == "planned" %} active{% endif %}">Planned</a>
+        <a href="/roadmap/in-progress/" class="roadmap-tab{% if page.extra.section == "in-progress" %} active{% endif %}">In Progress</a>
+        <a href="/roadmap/done/" class="roadmap-tab{% if page.extra.section == "done" %} active{% endif %}">Done</a>
+    </div>
+
+    <div class="roadmap-board">
+        {% if page.extra.section == "planned" %}
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator planned"></span>
+                <h3>Planned</h3>
+            </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-planned-cards.html for card updates. -->
+            {% include "shortcodes/roadmap-planned-cards.html" %}
+        </div>
+        {% elif page.extra.section == "in-progress" %}
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator in-progress"></span>
+                <h3>In Progress</h3>
+            </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-in-progress-cards.html for card updates. -->
+            {% include "shortcodes/roadmap-in-progress-cards.html" %}
+        </div>
+        {% elif page.extra.section == "done" %}
+        <div class="roadmap-column">
+            <div class="column-header">
+                <span class="column-indicator done"></span>
+                <h3>Done</h3>
+            </div>
+            <!-- Shared shortcode: edit templates/shortcodes/roadmap-done-cards.html for card updates. -->
+            {% include "shortcodes/roadmap-done-cards.html" %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="roadmap-footer">
+        <p>
+            Have a feature request?
+            <a
+                href="https://github.com/rapina-rs/rapina/discussions"
+                target="_blank"
+                >Start a discussion</a
+            >
+            or
+            <a
+                href="https://github.com/rapina-rs/rapina/issues/new"
+                target="_blank"
+                >open an issue</a
+            >.
+        </p>
+    </div>
+</div>
+{% endblock %}
