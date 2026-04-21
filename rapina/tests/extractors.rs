@@ -674,16 +674,14 @@ struct Resource {
 async fn test_uuid_in_json_body() {
     let app = Rapina::new()
         .with_introspection(false)
-        .router(Router::new().route(
-            http::Method::POST,
-            "/resources",
-            |req, _, _| async move {
+        .router(
+            Router::new().route(http::Method::POST, "/resources", |req, _, _| async move {
                 use http_body_util::BodyExt;
                 let body = req.into_body().collect().await.unwrap().to_bytes();
                 let resource: Resource = serde_json::from_slice(&body).unwrap();
                 Json(resource)
-            },
-        ));
+            }),
+        );
 
     let id = rapina::uuid::Uuid::new_v4();
     let client = TestClient::new(app).await;
@@ -719,10 +717,7 @@ async fn test_uuid_in_json_response() {
         ));
 
     let client = TestClient::new(app).await;
-    let response = client
-        .get(&format!("/resources/{id}"))
-        .send()
-        .await;
+    let response = client.get(&format!("/resources/{id}")).send().await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let resource: Resource = response.json();
