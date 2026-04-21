@@ -26,6 +26,10 @@ pub struct AppConfig {
     #[env = "RATE_LIMIT_PER_MINUTE"]
     #[default = "60"]
     pub rate_limit_per_minute: u32,
+
+    #[env = "DEFAULT_EXPIRY_DAYS"]
+    #[default = "365"]
+    pub default_expiry_days: u32,
 }
 
 #[derive(Serialize, JsonSchema)]

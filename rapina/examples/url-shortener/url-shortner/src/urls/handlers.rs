@@ -42,7 +42,7 @@ pub async fn redirect(db: Db, code: Path<String>) -> Result<http::Response<BoxBo
 #[errors(UrlsError)]
 pub async fn create_url(db: Db, config: State<AppConfig>, body: Validated<Json<CreateUrlRequest>>) -> Result<Json<CreateUrlResponse>> {
     let input = body.into_inner().into_inner();
-    let result = service::create(db.conn(), input).await?;
+    let result = service::create(db.conn(), input, config.default_expiry_days).await?;
     let short_url = format!("http://{}:{}/api/v1/shorten/{}", config.host, config.port, result.short_code);
     Ok(Json(CreateUrlResponse {
         short_code: result.short_code,
