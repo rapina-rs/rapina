@@ -52,21 +52,33 @@ src/migrations/mod.rs      # Updated with mod + migrations! macro entry
 
 Fields use a `name:type` format. Supported types:
 
-| Type | Aliases | Rust Type | Column |
-|------|---------|-----------|--------|
-| `string` | | `String` | VARCHAR |
-| `text` | | `String` | TEXT |
-| `i32` | `integer` | `i32` | INTEGER |
-| `i64` | `bigint` | `i64` | BIGINT |
-| `f32` | `float` | `f32` | FLOAT |
-| `f64` | `double` | `f64` | DOUBLE |
-| `bool` | `boolean` | `bool` | BOOLEAN |
-| `uuid` | | `Uuid` | UUID |
-| `datetime` | `timestamptz` | `DateTime` | TIMESTAMPTZ (timezone-aware) |
-| `naivedatetime` | `timestamp` | `NaiveDateTime` | TIMESTAMP (without timezone) |
-| `date` | | `Date` | DATE |
-| `decimal` | | `Decimal` | DECIMAL |
-| `json` | | `Json` | JSON |
+| Type | Aliases | Rust Type | Column | Default |
+|------|---------|-----------|--------|---------|
+| `string` | | `String` | VARCHAR | none |
+| `text` | | `String` | TEXT | none |
+| `i32` | `integer` | `i32` | INTEGER | none |
+| `i64` | `bigint` | `i64` | BIGINT | none |
+| `f32` | `float` | `f32` | FLOAT | none |
+| `f64` | `double` | `f64` | DOUBLE | none |
+| `bool` | `boolean` | `bool` | BOOLEAN | `false` |
+| `uuid` | | `Uuid` | UUID | none |
+| `datetime` | `timestamptz` | `DateTime` | TIMESTAMPTZ (timezone-aware) | none |
+| `naivedatetime` | `timestamp` | `NaiveDateTime` | TIMESTAMP (without timezone) | none |
+| `date` | | `Date` | DATE | none |
+| `decimal` | | `Decimal` | DECIMAL | none |
+| `json` | | `Json` | JSON | none |
+
+### Sensible defaults
+
+`bool`/`boolean` columns always emit `DEFAULT FALSE` in the migration. This avoids requiring every insert to explicitly set the field when `false` is the natural starting state.
+
+`created_at` and `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`) are injected automatically into every generated migration and the entity's `schema!` block. These columns are required for SeaORM's `ActiveModelBehavior` and `before_save` hooks to work correctly.
+
+To skip the timestamp columns (e.g., for a join table or audit log with custom timestamp logic):
+
+```bash
+rapina add resource user name:string email:string --no-timestamps
+```
 
 The generated handlers follow Rapina conventions and are ready to wire into your router. The command prints the exact code you need to add to `main.rs`:
 
