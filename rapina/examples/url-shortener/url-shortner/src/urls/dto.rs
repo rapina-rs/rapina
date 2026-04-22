@@ -11,6 +11,7 @@ pub struct CreateUrlRequest {
 #[derive(Serialize, JsonSchema)]
 pub struct CreateUrlResponse {
     pub short_code: String,
+    pub short_url: String,
     pub long_url: String,
 }
 

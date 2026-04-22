@@ -7,6 +7,8 @@ use crate::entity::urls::{ActiveModel, Model};
 
 use super::dto::CreateUrlRequest;
 
+const SECONDS_PER_DAY: u64 = 24 * 3600;
+
 pub async fn list_all(conn: &rapina::sea_orm::DatabaseConnection) -> Result<Vec<Model>> {
     Urls::find().all(conn).await.map_err(|e| DbError(e).into_api_error())
 }
@@ -32,7 +34,11 @@ pub async fn increment_clicks(conn: &rapina::sea_orm::DatabaseConnection, item: 
     Ok(())
 }
 
-pub async fn create(conn: &rapina::sea_orm::DatabaseConnection, input: CreateUrlRequest) -> Result<Model> {
+pub async fn create(
+    conn: &rapina::sea_orm::DatabaseConnection,
+    input: CreateUrlRequest,
+    default_expiry_days: u32,
+) -> Result<Model> {
     let item = ActiveModel {
         short_code: Set(String::new()),
         long_url: Set(input.long_url),
@@ -44,7 +50,10 @@ pub async fn create(conn: &rapina::sea_orm::DatabaseConnection, input: CreateUrl
             .and_then(|s| s.parse::<rapina::sea_orm::prelude::DateTimeUtc>().ok())
             .unwrap_or_else(|| {
                 rapina::sea_orm::prelude::DateTimeUtc::from(
-                    std::time::SystemTime::now() + std::time::Duration::from_secs(24 * 365 * 3600),
+                    std::time::SystemTime::now()
+                        + std::time::Duration::from_secs(
+                            u64::from(default_expiry_days) * SECONDS_PER_DAY,
+                        ),
                 )
             })),
         click_count: Set(0),
