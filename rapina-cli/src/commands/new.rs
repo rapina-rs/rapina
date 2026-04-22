@@ -90,6 +90,7 @@ pub fn execute(
     if db_type.is_some() {
         println!("    # Configure your database URL in .env or source");
         println!("    export DATABASE_URL=\"your-database-url\"");
+        println!("    rapina migrate up");
     }
     println!("    rapina dev");
     println!();

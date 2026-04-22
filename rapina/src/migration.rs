@@ -185,6 +185,11 @@ pub async fn status<M: MigratorTrait>(conn: &sea_orm::DatabaseConnection) -> Res
 /// }
 /// ```
 pub async fn run_cli<M: MigratorTrait>() {
+    // Load .env before reading DATABASE_URL — the rapina-cli parent process loads .env
+    // itself but the spawned `rapina_migrate` child process starts fresh and won't
+    // inherit values that were only loaded from the file (not exported in the shell).
+    dotenvy::dotenv().ok();
+
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
 
     let db_url = match std::env::var("DATABASE_URL") {

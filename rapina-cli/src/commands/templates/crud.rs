@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::{
     DatabaseType, generate_cargo_toml, generate_env_content, generate_gitignore,
-    generate_gitignore_extras, generate_rapina_dep, write_file,
+    generate_gitignore_extras, generate_rapina_dep, write_file, write_migrate_bin,
 };
 
 pub fn generate(
@@ -57,6 +57,8 @@ pub fn generate(
         ".env",
     )?;
 
+    write_migrate_bin(src_path)?;
+
     Ok(())
 }
 
@@ -80,6 +82,9 @@ async fn main() -> std::io::Result<()> {
         .with_health_check(true)
         .with_database(db_config)
         .await?
+        // NOTE: run_migrations applies pending migrations on every startup.
+        // Fine for single-node development; use `rapina migrate up` instead
+        // for controlled deployments and multi-replica environments.
         .run_migrations::<migrations::Migrator>()
         .await?
         .router(
@@ -308,5 +313,14 @@ mod tests {
         let content = generate_env_content(Some(&DatabaseType::Mysql), None);
         assert!(content.contains("DATABASE_URL=mysql://"));
         assert!(content.contains("Replace"));
+    }
+
+    #[test]
+    fn test_crud_generate_creates_migrate_bin() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        generate("myapp", dir.path(), &src, &DatabaseType::Sqlite).unwrap();
+        assert!(src.join("bin").join("rapina_migrate.rs").exists());
     }
 }

@@ -139,7 +139,10 @@ mod parse_args_tests {
     }
 }
 
-mod run_cli_tests {
+// Tests verifying the MigratorTrait dispatch methods (fresh, refresh, etc.) that
+// run_cli<M> delegates to. run_cli itself requires process-level env manipulation
+// (DATABASE_URL + argv) so it is tested via CLI integration rather than here.
+mod migrator_trait_tests {
     use rapina::migration::prelude::*;
     use rapina::sea_orm::Database;
 
