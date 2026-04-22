@@ -546,7 +546,8 @@ fn generate_for_table(
         .map_or(NormalizedType::I32, |c| c.col_type.clone());
 
     codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
-    codegen::create_migration_file(plural, &pascal_plural, &fields, &pk_type.clone())?;
+    // Always false: DB already owns the schema, so no timestamp columns are injected.
+    codegen::create_migration_file(plural, &pascal_plural, &fields, &pk_type, false)?;
     codegen::create_feature_module(&singular, plural, &pascal, &fields, &pk_type, force)?;
 
     println!(

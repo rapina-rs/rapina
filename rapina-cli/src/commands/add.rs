@@ -17,7 +17,7 @@ fn print_next_steps(pascal: &str) {
     println!();
 }
 
-pub fn resource(name: String, fields: Vec<FieldInfo>) -> Result<(), String> {
+pub fn resource(name: String, fields: Vec<FieldInfo>, with_timestamps: bool) -> Result<(), String> {
     ValidationContext::Resource.validate(&name)?;
     codegen::verify_rapina_project()?;
 
@@ -43,9 +43,13 @@ pub fn resource(name: String, fields: Vec<FieldInfo>) -> Result<(), String> {
         .find(|f| f.name == "id")
         .map_or(NormalizedType::I32, |f| f.normalized_type.clone());
 
+    // None = no #[timestamps] attr → schema! macro adds both (default).
+    // Some("none") = #[timestamps(none)] → macro skips them.
+    let timestamps_attr = if with_timestamps { None } else { Some("none") };
+
     codegen::create_feature_module(&name, plural, pascal, &fields, &pk_type, false)?;
-    codegen::update_entity_file(pascal, &fields, None, None, false)?;
-    codegen::create_migration_file(plural, pascal_plural, &fields, &pk_type)?;
+    codegen::update_entity_file(pascal, &fields, timestamps_attr, None, false)?;
+    codegen::create_migration_file(plural, pascal_plural, &fields, &pk_type, with_timestamps)?;
 
     if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
         eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
@@ -322,11 +326,14 @@ mod tests {
             FieldInfo {
                 name: "published".to_string(),
                 normalized_type: NormalizedType::Bool,
-                column_method: ColumnMethod(".boolean().not_null()".to_string()),
+                column_method: ColumnMethod(
+                    ".boolean().not_null().default(Expr::value(false))".to_string(),
+                ),
                 nullable: false,
             },
         ];
-        let content = codegen::generate_migration("posts", "Posts", &fields, &NormalizedType::I32);
+        let content =
+            codegen::generate_migration("posts", "Posts", &fields, &NormalizedType::I32, false);
 
         assert!(content.contains("MigrationTrait for Migration"));
         assert!(content.contains("Posts::Table"));
@@ -334,8 +341,50 @@ mod tests {
         assert!(content.contains("Posts::Title"));
         assert!(content.contains("Posts::Published"));
         assert!(content.contains(".string().not_null()"));
-        assert!(content.contains(".boolean().not_null()"));
+        assert!(content.contains(".boolean().not_null().default(Expr::value(false))"));
         assert!(content.contains("enum Posts {"));
         assert!(content.contains("drop_table"));
+        // no timestamps when with_timestamps=false
+        assert!(!content.contains("CreatedAt"));
+        assert!(!content.contains("UpdatedAt"));
+    }
+
+    #[test]
+    fn test_boolean_field_has_default_false() {
+        let f = "active:bool".parse::<FieldInfo>().unwrap();
+        assert!(
+            f.column_method.0.contains(".default(Expr::value(false))"),
+            "boolean column_method must include default(false), got: {}",
+            f.column_method
+        );
+
+        let f2 = "enabled:boolean".parse::<FieldInfo>().unwrap();
+        assert!(
+            f2.column_method.0.contains(".default(Expr::value(false))"),
+            "boolean column_method must include default(false), got: {}",
+            f2.column_method
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_with_timestamps() {
+        let fields = vec![FieldInfo {
+            name: "title".to_string(),
+            normalized_type: NormalizedType::String,
+            column_method: ColumnMethod(".string().not_null()".to_string()),
+            nullable: false,
+        }];
+        let content =
+            codegen::generate_migration("posts", "Posts", &fields, &NormalizedType::I32, true);
+
+        assert!(content.contains("Posts::CreatedAt"));
+        assert!(content.contains("Posts::UpdatedAt"));
+        assert!(content.contains("CreatedAt,"));
+        assert!(content.contains("UpdatedAt,"));
+        assert!(
+            content.contains(
+                ".timestamp_with_time_zone().not_null().default(Expr::current_timestamp())"
+            )
+        );
     }
 }

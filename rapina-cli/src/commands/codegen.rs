@@ -483,8 +483,9 @@ pub(crate) fn generate_migration(
     pascal_plural: &str,
     fields: &[FieldInfo],
     pk_type: &NormalizedType,
+    with_timestamps: bool,
 ) -> String {
-    let column_defs: Vec<String> = fields
+    let mut column_defs: Vec<String> = fields
         .iter()
         .filter(|f| f.name != "id") // Skip id as it's added separately
         .map(|f| {
@@ -498,11 +499,22 @@ pub(crate) fn generate_migration(
         })
         .collect();
 
-    let iden_variants: Vec<String> = fields
+    let mut iden_variants: Vec<String> = fields
         .iter()
         .filter(|f| f.name != "id") // Skip prefix/reserved id
         .map(|f| format!("    {},", to_pascal_case(&f.name)))
         .collect();
+
+    if with_timestamps {
+        column_defs.push(format!(
+            "                    .col(ColumnDef::new({pascal_plural}::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))"
+        ));
+        column_defs.push(format!(
+            "                    .col(ColumnDef::new({pascal_plural}::UpdatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))"
+        ));
+        iden_variants.push("    CreatedAt,".to_string());
+        iden_variants.push("    UpdatedAt,".to_string());
+    }
 
     let readable_name = format!("create {}", plural);
 
@@ -672,6 +684,7 @@ pub(crate) fn create_migration_file(
     pascal_plural: &str,
     fields: &[FieldInfo],
     pk_type: &NormalizedType,
+    with_timestamps: bool,
 ) -> Result<(), String> {
     let migrations_dir = Path::new("src/migrations");
 
@@ -687,7 +700,7 @@ pub(crate) fn create_migration_file(
     let filename = format!("{}.rs", module_name);
     let filepath = migrations_dir.join(&filename);
 
-    let template = generate_migration(plural, pascal_plural, fields, pk_type);
+    let template = generate_migration(plural, pascal_plural, fields, pk_type, with_timestamps);
     fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
     println!(
         "  {} Created {}",
@@ -1349,7 +1362,7 @@ mod tests {
                 nullable: false,
             },
         ];
-        let content = generate_migration("posts", "Posts", &fields, &NormalizedType::I32);
+        let content = generate_migration("posts", "Posts", &fields, &NormalizedType::I32, false);
 
         dbg!(&fields[1].column_method.0);
         assert!(content.contains(".string().not_null()"));

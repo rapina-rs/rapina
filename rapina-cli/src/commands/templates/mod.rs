@@ -64,6 +64,7 @@ rapina = {rapina_dep}
 tokio = {{ version = "1", features = ["full"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
+validator = {{ version = "0.20", features = ["derive"] }}
 "#
     )
 }

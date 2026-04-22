@@ -148,6 +148,9 @@ enum AddCommands {
         name: String,
         /// Fields in name:type format (e.g., title:string body:text published:bool)
         fields: Vec<FieldInfo>,
+        /// Skip injecting created_at/updated_at timestamp columns
+        #[arg(long)]
+        no_timestamps: bool,
     },
 }
 
@@ -271,7 +274,11 @@ fn main() {
         }
         Some(Commands::Add { command }) => {
             let result = match command {
-                AddCommands::Resource { name, fields } => commands::add::resource(name, fields),
+                AddCommands::Resource {
+                    name,
+                    fields,
+                    no_timestamps,
+                } => commands::add::resource(name, fields, !no_timestamps),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
