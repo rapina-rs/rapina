@@ -6,6 +6,9 @@ use http::StatusCode;
 use rapina::metrics::MetricsRegistry;
 use rapina::prelude::*;
 use rapina::testing::TestClient;
+use std::time::Duration;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,4 +161,64 @@ fn test_metrics_registry_encode_returns_text() {
     let out = r.encode();
     assert!(!out.is_empty());
     assert!(out.contains("# TYPE"));
+}
+
+// ── RAII guard for in-flight requests ────────────────────────
+
+#[tokio::test]
+async fn test_in_flight_metric_leak_on_client_disconnect() {
+    // Build Rapina app with a slow endpoint
+    let app = Rapina::new().with_metrics(true).router(Router::new().route(
+        http::Method::GET,
+        "/slow",
+        |_, _, _| async move {
+            // Sleep for 10 seconds, to simulate a slow DB query or long-running processing.
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            StatusCode::OK
+        },
+    ));
+
+    let client = TestClient::new(app).await;
+
+    // Verify http_requests_in_flight metric starts at 1
+    let metrics = client.get("/metrics").send().await.text();
+    assert!(
+        metrics.contains("http_requests_in_flight 1"),
+        "in-flight metric should start at 1 (value 1 because of the current /metrics request)"
+    );
+
+    // Connect to the test server using a raw TCP socket
+    let mut stream = TcpStream::connect(client.addr())
+        .await
+        .expect("Failed to connect via raw TCP");
+
+    // Send a valid HTTP GET request to the /slow endpoint
+    let request = "GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n";
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("Failed to write to TCP stream");
+
+    // Wait a bit to ensure Hyper starts processing the request
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Verify the metric incremented to 2
+    let metrics = client.get("/metrics").send().await.text();
+    assert!(
+        metrics.contains("http_requests_in_flight 2"),
+        "in-flight metric should increment to 2 while request is processing"
+    );
+
+    // THE CANCELLATION POINT, drops the TCP connection mid-flight
+    drop(stream);
+
+    // Wait a bit for the OS and Hyper to process the TCP close and our RAII guard to drop
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Verify http_requests_in_flight metric is back to 1
+    let metrics = client.get("/metrics").send().await.text();
+    assert!(
+        metrics.contains("http_requests_in_flight 1"),
+        "in-flight metric MUST return to 1 after client disconnects mid-request"
+    );
 }
