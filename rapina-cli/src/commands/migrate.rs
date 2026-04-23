@@ -190,7 +190,7 @@ pub(crate) fn find_project_root(start: &std::path::Path) -> Result<std::path::Pa
                     "Could not find project root (no Cargo.toml found in current directory or any \
                      parent). Run this command from inside your Rapina project."
                         .to_string(),
-                )
+                );
             }
         }
     }
@@ -253,8 +253,8 @@ pub fn init_migrate_bin(project_root: &std::path::Path) -> Result<(), String> {
 /// Inherits the current process environment (including DATABASE_URL loaded from .env).
 /// Streams stdout/stderr directly to the terminal.
 pub fn run_migrate_cmd(subcommand_args: &[&str]) -> Result<(), String> {
-    let cwd = std::env::current_dir()
-        .map_err(|e| format!("Failed to get current directory: {e}"))?;
+    let cwd =
+        std::env::current_dir().map_err(|e| format!("Failed to get current directory: {e}"))?;
     run_migrate_cmd_from(subcommand_args, &cwd)
 }
 
