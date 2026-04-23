@@ -332,17 +332,6 @@ mod migrator_trait_tests {
     }
 
     #[tokio::test]
-    async fn test_dispatch_down_multiple_steps() {
-        // Apply migrations then roll back N > 1 steps.
-        // With a single migration the result is the same as steps=1, but
-        // this exercises the Some(N) path at the trait-dispatch level.
-        let conn = Database::connect("sqlite::memory:").await.unwrap();
-        Migrator::up(&conn, None).await.unwrap();
-        // SeaORM clamps steps to the number of applied migrations, so this should succeed.
-        Migrator::down(&conn, Some(5)).await.unwrap();
-    }
-
-    #[tokio::test]
     async fn test_dispatch_down_two_steps() {
         // Exercises Some(N) with N > 1 against a Migrator that actually has
         // 2 applied migrations so both rollbacks execute.
