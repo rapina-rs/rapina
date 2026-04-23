@@ -53,6 +53,11 @@ enum Commands {
         #[arg(long)]
         no_reload: bool,
     },
+    /// llms.txt tools
+    Llms {
+        #[command(subcommand)]
+        command: LlmsCommands,
+    },
     /// OpenAPI specification tools
     Openapi {
         #[command(subcommand)]
@@ -207,6 +212,22 @@ enum ImportCommands {
 }
 
 #[derive(Subcommand)]
+enum LlmsCommands {
+    /// Export llms.txt to stdout or file
+    Export {
+        /// Output file path (stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Port to connect to
+        #[arg(short, long, env = "RAPINA_PORT", default_value = "3000")]
+        port: u16,
+        /// Host to connect to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum OpenapiCommands {
     /// Export OpenAPI spec to stdout or file
     Export {
@@ -332,6 +353,17 @@ fn main() {
         Some(Commands::Migrate { command }) => {
             let result = match command {
                 MigrateCommands::New { name } => commands::migrate::new_migration(&name),
+            };
+            if let Err(e) = result {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Some(Commands::Llms { command }) => {
+            let result = match command {
+                LlmsCommands::Export { output, host, port } => {
+                    commands::llms::export(output, &host, port)
+                }
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);

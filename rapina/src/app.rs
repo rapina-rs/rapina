@@ -4,7 +4,9 @@ use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 #[cfg(feature = "cron-scheduler")]
 use crate::cron_scheduler::CronScheduler;
 use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
-use crate::introspection::{RouteRegistry, list_routes};
+use crate::introspection::{
+    LlmsRegistry, RouteRegistry, list_routes, llms_txt_handler, to_llms_txt,
+};
 #[cfg(feature = "metrics")]
 use crate::metrics::{MetricsMiddleware, MetricsRegistry, metrics_handler};
 #[cfg(feature = "compression")]
@@ -67,6 +69,8 @@ pub struct Rapina {
     /// Whether metrics is enabled.
     #[cfg(feature = "metrics")]
     pub(crate) metrics: bool,
+    /// Whether llms.txt endpoint is enabled
+    pub(crate) llms_txt: bool,
     /// Whether OpenAPI is enabled
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
@@ -119,6 +123,7 @@ impl Rapina {
             health_registry: HealthRegistry::new(),
             #[cfg(feature = "metrics")]
             metrics: false,
+            llms_txt: cfg!(debug_assertions),
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
@@ -454,6 +459,28 @@ impl Rapina {
     /// suppressed even when debug assertions are active.
     pub fn disable_introspection(self) -> Self {
         self.with_introspection(false)
+    }
+
+    /// Enables or disables the `/__rapina/llms.txt` endpoint.
+    ///
+    /// When enabled, a Markdown document following the llms.txt convention is
+    /// generated once at startup from the registered routes and served at
+    /// `GET /__rapina/llms.txt` as `text/plain; charset=utf-8`.
+    ///
+    /// Defaults to `true` in debug builds, `false` in release builds.
+    pub fn with_llms_txt(mut self, enabled: bool) -> Self {
+        self.llms_txt = enabled;
+        self
+    }
+
+    /// Enables the `/__rapina/llms.txt` endpoint.
+    pub fn enable_llms_txt(self) -> Self {
+        self.with_llms_txt(true)
+    }
+
+    /// Disables the `/__rapina/llms.txt` endpoint.
+    pub fn disable_llms_txt(self) -> Self {
+        self.with_llms_txt(false)
     }
 
     /// Health check is disabled by default.
@@ -884,6 +911,15 @@ impl Rapina {
             self.router = self
                 .router
                 .get_named("/__rapina/routes", "list_routes", list_routes);
+        }
+
+        if self.llms_txt {
+            let routes = self.router.routes();
+            let content = to_llms_txt(&routes);
+            self.state = self.state.with(LlmsRegistry::new(content));
+            self.router = self
+                .router
+                .get_named("/__rapina/llms.txt", "llms_txt", llms_txt_handler);
         }
 
         if !self.health_check && !self.health_registry.checks.is_empty() {
