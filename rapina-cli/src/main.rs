@@ -349,7 +349,10 @@ fn main() {
             let result = match command {
                 MigrateCommands::New { name } => commands::migrate::new_migration(&name),
                 MigrateCommands::Init => {
-                    commands::migrate::init_migrate_bin(std::path::Path::new("."))
+                    std::env::current_dir()
+                        .map_err(|e| format!("Failed to get current directory: {e}"))
+                        .and_then(|cwd| commands::migrate::find_project_root(&cwd))
+                        .and_then(|root| commands::migrate::init_migrate_bin(&root))
                 }
                 MigrateCommands::Up => commands::migrate::run_migrate_cmd(&["up"]),
                 MigrateCommands::Down { steps } => {
