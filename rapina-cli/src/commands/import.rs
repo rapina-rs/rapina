@@ -578,7 +578,7 @@ pub fn database(
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("Failed to create async runtime: {}", e))?;
 
-    let tables = rt.block_on(async {
+    let tables: Vec<IntrospectedTable> = rt.block_on(async {
         if url.starts_with("postgres://") || url.starts_with("postgresql://") {
             #[cfg(feature = "import-postgres")]
             {

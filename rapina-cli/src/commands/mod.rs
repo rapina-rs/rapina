@@ -38,6 +38,7 @@ pub(crate) enum NormalizedType {
     Bytes,
     Time,
     #[cfg(feature = "import")]
+    #[allow(dead_code)]
     Unmappable(String),
 }
 
