@@ -3,7 +3,7 @@ use std::path::Path;
 use super::{
     generate_cargo_toml, generate_database_config, generate_db_import, generate_env_content,
     generate_gitignore, generate_gitignore_extras, generate_rapina_dep,
-    generate_with_database_line, write_file,
+    generate_with_database_line, write_file, write_migrate_bin,
 };
 
 pub fn generate(
@@ -38,6 +38,10 @@ pub fn generate(
             &generate_env_content(Some(db), None),
             ".env",
         )?;
+    }
+
+    if db_type.is_some() {
+        write_migrate_bin(src_path)?;
     }
 
     Ok(())
@@ -114,5 +118,29 @@ mod tests {
         assert!(content.contains("with_database(db_config)"));
         assert!(content.contains("let db_config"));
         assert!(content.contains("use rapina::database::DatabaseConfig"));
+    }
+
+    #[test]
+    fn test_rest_api_with_db_creates_migrate_bin() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        generate(
+            "myapp",
+            dir.path(),
+            &src,
+            Some(&crate::commands::templates::DatabaseType::Sqlite),
+        )
+        .unwrap();
+        assert!(src.join("bin").join("rapina_migrate.rs").exists());
+    }
+
+    #[test]
+    fn test_rest_api_without_db_no_migrate_bin() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        generate("myapp", dir.path(), &src, None).unwrap();
+        assert!(!src.join("bin").join("rapina_migrate.rs").exists());
     }
 }
