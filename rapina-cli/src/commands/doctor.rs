@@ -1,5 +1,6 @@
 //! Health checks for your Rapina API.
 
+use crate::commands::agents::{DriftStatus, check_drift, fix_agents, simple_diff};
 use crate::common::urls;
 use colored::Colorize;
 use serde_json::Value;
@@ -14,11 +15,18 @@ struct DiagnosticResult {
 pub struct DoctorConfig {
     pub host: String,
     pub port: u16,
+    pub fix_agents: bool,
+    pub force: bool,
 }
 
 /// Run health checks on the API.
 pub fn execute(config: DoctorConfig) -> Result<(), String> {
     println!();
+
+    // ── Local checks (no server required) ────────────────────────────────────
+    check_agents_drift(&config)?;
+
+    // ── Server checks ─────────────────────────────────────────────────────────
     println!(
         "  {} Running API health checks on http://{}:{}...",
         "→".cyan(),
@@ -48,6 +56,97 @@ pub fn execute(config: DoctorConfig) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn check_agents_drift(config: &DoctorConfig) -> Result<(), String> {
+    match check_drift(std::path::Path::new(".")) {
+        DriftStatus::UpToDate => {
+            println!("  {} AGENTS.md is up to date", "✓".green());
+        }
+        DriftStatus::Missing => {
+            if config.fix_agents {
+                fix_agents(std::path::Path::new("."), config.force)?;
+                println!("  {} Created AGENTS.md", "✓".green());
+            } else {
+                println!(
+                    "  {} AGENTS.md not found — run {} to generate it",
+                    "⚠".yellow(),
+                    "rapina doctor --fix-agents".cyan()
+                );
+            }
+        }
+        DriftStatus::NoBlock => {
+            if config.fix_agents {
+                fix_agents(std::path::Path::new("."), config.force)?;
+                println!(
+                    "  {} Injected rapina-agent-rules block into AGENTS.md",
+                    "✓".green()
+                );
+            } else {
+                println!(
+                    "  {} AGENTS.md has no rapina-agent-rules block — run {} to add one",
+                    "⚠".yellow(),
+                    "rapina doctor --fix-agents".cyan()
+                );
+            }
+        }
+        DriftStatus::Stale => {
+            if config.fix_agents {
+                fix_agents(std::path::Path::new("."), config.force)?;
+                println!("  {} AGENTS.md refreshed", "✓".green());
+            } else {
+                println!(
+                    "  {} AGENTS.md is stale (fragments changed) — run {} to refresh",
+                    "⚠".yellow(),
+                    "rapina doctor --fix-agents".cyan()
+                );
+            }
+        }
+        DriftStatus::UserEdited {
+            on_disk_body,
+            current_body,
+        } => {
+            if config.fix_agents && config.force {
+                fix_agents(std::path::Path::new("."), true)?;
+                println!("  {} AGENTS.md overwritten (--force)", "✓".green());
+            } else {
+                println!(
+                    "  {} AGENTS.md has been edited inside the {}...{} markers",
+                    "✗".red(),
+                    "<!-- BEGIN:rapina-agent-rules".cyan(),
+                    "-->".cyan()
+                );
+                println!();
+                println!("  Move your custom rules outside the markers, then run:");
+                println!("    {}", "rapina doctor --fix-agents".cyan());
+                println!();
+                println!(
+                    "  To overwrite your edits: {}",
+                    "rapina doctor --fix-agents --force".cyan()
+                );
+                println!();
+                println!("  Diff (on-disk vs current bundled fragments):");
+                for line in simple_diff(&on_disk_body, &current_body).lines() {
+                    if line.starts_with('-') {
+                        println!("    {}", line.red());
+                    } else if line.starts_with('+') {
+                        println!("    {}", line.green());
+                    } else {
+                        println!("    {}", line);
+                    }
+                }
+                println!();
+                return Err("AGENTS.md has user edits inside the markers".to_string());
+            }
+        }
+        DriftStatus::NotInProject => {
+            println!(
+                "  {} Not in a Rapina project — skipping AGENTS.md check",
+                "⚠".yellow()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Check that routes have response schemas.
