@@ -161,6 +161,22 @@ enum MigrateCommands {
         /// Name of the migration (e.g., create_users)
         name: String,
     },
+    /// Set up the migrate binary for this project (creates src/bin/rapina_migrate.rs)
+    Init,
+    /// Apply all pending migrations
+    Up,
+    /// Roll back migrations (default: 1 step)
+    Down {
+        /// Number of migrations to roll back
+        #[arg(long, default_value = "1")]
+        steps: u32,
+    },
+    /// Show applied and pending migrations
+    Status,
+    /// Drop all tables and re-run all migrations (destructive)
+    Fresh,
+    /// Roll back all migrations then re-apply them
+    Reset,
 }
 
 #[derive(Subcommand)]
@@ -332,6 +348,18 @@ fn main() {
         Some(Commands::Migrate { command }) => {
             let result = match command {
                 MigrateCommands::New { name } => commands::migrate::new_migration(&name),
+                MigrateCommands::Init => std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {e}"))
+                    .and_then(|cwd| commands::migrate::find_project_root(&cwd))
+                    .and_then(|root| commands::migrate::init_migrate_bin(&root)),
+                MigrateCommands::Up => commands::migrate::run_migrate_cmd(&["up"]),
+                MigrateCommands::Down { steps } => {
+                    let steps_str = steps.to_string();
+                    commands::migrate::run_migrate_cmd(&["down", "--steps", &steps_str])
+                }
+                MigrateCommands::Status => commands::migrate::run_migrate_cmd(&["status"]),
+                MigrateCommands::Fresh => commands::migrate::run_migrate_cmd(&["fresh"]),
+                MigrateCommands::Reset => commands::migrate::run_migrate_cmd(&["reset"]),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);
