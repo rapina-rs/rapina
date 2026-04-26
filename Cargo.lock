@@ -2648,12 +2648,14 @@ dependencies = [
 name = "rapina"
 version = "0.11.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "bytes",
  "criterion",
  "dashmap",
  "dotenvy",
  "flate2",
+ "futures-core",
  "futures-util",
  "http",
  "http-body-util",
