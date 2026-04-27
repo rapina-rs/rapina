@@ -7,7 +7,7 @@ mod common;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-use crate::commands::templates::DatabaseType;
+use crate::commands::{FieldInfo, templates::DatabaseType};
 
 #[derive(Parser)]
 #[command(name = "rapina")]
@@ -147,7 +147,7 @@ enum AddCommands {
         /// Name of the resource in snake_case (e.g., post, blog_post)
         name: String,
         /// Fields in name:type format (e.g., title:string body:text published:bool)
-        fields: Vec<String>,
+        fields: Vec<FieldInfo>,
         /// Skip injecting created_at/updated_at timestamp columns
         #[arg(long)]
         no_timestamps: bool,
@@ -294,7 +294,7 @@ fn main() {
                     name,
                     fields,
                     no_timestamps,
-                } => commands::add::resource(&name, &fields, !no_timestamps),
+                } => commands::add::resource(name, fields, !no_timestamps),
             };
             if let Err(e) = result {
                 eprintln!("{} {}", "Error:".red().bold(), e);

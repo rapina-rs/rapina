@@ -18,6 +18,275 @@ pub mod test;
 
 #[cfg(feature = "import-openapi")]
 pub mod import_openapi;
+pub(crate) use colored::Colorize;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum NormalizedType {
+    String,
+    Text,
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+    Uuid,
+    DateTimeUtc,
+    DateTime,
+    Date,
+    Decimal,
+    Json,
+    Bytes,
+    Time,
+    #[cfg(feature = "import")]
+    #[allow(dead_code)]
+    Unmappable(String),
+}
+
+impl std::str::FromStr for NormalizedType {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "string" | "str" => Ok(NormalizedType::String),
+            "text" => Ok(NormalizedType::Text),
+            "i32" | "integer" | "int" => Ok(NormalizedType::I32),
+            "i64" | "bigint" => Ok(NormalizedType::I64),
+            "f32" | "float" => Ok(NormalizedType::F32),
+            "f64" | "double" => Ok(NormalizedType::F64),
+            "bool" | "boolean" => Ok(NormalizedType::Bool),
+            "uuid" => Ok(NormalizedType::Uuid),
+            "datetimeutc" | "datetime" | "timestamptz" => Ok(NormalizedType::DateTimeUtc),
+            "naivedatetime" | "timestamp" => Ok(NormalizedType::DateTime),
+            "date" => Ok(NormalizedType::Date),
+            "decimal" | "numeric" | "money" => Ok(NormalizedType::Decimal),
+            "json" | "jsonb" => Ok(NormalizedType::Json),
+            "bytes" | "blob" | "binary" | "bytea" | "varbinary" => Ok(NormalizedType::Bytes),
+            "time" => Ok(NormalizedType::Time),
+            _ => Err(format!("Unknown field type '{}'", value)),
+        }
+    }
+}
+
+impl std::fmt::Display for NormalizedType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            NormalizedType::String | NormalizedType::Text => "String",
+            NormalizedType::I32 => "i32",
+            NormalizedType::I64 => "i64",
+            NormalizedType::F32 => "f32",
+            NormalizedType::F64 => "f64",
+            NormalizedType::Bool => "bool",
+            NormalizedType::Uuid => "Uuid",
+            NormalizedType::DateTimeUtc => "DateTimeUtc",
+            NormalizedType::DateTime => "DateTime",
+            NormalizedType::Date => "Date",
+            NormalizedType::Decimal => "Decimal",
+            NormalizedType::Json => "Json",
+            NormalizedType::Bytes => "Vec<u8>",
+            NormalizedType::Time => "Time",
+            #[cfg(feature = "import")]
+            NormalizedType::Unmappable(s) => s,
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl NormalizedType {
+    pub(crate) fn sea_orm_import_name(&self) -> Option<&'static str> {
+        match self {
+            NormalizedType::DateTimeUtc => Some("DateTimeUtc"),
+            NormalizedType::DateTime => Some("DateTime"),
+            NormalizedType::Date => Some("Date"),
+            NormalizedType::Json => Some("Json"),
+            NormalizedType::Time => Some("Time"),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FieldInfo {
+    pub name: String,
+    pub ident: String,
+    pub normalized_type: NormalizedType,
+    _column_method: String,
+    pub nullable: bool,
+    pub is_primary_key: bool,
+}
+
+impl std::str::FromStr for FieldInfo {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (name, type_str) = value
+            .split_once(':')
+            .ok_or_else(|| format!("Invalid field format: '{}'. Expected 'name:type'", value))?;
+
+        ValidationContext::Field.validate(name)?;
+
+        let ident = codegen::to_pascal_case(name);
+        let is_primary_key = name == "id";
+        let normalized_type = type_str.parse::<NormalizedType>()?;
+        let nullable = false;
+
+        Ok(FieldInfo {
+            name: name.to_string(),
+            ident,
+            normalized_type,
+            _column_method: String::new(),
+            nullable,
+            is_primary_key,
+        })
+    }
+}
+
+impl FieldInfo {
+    #[cfg(feature = "import")]
+    pub fn new(
+        name: String,
+        normalized_type: NormalizedType,
+        nullable: bool,
+        is_primary_key: bool,
+    ) -> Self {
+        let ident = codegen::to_pascal_case(&name);
+        Self {
+            name,
+            ident,
+            normalized_type,
+            _column_method: String::new(),
+            nullable,
+            is_primary_key,
+        }
+    }
+
+    fn generate_column(&self, table_pascal_plural: &str) -> String {
+        let base = match self.normalized_type {
+            NormalizedType::String => ".string()",
+            NormalizedType::Text => ".text()",
+            NormalizedType::I32 => ".integer()",
+            NormalizedType::I64 => ".big_integer()",
+            NormalizedType::F32 => ".float()",
+            NormalizedType::F64 => ".double()",
+            NormalizedType::Bool => ".boolean().default(Expr::value(false))",
+            NormalizedType::Uuid => ".uuid()",
+            NormalizedType::DateTimeUtc => ".timestamp_with_time_zone()",
+            NormalizedType::DateTime => ".date_time()",
+            NormalizedType::Date => ".date()",
+            NormalizedType::Decimal => ".decimal()",
+            NormalizedType::Json => ".json()",
+            NormalizedType::Bytes => ".binary()",
+            NormalizedType::Time => ".time()",
+            #[cfg(feature = "import")]
+            NormalizedType::Unmappable(_) => "",
+        };
+
+        let mut method = base.to_string();
+
+        if self.nullable || base.is_empty() {
+            method.push_str(".null()");
+        } else {
+            method.push_str(".not_null()");
+        }
+
+        if self.is_primary_key {
+            method.push_str(".primary_key()");
+            if matches!(
+                self.normalized_type,
+                NormalizedType::I32 | NormalizedType::I64
+            ) {
+                method.push_str(".auto_increment()");
+            }
+        }
+
+        format!(
+            ".col(ColumnDef::new({}::{}){})",
+            table_pascal_plural, self.ident, method
+        )
+    }
+
+    pub(crate) fn schema_type_name(&self) -> String {
+        let s = match &self.normalized_type {
+            NormalizedType::String => "String".to_string(),
+            NormalizedType::Text => "Text".to_string(),
+            NormalizedType::I32 => "i32".to_string(),
+            NormalizedType::I64 => "i64".to_string(),
+            NormalizedType::F32 => "f32".to_string(),
+            NormalizedType::F64 => "f64".to_string(),
+            NormalizedType::Bool => "bool".to_string(),
+            NormalizedType::Uuid => "Uuid".to_string(),
+            NormalizedType::DateTimeUtc => "DateTime".to_string(),
+            NormalizedType::DateTime => "NaiveDateTime".to_string(),
+            NormalizedType::Date => "Date".to_string(),
+            NormalizedType::Decimal => "Decimal".to_string(),
+            NormalizedType::Json => "Json".to_string(),
+            NormalizedType::Bytes => "Vec<u8>".to_string(),
+            NormalizedType::Time => "Time".to_string(),
+            #[cfg(feature = "import")]
+            NormalizedType::Unmappable(s) => s.clone(),
+        };
+
+        if self.nullable {
+            format!("Option<{s}>")
+        } else {
+            s
+        }
+    }
+}
+
+pub(crate) enum ValidationContext {
+    Field,
+    Resource,
+}
+
+impl ValidationContext {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Field => "Field name",
+            Self::Resource => "Resource name",
+        }
+    }
+
+    pub(crate) fn validate(&self, name: &str) -> Result<(), String> {
+        let ctx_prefix = self.as_str();
+
+        if name.is_empty() {
+            return Err(format!("{} cannot be empty", ctx_prefix));
+        }
+
+        if name.chars().next().unwrap().is_ascii_digit() {
+            return Err(format!("{} cannot start with a digit", ctx_prefix));
+        }
+
+        if let Some(c) = name
+            .chars()
+            .find(|&c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
+        {
+            return Err(format!(
+                "{} must be lowercase alphanumeric with underscores, got '{}'",
+                ctx_prefix, c
+            ));
+        }
+
+        if name.starts_with('_') || name.ends_with('_') {
+            return Err(format!(
+                "{} cannot start or end with underscore",
+                ctx_prefix
+            ));
+        }
+
+        let reserved = [
+            "self", "super", "crate", "mod", "type", "fn", "struct", "enum", "impl",
+        ];
+        if reserved.contains(&name) {
+            return Err(format!(
+                "'{}' is a reserved Rust keyword and cannot be used as a {}",
+                name,
+                ctx_prefix.to_lowercase()
+            ));
+        }
+
+        Ok(())
+    }
+}
 
 /// Verify that we're in a valid Rapina project directory.
 pub fn verify_rapina_project() -> Result<toml::Value, String> {
@@ -45,4 +314,306 @@ pub fn verify_rapina_project() -> Result<toml::Value, String> {
     }
 
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::ValidationContext;
+
+    use super::{FieldInfo, NormalizedType};
+
+    #[test]
+    fn test_parse_field_valid() {
+        let field: FieldInfo = "name:string".parse().unwrap();
+        assert_eq!(field.name, "name");
+        assert_eq!(field.normalized_type, NormalizedType::String);
+        assert_eq!(
+            field.generate_column("Post"),
+            ".col(ColumnDef::new(Post::Name).string().not_null())".to_string()
+        );
+        assert!(!field.nullable);
+    }
+
+    #[test]
+    fn test_parse_field_invalid() {
+        let field: Result<FieldInfo, String> = "name".parse();
+        assert!(field.is_err());
+    }
+
+    #[test]
+    fn test_parse_field_invalid_type() {
+        let field: Result<FieldInfo, String> = "name:invalid".parse();
+        assert!(field.is_err());
+    }
+
+    #[test]
+    fn test_parse_field_invalid_name() {
+        let field: Result<FieldInfo, String> = "_name:string".parse();
+        assert!(field.is_err());
+    }
+
+    #[test]
+    fn test_parse_field_invalid_name_empty() {
+        let field: Result<FieldInfo, String> = ":string".parse();
+        assert!(field.is_err());
+    }
+
+    #[test]
+    fn test_parse_field_valid_nullable() {
+        let field: FieldInfo = "name:string".parse().unwrap();
+        assert_eq!(field.name, "name");
+        assert_eq!(field.ident, "Name");
+        assert_eq!(field.normalized_type, NormalizedType::String);
+        assert_eq!(
+            field.generate_column("Post"),
+            ".col(ColumnDef::new(Post::Name).string().not_null())".to_string()
+        );
+        assert!(!field.nullable);
+    }
+
+    #[test]
+    fn test_validate_resource_name_valid() {
+        assert!(ValidationContext::Resource.validate("user").is_ok());
+        assert!(ValidationContext::Resource.validate("blog_post").is_ok());
+        assert!(ValidationContext::Resource.validate("item123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_resource_name_invalid() {
+        assert!(ValidationContext::Resource.validate("").is_err());
+        assert!(ValidationContext::Resource.validate("User").is_err());
+        assert!(ValidationContext::Resource.validate("_user").is_err());
+        assert!(ValidationContext::Resource.validate("user_").is_err());
+        assert!(ValidationContext::Resource.validate("self").is_err());
+        assert!(ValidationContext::Resource.validate("user-name").is_err());
+    }
+
+    #[test]
+    fn test_validate_field_name_valid() {
+        assert!(ValidationContext::Field.validate("user").is_ok());
+        assert!(ValidationContext::Field.validate("blog_post").is_ok());
+        assert!(ValidationContext::Field.validate("item123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_field_name_invalid() {
+        assert!(ValidationContext::Field.validate("").is_err());
+        assert!(ValidationContext::Field.validate("User").is_err());
+        assert!(ValidationContext::Field.validate("_user").is_err());
+        assert!(ValidationContext::Field.validate("user_").is_err());
+        assert!(ValidationContext::Field.validate("self").is_err());
+        assert!(ValidationContext::Field.validate("user-name").is_err());
+    }
+
+    #[test]
+    fn test_normalized_type_from_str() {
+        use std::str::FromStr;
+
+        // Primitives and common aliases
+        assert_eq!(
+            NormalizedType::from_str("string").unwrap(),
+            NormalizedType::String
+        );
+        assert_eq!(
+            NormalizedType::from_str("str").unwrap(),
+            NormalizedType::String
+        );
+        assert_eq!(
+            NormalizedType::from_str("text").unwrap(),
+            NormalizedType::Text
+        );
+        assert_eq!(
+            NormalizedType::from_str("i32").unwrap(),
+            NormalizedType::I32
+        );
+        assert_eq!(
+            NormalizedType::from_str("integer").unwrap(),
+            NormalizedType::I32
+        );
+        assert_eq!(
+            NormalizedType::from_str("int").unwrap(),
+            NormalizedType::I32
+        );
+        assert_eq!(
+            NormalizedType::from_str("i64").unwrap(),
+            NormalizedType::I64
+        );
+        assert_eq!(
+            NormalizedType::from_str("bigint").unwrap(),
+            NormalizedType::I64
+        );
+        assert_eq!(
+            NormalizedType::from_str("f32").unwrap(),
+            NormalizedType::F32
+        );
+        assert_eq!(
+            NormalizedType::from_str("float").unwrap(),
+            NormalizedType::F32
+        );
+        assert_eq!(
+            NormalizedType::from_str("f64").unwrap(),
+            NormalizedType::F64
+        );
+        assert_eq!(
+            NormalizedType::from_str("double").unwrap(),
+            NormalizedType::F64
+        );
+        assert_eq!(
+            NormalizedType::from_str("bool").unwrap(),
+            NormalizedType::Bool
+        );
+        assert_eq!(
+            NormalizedType::from_str("boolean").unwrap(),
+            NormalizedType::Bool
+        );
+        assert_eq!(
+            NormalizedType::from_str("uuid").unwrap(),
+            NormalizedType::Uuid
+        );
+
+        // Date/Time
+        assert_eq!(
+            NormalizedType::from_str("datetimeutc").unwrap(),
+            NormalizedType::DateTimeUtc
+        );
+        assert_eq!(
+            NormalizedType::from_str("timestamptz").unwrap(),
+            NormalizedType::DateTimeUtc
+        );
+        assert_eq!(
+            NormalizedType::from_str("naivedatetime").unwrap(),
+            NormalizedType::DateTime
+        );
+        assert_eq!(
+            NormalizedType::from_str("timestamp").unwrap(),
+            NormalizedType::DateTime
+        );
+        assert_eq!(
+            NormalizedType::from_str("date").unwrap(),
+            NormalizedType::Date
+        );
+        assert_eq!(
+            NormalizedType::from_str("time").unwrap(),
+            NormalizedType::Time
+        );
+
+        // Special types
+        assert_eq!(
+            NormalizedType::from_str("decimal").unwrap(),
+            NormalizedType::Decimal
+        );
+        assert_eq!(
+            NormalizedType::from_str("numeric").unwrap(),
+            NormalizedType::Decimal
+        );
+        assert_eq!(
+            NormalizedType::from_str("money").unwrap(),
+            NormalizedType::Decimal
+        );
+        assert_eq!(
+            NormalizedType::from_str("json").unwrap(),
+            NormalizedType::Json
+        );
+        assert_eq!(
+            NormalizedType::from_str("jsonb").unwrap(),
+            NormalizedType::Json
+        );
+        assert_eq!(
+            NormalizedType::from_str("bytes").unwrap(),
+            NormalizedType::Bytes
+        );
+        assert_eq!(
+            NormalizedType::from_str("blob").unwrap(),
+            NormalizedType::Bytes
+        );
+        assert_eq!(
+            NormalizedType::from_str("binary").unwrap(),
+            NormalizedType::Bytes
+        );
+        assert_eq!(
+            NormalizedType::from_str("bytea").unwrap(),
+            NormalizedType::Bytes
+        );
+    }
+
+    #[test]
+    fn test_normalized_type_schema_name() {
+        let filds = vec![
+            ("name:string".parse::<FieldInfo>().unwrap(), "String"),
+            ("age:i32".parse::<FieldInfo>().unwrap(), "i32"),
+            ("is_active:bool".parse::<FieldInfo>().unwrap(), "bool"),
+            ("date:date".parse::<FieldInfo>().unwrap(), "Date"),
+            ("time:time".parse::<FieldInfo>().unwrap(), "Time"),
+            (
+                "datetime:datetime".parse::<FieldInfo>().unwrap(),
+                "DateTime",
+            ),
+            (
+                "datetimeutc:datetimeutc".parse::<FieldInfo>().unwrap(),
+                "DateTime",
+            ),
+            ("decimal:decimal".parse::<FieldInfo>().unwrap(), "Decimal"),
+            ("json:json".parse::<FieldInfo>().unwrap(), "Json"),
+            ("bytes:bytes".parse::<FieldInfo>().unwrap(), "Vec<u8>"),
+        ];
+
+        for field in filds {
+            assert_eq!(field.0.schema_type_name(), field.1);
+        }
+    }
+
+    #[test]
+    fn test_column_method_new() {
+        // String field
+        let field = "title:string".parse::<FieldInfo>().unwrap();
+        assert_eq!(
+            field.generate_column("Post"),
+            ".col(ColumnDef::new(Post::Title).string().not_null())"
+        );
+
+        // Primary key i32
+        let field = "id:i32".parse::<FieldInfo>().unwrap();
+        assert_eq!(
+            field.generate_column("Posts"),
+            ".col(ColumnDef::new(Posts::Id).integer().not_null().primary_key().auto_increment())"
+        );
+
+        // Primary key i64
+        let field = "id:i64".parse::<FieldInfo>().unwrap();
+        assert_eq!(
+            field.generate_column("Users"),
+            ".col(ColumnDef::new(Users::Id).big_integer().not_null().primary_key().auto_increment())"
+        );
+
+        // Uuid field
+        let field = "token:uuid".parse::<FieldInfo>().unwrap();
+        assert_eq!(
+            field.generate_column("Auth"),
+            ".col(ColumnDef::new(Auth::Token).uuid().not_null())"
+        );
+
+        // Nullable field (manually set as from_str defaults to false)
+        let mut field = "bio:text".parse::<FieldInfo>().unwrap();
+        field.nullable = true;
+        assert_eq!(
+            field.generate_column("Profile"),
+            ".col(ColumnDef::new(Profile::Bio).text().null())"
+        );
+    }
+
+    #[test]
+    fn test_sea_orm_import_name() {
+        assert_eq!(
+            NormalizedType::DateTimeUtc.sea_orm_import_name(),
+            Some("DateTimeUtc")
+        );
+        assert_eq!(
+            NormalizedType::DateTime.sea_orm_import_name(),
+            Some("DateTime")
+        );
+        assert_eq!(NormalizedType::Date.sea_orm_import_name(), Some("Date"));
+        assert_eq!(NormalizedType::Json.sea_orm_import_name(), Some("Json"));
+        assert_eq!(NormalizedType::Time.sea_orm_import_name(), Some("Time"));
+        assert_eq!(NormalizedType::String.sea_orm_import_name(), None);
+    }
 }

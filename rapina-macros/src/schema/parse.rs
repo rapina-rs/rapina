@@ -320,6 +320,14 @@ fn parse_field_type(input: ParseStream) -> Result<RawFieldType> {
             let inner: Ident = input.parse()?;
             input.parse::<Token![>]>()?;
 
+            // Special case for Vec<u8> which is a scalar type (Bytes/Blob)
+            if inner == "u8" {
+                return Ok(RawFieldType::Scalar {
+                    scalar: ScalarType::Bytes,
+                    optional: false,
+                });
+            }
+
             return Ok(RawFieldType::Vec { inner });
         }
 
@@ -349,6 +357,20 @@ enum InnerType {
 fn parse_inner_type(input: ParseStream) -> Result<InnerType> {
     let ident: Ident = input.parse()?;
     let ident_str = ident.to_string();
+
+    if ident_str == "Vec" {
+        // Handle Option<Vec<u8>>
+        input.parse::<Token![<]>()?;
+        let inner: Ident = input.parse()?;
+        input.parse::<Token![>]>()?;
+
+        if inner == "u8" {
+            return Ok(InnerType::Scalar(ScalarType::Bytes));
+        }
+
+        // We don't support Option<Vec<Entity>> yet, but if we did it would be handled here
+        return Ok(InnerType::Ident(ident));
+    }
 
     if let Some(scalar) = ScalarType::from_ident(&ident_str) {
         Ok(InnerType::Scalar(scalar))
@@ -760,6 +782,58 @@ mod tests {
         let result = parse_schema(input);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("reserved"));
+    }
+
+    #[test]
+    fn test_parse_bytes_field() {
+        let input = quote! {
+            User {
+                avatar: Vec<u8>,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let field = &schema.entities[0].fields[0];
+        if let RawFieldType::Scalar { scalar, .. } = &field.ty {
+            assert_eq!(*scalar, ScalarType::Bytes);
+        } else {
+            panic!("Expected scalar type");
+        }
+    }
+
+    #[test]
+    fn test_parse_option_bytes_field() {
+        let input = quote! {
+            User {
+                avatar: Option<Vec<u8>>,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let field = &schema.entities[0].fields[0];
+        if let RawFieldType::Scalar { scalar, optional } = &field.ty {
+            assert_eq!(*scalar, ScalarType::Bytes);
+            assert!(optional);
+        } else {
+            panic!("Expected scalar type");
+        }
+    }
+
+    #[test]
+    fn test_parse_time_field() {
+        let input = quote! {
+            Event {
+                start_time: Time,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        let field = &schema.entities[0].fields[0];
+        if let RawFieldType::Scalar { scalar, .. } = &field.ty {
+            assert_eq!(*scalar, ScalarType::Time);
+        } else {
+            panic!("Expected scalar type");
+        }
     }
 
     #[test]

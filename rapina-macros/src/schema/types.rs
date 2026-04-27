@@ -17,8 +17,10 @@ pub enum ScalarType {
     DateTime,
     NaiveDateTime,
     Date,
+    Time,
     Decimal,
     Json,
+    Bytes,
 }
 
 impl ScalarType {
@@ -27,17 +29,19 @@ impl ScalarType {
         match ident {
             "String" => Some(ScalarType::String),
             "Text" => Some(ScalarType::Text),
-            "i32" => Some(ScalarType::I32),
-            "i64" => Some(ScalarType::I64),
-            "f32" => Some(ScalarType::F32),
-            "f64" => Some(ScalarType::F64),
-            "bool" => Some(ScalarType::Bool),
-            "Uuid" => Some(ScalarType::Uuid),
-            "DateTime" => Some(ScalarType::DateTime),
-            "NaiveDateTime" => Some(ScalarType::NaiveDateTime),
-            "Date" => Some(ScalarType::Date),
-            "Decimal" => Some(ScalarType::Decimal),
-            "Json" => Some(ScalarType::Json),
+            "i32" | "i16" | "i8" | "u16" | "u8" | "integer" | "int" => Some(ScalarType::I32),
+            "i64" | "u64" | "u32" | "bigint" => Some(ScalarType::I64),
+            "f32" | "float" => Some(ScalarType::F32),
+            "f64" | "double" => Some(ScalarType::F64),
+            "bool" | "boolean" => Some(ScalarType::Bool),
+            "Uuid" | "uuid" => Some(ScalarType::Uuid),
+            "DateTime" | "DateTimeUtc" | "timestamptz" => Some(ScalarType::DateTime),
+            "NaiveDateTime" | "timestamp" => Some(ScalarType::NaiveDateTime),
+            "Date" | "date" => Some(ScalarType::Date),
+            "Time" | "time" => Some(ScalarType::Time),
+            "Decimal" | "numeric" | "money" => Some(ScalarType::Decimal),
+            "Json" | "json" | "jsonb" => Some(ScalarType::Json),
+            "Bytes" | "Blob" | "binary" | "bytea" | "varbinary" => Some(ScalarType::Bytes),
             _ => None,
         }
     }
@@ -55,8 +59,10 @@ impl ScalarType {
             ScalarType::DateTime => quote! { DateTimeUtc },
             ScalarType::NaiveDateTime => quote! { DateTime },
             ScalarType::Date => quote! { Date },
+            ScalarType::Time => quote! { Time },
             ScalarType::Decimal => quote! { rapina::rust_decimal::Decimal },
             ScalarType::Json => quote! { Json },
+            ScalarType::Bytes => quote! { Vec<u8> },
         }
     }
 
