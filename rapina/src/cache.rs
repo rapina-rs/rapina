@@ -385,7 +385,6 @@ fn is_id_segment(segment: &str) -> bool {
     false
 }
 
-
 fn is_mutation(method: &http::Method) -> bool {
     matches!(
         *method,
@@ -599,7 +598,11 @@ mod tests {
             .set("GET:/users", response.clone(), Duration::from_secs(60))
             .await;
         cache
-            .set("GET:/users/123/posts", response.clone(), Duration::from_secs(60))
+            .set(
+                "GET:/users/123/posts",
+                response.clone(),
+                Duration::from_secs(60),
+            )
             .await;
 
         // Simulate POST /users/123/posts — should invalidate both
