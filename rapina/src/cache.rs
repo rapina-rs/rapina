@@ -304,8 +304,9 @@ impl Middleware for CacheMiddleware {
 
             // Auto-invalidate on successful mutations
             if is_mutation(&method) && response.status().is_success() {
-                let prefix = build_invalidation_prefix(&path);
-                self.backend.invalidate_prefix(&prefix).await;
+                for prefix in build_invalidation_prefixes(&path) {
+                    self.backend.invalidate_prefix(&prefix).await;
+                }
             }
 
             response
@@ -324,15 +325,64 @@ fn build_cache_key(path: &str, query: &str) -> String {
     }
 }
 
-fn build_invalidation_prefix(path: &str) -> String {
-    // /users/123 -> invalidate GET:/users
-    // /users -> invalidate GET:/users
-    let base = path
-        .rfind('/')
-        .filter(|&i| i > 0)
-        .map(|i| &path[..i])
-        .unwrap_or(path);
-    format!("GET:{}", base)
+fn build_invalidation_prefixes(path: &str) -> Vec<String> {
+    // Collect all ancestor collection prefixes for the mutated path.
+    //
+    // For /users/123/posts we want to invalidate:
+    //   GET:/users/123/posts  (the collection itself)
+    //   GET:/users            (the parent collection)
+    //
+    // We skip ID-like segments (numeric or UUID-shaped) because caches are
+    // keyed on collection paths, not individual resource paths.
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let mut prefixes = Vec::new();
+
+    // Walk segments; emit a prefix whenever we land on a collection name
+    // (i.e. the previous segment, if any, was an ID).
+    let mut current = String::new();
+    let mut prev_was_id = false;
+
+    for (i, segment) in segments.iter().enumerate() {
+        current.push('/');
+        current.push_str(segment);
+
+        let is_id = is_id_segment(segment);
+
+        if i == 0 {
+            // First segment is always a collection root
+            prefixes.push(format!("GET:{}", current));
+        } else if !is_id && prev_was_id {
+            // Nested collection after an ID: /users/123/posts
+            prefixes.push(format!("GET:{}", current));
+        }
+
+        prev_was_id = is_id;
+    }
+
+    // Always include the path itself as a prefix (handles the direct collection case)
+    let full = format!("GET:{}", path);
+    if !prefixes.contains(&full) {
+        prefixes.push(full);
+    }
+
+    prefixes
+}
+
+/// Heuristic: segment looks like an identifier (numeric or UUID-shaped).
+fn is_id_segment(segment: &str) -> bool {
+    if segment.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    // UUID: 8-4-4-4-12 hex chars separated by hyphens
+    let parts: Vec<&str> = segment.split('-').collect();
+    if parts.len() == 5 {
+        let lens = [8, 4, 4, 4, 12];
+        return parts
+            .iter()
+            .zip(lens.iter())
+            .all(|(p, &l)| p.len() == l && p.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+    false
 }
 
 fn is_mutation(method: &http::Method) -> bool {
@@ -517,10 +567,52 @@ mod tests {
     }
 
     #[test]
-    fn test_build_invalidation_prefix() {
-        assert_eq!(build_invalidation_prefix("/users/123"), "GET:/users");
-        assert_eq!(build_invalidation_prefix("/users"), "GET:/users");
-        assert_eq!(build_invalidation_prefix("/"), "GET:/");
+    fn test_build_invalidation_prefixes_simple() {
+        // /users/123 → invalidates GET:/users (collection) and GET:/users/123 (resource itself)
+        let p = build_invalidation_prefixes("/users/123");
+        assert!(p.contains(&"GET:/users".to_string()));
+
+        // /users → invalidates GET:/users
+        let p = build_invalidation_prefixes("/users");
+        assert!(p.contains(&"GET:/users".to_string()));
+    }
+
+    #[test]
+    fn test_build_invalidation_prefixes_nested() {
+        let prefixes = build_invalidation_prefixes("/users/123/posts");
+        assert!(prefixes.contains(&"GET:/users/123/posts".to_string()));
+        assert!(prefixes.contains(&"GET:/users".to_string()));
+        assert!(!prefixes.contains(&"GET:/users/123".to_string())); // ID segments excluded
+    }
+
+    #[tokio::test]
+    async fn test_nested_mutation_invalidates_parent_collection() {
+        let cache = InMemoryCache::new(100);
+        let response = CachedResponse {
+            status: 200,
+            headers: vec![],
+            body: Bytes::from("data"),
+        };
+
+        cache
+            .set("GET:/users", response.clone(), Duration::from_secs(60))
+            .await;
+        cache
+            .set(
+                "GET:/users/123/posts",
+                response.clone(),
+                Duration::from_secs(60),
+            )
+            .await;
+
+        // Simulate POST /users/123/posts — should invalidate both
+        let prefixes = build_invalidation_prefixes("/users/123/posts");
+        for prefix in &prefixes {
+            cache.invalidate_prefix(prefix).await;
+        }
+
+        assert!(cache.get("GET:/users/123/posts").await.is_none());
+        assert!(cache.get("GET:/users").await.is_none());
     }
 
     #[test]
