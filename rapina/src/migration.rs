@@ -62,6 +62,61 @@ pub use sea_orm_migration::MigratorTrait;
 pub use sea_orm_migration::SchemaManager;
 pub use sea_orm_migration::prelude::{DeriveIden, DeriveMigrationName};
 
+/// Subcommands understood by [`run_cli`].
+#[derive(Debug, PartialEq)]
+pub enum MigrateCommand {
+    Up,
+    Down { steps: u32 },
+    Status,
+    Fresh,
+    Reset,
+}
+
+/// Parse CLI args (everything after the binary name) into a [`MigrateCommand`].
+///
+/// Expected forms:
+/// - `up`
+/// - `down [--steps N]`
+/// - `status`
+/// - `fresh`
+/// - `reset`
+pub fn parse_args(args: &[String]) -> Result<MigrateCommand, String> {
+    match args.first().map(|s| s.as_str()) {
+        Some("up") => Ok(MigrateCommand::Up),
+        Some("down") => {
+            let steps = parse_steps(&args[1..])?;
+            Ok(MigrateCommand::Down { steps })
+        }
+        Some("status") => Ok(MigrateCommand::Status),
+        Some("fresh") => Ok(MigrateCommand::Fresh),
+        Some("reset") => Ok(MigrateCommand::Reset),
+        Some(other) => Err(format!(
+            "Unknown subcommand: '{}'. Valid: up | down [--steps N] | status | fresh | reset",
+            other
+        )),
+        None => Err(
+            "No subcommand given. Usage: rapina_migrate <up|down|status|fresh|reset>".to_string(),
+        ),
+    }
+}
+
+fn parse_steps(args: &[String]) -> Result<u32, String> {
+    if args.is_empty() {
+        return Ok(1);
+    }
+    match args[0].as_str() {
+        "--steps" => {
+            if args.len() < 2 {
+                return Err("--steps requires a value".to_string());
+            }
+            args[1]
+                .parse::<u32>()
+                .map_err(|_| format!("Invalid steps value: '{}'", args[1]))
+        }
+        other => Err(format!("Unexpected argument: '{}'", other)),
+    }
+}
+
 /// Generates a `Migrator` struct implementing `MigrationTrait`
 ///
 /// ```rust,ignore
@@ -111,4 +166,91 @@ pub async fn rollback<M: MigratorTrait>(
 /// Prints migration status.
 pub async fn status<M: MigratorTrait>(conn: &sea_orm::DatabaseConnection) -> Result<(), DbErr> {
     M::status(conn).await
+}
+
+/// Entry point for the `rapina_migrate` binary.
+///
+/// Reads `DATABASE_URL` from the environment, parses `std::env::args()`,
+/// connects to the database, and dispatches the requested migration command.
+///
+/// # Usage (in `src/bin/rapina_migrate.rs`)
+///
+/// ```rust,ignore
+/// #[path = "../migrations/mod.rs"]
+/// mod migrations;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     rapina::migration::run_cli::<migrations::Migrator>().await;
+/// }
+/// ```
+pub async fn run_cli<M: MigratorTrait>() {
+    // Load .env before reading DATABASE_URL — the rapina-cli parent process loads .env
+    // itself but the spawned `rapina_migrate` child process starts fresh and won't
+    // inherit values that were only loaded from the file (not exported in the shell).
+    dotenvy::dotenv().ok();
+
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+
+    let db_url = match std::env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            eprintln!("Error: DATABASE_URL environment variable is not set.");
+            eprintln!("       Set it in your .env file or export it before running.");
+            std::process::exit(1);
+        }
+    };
+
+    let cmd = match parse_args(&raw_args) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let conn = match sea_orm::Database::connect(&db_url).await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: Could not connect to database: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let result: Result<(), sea_orm::DbErr> = match cmd {
+        MigrateCommand::Up => {
+            let r = M::up(&conn, None).await;
+            if r.is_ok() {
+                println!("Migrations applied successfully.");
+            }
+            r
+        }
+        MigrateCommand::Down { steps } => {
+            let r = M::down(&conn, Some(steps)).await;
+            if r.is_ok() {
+                println!("Rolled back {steps} migration(s).");
+            }
+            r
+        }
+        MigrateCommand::Status => M::status(&conn).await,
+        MigrateCommand::Fresh => {
+            let r = M::fresh(&conn).await;
+            if r.is_ok() {
+                println!("Database cleared and migrations re-applied (fresh).");
+            }
+            r
+        }
+        MigrateCommand::Reset => {
+            let r = M::refresh(&conn).await;
+            if r.is_ok() {
+                println!("Migrations reset (down all + up all).");
+            }
+            r
+        }
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
 }
