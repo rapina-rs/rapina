@@ -163,6 +163,107 @@ fn test_metrics_registry_encode_returns_text() {
     assert!(out.contains("# TYPE"));
 }
 
+// ── custom metrics via add_metric ────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_custom_metric_appears_in_metrics_endpoint() {
+    use rapina::prometheus::IntCounter;
+
+    let counter = IntCounter::new("my_orders_total", "Total orders placed").unwrap();
+    counter.inc();
+    counter.inc();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_metrics()
+        .add_metric(Box::new(counter));
+
+    let client = TestClient::new(app).await;
+    let body = client.get("/metrics").send().await.text();
+
+    assert!(body.contains("my_orders_total"));
+    assert!(body.contains("Total orders placed"));
+    assert!(body.contains("my_orders_total 2"));
+}
+
+#[tokio::test]
+async fn test_custom_metric_with_labels_appears_in_metrics_endpoint() {
+    use rapina::prometheus::{IntCounterVec, Opts};
+
+    let counter = IntCounterVec::new(
+        Opts::new("orders_by_status_total", "Orders grouped by status"),
+        &["status"],
+    )
+    .unwrap();
+    counter.with_label_values(&["placed"]).inc();
+    counter.with_label_values(&["placed"]).inc();
+    counter.with_label_values(&["cancelled"]).inc();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_metrics()
+        .add_metric(Box::new(counter));
+
+    let client = TestClient::new(app).await;
+    let body = client.get("/metrics").send().await.text();
+
+    assert!(body.contains("orders_by_status_total"));
+    assert!(body.contains(r#"status="placed""#));
+    assert!(body.contains(r#"status="cancelled""#));
+}
+
+#[tokio::test]
+async fn test_multiple_custom_metrics_all_appear_in_endpoint() {
+    use rapina::prometheus::{IntCounter, IntGauge};
+
+    let c1 = IntCounter::new("queue_processed_total", "Items processed").unwrap();
+    let g1 = IntGauge::new("queue_depth", "Current queue depth").unwrap();
+    c1.inc();
+    g1.set(7);
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_metrics()
+        .add_metric(Box::new(c1))
+        .add_metric(Box::new(g1));
+
+    let client = TestClient::new(app).await;
+    let body = client.get("/metrics").send().await.text();
+
+    assert!(body.contains("queue_processed_total"));
+    assert!(body.contains("queue_depth 7"));
+}
+
+#[tokio::test]
+async fn test_custom_metrics_coexist_with_builtin_metrics() {
+    use rapina::prometheus::IntCounter;
+
+    let counter = IntCounter::new("custom_coexist_total", "Custom metric").unwrap();
+
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_metrics()
+        .add_metric(Box::new(counter))
+        .router(Router::new().route(
+            http::Method::GET,
+            "/ping",
+            |_, _, _| async { "pong" },
+        ));
+
+    let client = TestClient::new(app).await;
+    client.get("/ping").send().await;
+
+    let body = client.get("/metrics").send().await.text();
+
+    // Built-in metrics still present
+    assert!(body.contains("http_requests_total"));
+    assert!(body.contains("http_request_duration_seconds"));
+    assert!(body.contains("http_requests_in_flight"));
+
+    // Custom metric also present
+    assert!(body.contains("custom_coexist_total"));
+}
+
 // ── RAII guard for in-flight requests ────────────────────────
 
 #[tokio::test]
