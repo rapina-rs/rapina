@@ -148,6 +148,23 @@ pub fn generate_env_content(db_type: Option<&DatabaseType>, extra_vars: Option<&
     )
 }
 
+/// Generate the content for `src/bin/rapina_migrate.rs`.
+pub fn generate_migrate_bin_rs() -> String {
+    crate::commands::migrate::generate_migrate_bin_rs()
+}
+
+/// Write `src/bin/rapina_migrate.rs` into `src_path/bin/`.
+/// `src_path` is the `src/` directory of the generated project.
+pub fn write_migrate_bin(src_path: &Path) -> Result<(), String> {
+    let bin_dir = src_path.join("bin");
+    fs::create_dir_all(&bin_dir).map_err(|e| format!("Failed to create src/bin/: {e}"))?;
+    write_file(
+        &bin_dir.join("rapina_migrate.rs"),
+        &generate_migrate_bin_rs(),
+        "src/bin/rapina_migrate.rs",
+    )
+}
+
 /// Generate the `.gitignore` extras for a given database type.
 /// Always includes `.env`. Adds `*.db` for SQLite.
 pub fn generate_gitignore_extras(db_type: Option<&DatabaseType>) -> Vec<&'static str> {
@@ -161,6 +178,15 @@ pub fn generate_gitignore_extras(db_type: Option<&DatabaseType>) -> Vec<&'static
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_generate_migrate_bin_rs_content() {
+        let content = generate_migrate_bin_rs();
+        assert!(content.contains("#[path = \"../migrations/mod.rs\"]"));
+        assert!(content.contains("mod migrations"));
+        assert!(content.contains("run_cli::<migrations::Migrator>()"));
+        assert!(content.contains("#[tokio::main]"));
+    }
 
     #[test]
     fn test_generate_rapina_dep_without_db() {
