@@ -92,11 +92,7 @@ pub fn wrap_with_markers(content: &str) -> String {
 pub fn sha256_hex(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    format!("{:x}", hasher.finalize())
 }
 
 /// Write individual fragment files into `.rapina-docs/` at the given project root.
@@ -254,7 +250,14 @@ pub fn check_drift(base: &Path) -> DriftStatus {
 
     let block = match parse_agents_block(&source) {
         Some(b) => b,
-        None => return DriftStatus::NoBlock,
+        None => {
+            if source.contains("<!-- BEGIN:rapina-agent-rules ") {
+                eprintln!(
+                    "AGENTS.md has an unclosed marker. Run: rapina doctor --fix-agents --force"
+                );
+            }
+            return DriftStatus::NoBlock;
+        }
     };
 
     // Detect current project flags
