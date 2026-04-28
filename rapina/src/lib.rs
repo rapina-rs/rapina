@@ -177,6 +177,8 @@ pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, rela
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
+#[cfg(feature = "metrics")]
+pub use prometheus;
 pub use rust_decimal;
 pub use schemars;
 pub use serde_json;

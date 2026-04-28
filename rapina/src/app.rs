@@ -67,6 +67,9 @@ pub struct Rapina {
     /// Whether metrics is enabled.
     #[cfg(feature = "metrics")]
     pub(crate) metrics: bool,
+    /// Custom Prometheus collectors to include in the metrics endpoint.
+    #[cfg(feature = "metrics")]
+    pub(crate) custom_metrics: Vec<Box<dyn prometheus::core::Collector>>,
     /// Whether OpenAPI is enabled
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
@@ -119,6 +122,8 @@ impl Rapina {
             health_registry: HealthRegistry::new(),
             #[cfg(feature = "metrics")]
             metrics: false,
+            #[cfg(feature = "metrics")]
+            custom_metrics: Vec::new(),
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
@@ -689,6 +694,37 @@ impl Rapina {
         self.with_metrics(false)
     }
 
+    /// Registers a custom Prometheus collector to be included in the `/metrics` endpoint.
+    ///
+    /// Use this to mix your own application metrics — counters, gauges, histograms — into
+    /// the same endpoint that Rapina uses for its built-in HTTP metrics.
+    ///
+    /// Requires the `metrics` feature and `.enable_metrics()` (or `.with_metrics(true)`)
+    /// to be called as well.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    /// use prometheus::{IntCounterVec, Opts};
+    ///
+    /// let orders_total = IntCounterVec::new(
+    ///     Opts::new("orders_total", "Total number of orders placed"),
+    ///     &["status"],
+    /// )
+    /// .unwrap();
+    ///
+    /// Rapina::new()
+    ///     .enable_metrics()
+    ///     .add_metric(Box::new(orders_total.clone()))
+    ///     .listen("127.0.0.1:3000");
+    /// ```
+    #[cfg(feature = "metrics")]
+    pub fn add_metric(mut self, collector: Box<dyn prometheus::core::Collector>) -> Self {
+        self.custom_metrics.push(collector);
+        self
+    }
+
     /// Enables or disables openapi endpoint
     ///
     /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
@@ -905,7 +941,8 @@ impl Rapina {
 
         #[cfg(feature = "metrics")]
         if self.metrics {
-            let registry = MetricsRegistry::new();
+            let registry =
+                MetricsRegistry::new_with_collectors(std::mem::take(&mut self.custom_metrics));
             self.state = self.state.with(registry.clone());
             self.middlewares.add(MetricsMiddleware::new(registry));
             self.router = self
@@ -1221,6 +1258,52 @@ mod tests {
     fn test_rapina_with_metrics_disabled() {
         let app = Rapina::new().with_metrics(false);
         assert!(!app.metrics);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_add_metric_stores_collector() {
+        use prometheus::IntCounter;
+
+        let counter = IntCounter::new("my_app_total", "My app counter").unwrap();
+        let app = Rapina::new().enable_metrics().add_metric(Box::new(counter));
+
+        assert_eq!(app.custom_metrics.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_add_multiple_metrics() {
+        use prometheus::{IntCounter, IntGauge};
+
+        let c1 = IntCounter::new("metric_one", "first").unwrap();
+        let c2 = IntCounter::new("metric_two", "second").unwrap();
+        let g1 = IntGauge::new("metric_three", "third").unwrap();
+
+        let app = Rapina::new()
+            .enable_metrics()
+            .add_metric(Box::new(c1))
+            .add_metric(Box::new(c2))
+            .add_metric(Box::new(g1));
+
+        assert_eq!(app.custom_metrics.len(), 3);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_custom_metrics_appear_in_output() {
+        use crate::metrics::MetricsRegistry;
+        use prometheus::IntCounter;
+
+        let counter = IntCounter::new("orders_placed_total", "Orders placed").unwrap();
+        counter.inc();
+        counter.inc();
+
+        let registry = MetricsRegistry::new_with_collectors(vec![Box::new(counter)]);
+        let output = registry.encode();
+
+        assert!(output.contains("orders_placed_total"));
+        assert!(output.contains("Orders placed"));
     }
 
     #[test]
