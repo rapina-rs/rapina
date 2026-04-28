@@ -18,15 +18,37 @@ This creates:
 - `src/main.rs` with a basic API
 - `.gitignore`
 - `README.md`
-- `AGENT.md` — AI assistant context (generic)
-- `.claude/CLAUDE.md` — Claude-specific instructions
+- `AGENTS.md` — Rapina-specific rules for AI agents, composed from feature-flagged fragments and stamped with a version + SHA256 hash
+- `CLAUDE.md` — one-line pointer (`@AGENTS.md`) so Claude picks up the rules automatically
 - `.cursor/rules` — Cursor rules
+- `.rapina-docs/` — individual fragment files committed to the repo, version-matched to the installed CLI
 
-The AI config files teach assistants Rapina conventions (protected-by-default routing, extractors, error handling, project structure) so they generate correct code out of the box.
+`AGENTS.md` and `.rapina-docs/` contain the same Rapina-specific imperative rules (correct extractor ordering, `#[public]` requirement, validated bodies, typed errors, migration commands) so agents generate correct code out of the box without relying on stale training data.
 
-To skip AI config files:
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--template <T>` | Starter template: `rest-api` (default), `crud`, `auth` |
+| `--db <DB>` | Database: `sqlite`, `postgres`, `mysql`. Required for `--template crud` |
+| `--no-ai` | Skip all AI files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.rapina-docs/`) |
+| `--no-agents-md` | Skip `AGENTS.md` and `CLAUDE.md` only |
+| `--no-bundled-docs` | Skip `.rapina-docs/` only |
+| `--agents-md-only` | Generate `AGENTS.md` and `CLAUDE.md` but skip `.rapina-docs/` and `.cursor/rules` |
+
+Examples:
 
 ```bash
+# REST API with SQLite
+rapina new my-app --db sqlite
+
+# CRUD template with PostgreSQL
+rapina new my-app --template crud --db postgres
+
+# No bundled docs (you maintain your own)
+rapina new my-app --agents-md-only
+
+# No AI files at all
 rapina new my-app --no-ai
 ```
 
@@ -242,21 +264,33 @@ Output:
 
 ## rapina doctor
 
-Run health checks on your API:
+Run health checks on your project:
 
 ```bash
 rapina doctor
 ```
 
-Checks:
+Doctor runs two classes of checks:
+
+**Local checks (no server required)**
+
+`AGENTS.md` drift detection compares the on-disk block against the current bundled fragments. Three outcomes:
+
+- `✓ AGENTS.md is up to date` — SHA256 of the block body matches what the current CLI would generate.
+- `⚠ AGENTS.md is stale` — content is unchanged since it was last written (stored hash matches), but the current CLI would generate something different (version bumped, fragments changed). Fix with `--fix-agents`.
+- `✗ AGENTS.md has been edited inside the markers` — someone edited content between the `BEGIN`/`END` markers. Rapina refuses to auto-fix; move your custom rules outside the markers first.
+
+**API checks (requires a running server)**
+
 - Response schemas defined for all routes
 - Error documentation present
 - OpenAPI metadata (descriptions)
-- No duplicate handler paths (same method + path registered more than once; only the first match is used, others are shadowed)
+- No duplicate handler paths
 
 Output:
 
 ```
+  ✓ AGENTS.md is up to date
   → Running API health checks on http://127.0.0.1:3000...
 
   ✓ All routes have response schemas
@@ -265,14 +299,51 @@ Output:
   ⚠ No documented errors: POST /users
 
   Summary: 2 passed, 2 warnings, 0 errors
-
-  Consider addressing the warnings above.
 ```
 
-If duplicate routes are detected, you'll see a warning like:
+### Options
 
+| Flag | Description |
+|------|-------------|
+| `--fix-agents` | Refresh `AGENTS.md` from current bundled fragments |
+| `--force` | With `--fix-agents`: overwrite even if the block has user edits inside the markers |
+
+### Fixing a stale `AGENTS.md`
+
+After a Rapina version bump or when fragments change:
+
+```bash
+rapina doctor --fix-agents
 ```
-  ⚠ Duplicate route GET /users: handlers [list_users, other_list] — only the first match is used, others are shadowed
+
+### Fixing a user-edited `AGENTS.md`
+
+If you edited inside the markers and want to discard those edits:
+
+```bash
+rapina doctor --fix-agents --force
+```
+
+If you want to keep your custom content, move it outside the markers first:
+
+```markdown
+<!-- your custom rules here — above the managed block -->
+
+<!-- BEGIN:rapina-agent-rules v0.11.0 sha256:... -->
+...managed content, do not edit...
+<!-- END:rapina-agent-rules -->
+
+<!-- or below the managed block -->
+```
+
+Then run `rapina doctor --fix-agents`.
+
+### Generating `AGENTS.md` for an existing project
+
+Projects created before `0.11.0` have no `AGENTS.md`. Run once to generate:
+
+```bash
+rapina doctor --fix-agents
 ```
 
 ## rapina migrate new

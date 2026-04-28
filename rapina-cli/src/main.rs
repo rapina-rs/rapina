@@ -32,9 +32,18 @@ enum Commands {
         /// Database type (sqlite, postgres, mysql). Required when using `--template crud`.
         #[arg(long, value_name = "DB")]
         db: Option<DatabaseType>,
-        /// Skip generating AI assistant config files (AGENT.md, .claude/, .cursor/)
+        /// Skip all AI assistant config files (AGENTS.md, CLAUDE.md, .cursor/, .rapina-docs/)
         #[arg(long)]
         no_ai: bool,
+        /// Skip AGENTS.md and CLAUDE.md generation
+        #[arg(long, conflicts_with_all = ["no_ai", "agents_md_only"])]
+        no_agents_md: bool,
+        /// Skip .rapina-docs/ bundled documentation
+        #[arg(long, conflicts_with_all = ["no_ai"])]
+        no_bundled_docs: bool,
+        /// Generate AGENTS.md and CLAUDE.md only, skip .rapina-docs/
+        #[arg(long, conflicts_with_all = ["no_ai", "no_agents_md"])]
+        agents_md_only: bool,
     },
     /// Add a resource to an existing Rapina project
     Add {
@@ -90,6 +99,12 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+        /// Refresh AGENTS.md from current bundled fragments
+        #[arg(long)]
+        fix_agents: bool,
+        /// Force overwrite even if AGENTS.md has user edits inside the markers
+        #[arg(long)]
+        force: bool,
     },
     /// Import from external sources (OpenAPI specs, databases, etc.)
     Import {
@@ -282,8 +297,17 @@ fn main() {
             template,
             db,
             no_ai,
+            no_agents_md,
+            no_bundled_docs,
+            agents_md_only,
         }) => {
-            if let Err(e) = commands::new::execute(&name, template.as_deref(), db.as_ref(), no_ai) {
+            let opts = commands::new::AiOptions {
+                no_ai,
+                no_agents_md,
+                no_bundled_docs,
+                agents_md_only,
+            };
+            if let Err(e) = commands::new::execute(&name, template.as_deref(), db.as_ref(), opts) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
@@ -464,8 +488,18 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Some(Commands::Doctor { host, port }) => {
-            let config = commands::doctor::DoctorConfig { host, port };
+        Some(Commands::Doctor {
+            host,
+            port,
+            fix_agents,
+            force,
+        }) => {
+            let config = commands::doctor::DoctorConfig {
+                host,
+                port,
+                fix_agents,
+                force,
+            };
             if let Err(e) = commands::doctor::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);

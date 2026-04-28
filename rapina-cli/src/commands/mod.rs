@@ -1,6 +1,7 @@
 //! CLI command implementations.
 
 pub mod add;
+pub mod agents;
 pub(crate) mod codegen;
 pub mod dev;
 pub mod doctor;

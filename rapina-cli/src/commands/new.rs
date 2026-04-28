@@ -4,8 +4,25 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+use super::agents::{AgentsFlags, generate_agents_md, generate_claude_md, generate_rapina_docs};
 use super::templates;
 use super::templates::DatabaseType;
+
+/// Controls which AI assistant files `rapina new` generates.
+///
+/// All flags are additive on top of the default (generate everything).
+/// `no_ai` takes precedence over all others and skips every AI file.
+pub struct AiOptions {
+    /// Skip all AI files: `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.rapina-docs/`.
+    pub no_ai: bool,
+    /// Skip `AGENTS.md` and `CLAUDE.md` only. `.cursor/rules` and `.rapina-docs/` are still generated.
+    pub no_agents_md: bool,
+    /// Skip `.rapina-docs/` only. `AGENTS.md` and `CLAUDE.md` are still generated.
+    pub no_bundled_docs: bool,
+    /// Generate `AGENTS.md` and `CLAUDE.md` but skip `.rapina-docs/` and `.cursor/rules`.
+    /// Use this when you maintain your own bundled docs or point agents at an external source.
+    pub agents_md_only: bool,
+}
 
 /// Execute the `new` command to create a new Rapina project.
 ///
@@ -16,7 +33,7 @@ pub fn execute(
     name: &str,
     template: Option<&str>,
     db_type: Option<&DatabaseType>,
-    no_ai: bool,
+    opts: AiOptions,
 ) -> Result<(), String> {
     validate_project_name(name)?;
 
@@ -63,23 +80,40 @@ pub fn execute(
     println!("  {} Created {}", "✓".green(), "README.md".cyan());
 
     // Create AI assistant config files
-    if !no_ai {
-        let agent_path = project_path.join("AGENT.md");
-        fs::write(&agent_path, generate_agent_md())
-            .map_err(|e| format!("Failed to write AGENT.md: {}", e))?;
-        println!("  {} Created {}", "✓".green(), "AGENT.md".cyan());
+    if !opts.no_ai {
+        let flags = AgentsFlags {
+            with_db: db_type.is_some(),
+            with_websocket: false,
+            with_jobs: false,
+        };
 
-        let claude_dir = project_path.join(".claude");
-        fs::create_dir_all(&claude_dir).map_err(|e| format!("Failed to create .claude/: {}", e))?;
-        fs::write(claude_dir.join("CLAUDE.md"), generate_claude_md())
-            .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
-        println!("  {} Created {}", "✓".green(), ".claude/CLAUDE.md".cyan());
+        let write_agents = !opts.no_agents_md;
+        let write_docs = !opts.no_bundled_docs && !opts.agents_md_only;
+        let write_cursor = !opts.agents_md_only;
 
-        let cursor_dir = project_path.join(".cursor");
-        fs::create_dir_all(&cursor_dir).map_err(|e| format!("Failed to create .cursor/: {}", e))?;
-        fs::write(cursor_dir.join("rules"), generate_cursor_rules())
-            .map_err(|e| format!("Failed to write .cursor/rules: {}", e))?;
-        println!("  {} Created {}", "✓".green(), ".cursor/rules".cyan());
+        if write_agents {
+            fs::write(project_path.join("AGENTS.md"), generate_agents_md(&flags))
+                .map_err(|e| format!("Failed to write AGENTS.md: {}", e))?;
+            println!("  {} Created {}", "✓".green(), "AGENTS.md".cyan());
+
+            fs::write(project_path.join("CLAUDE.md"), generate_claude_md())
+                .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
+            println!("  {} Created {}", "✓".green(), "CLAUDE.md".cyan());
+        }
+
+        if write_cursor {
+            let cursor_dir = project_path.join(".cursor");
+            fs::create_dir_all(&cursor_dir)
+                .map_err(|e| format!("Failed to create .cursor/: {}", e))?;
+            fs::write(cursor_dir.join("rules"), generate_cursor_rules())
+                .map_err(|e| format!("Failed to write .cursor/rules: {}", e))?;
+            println!("  {} Created {}", "✓".green(), ".cursor/rules".cyan());
+        }
+
+        if write_docs {
+            generate_rapina_docs(project_path, &flags)?;
+            println!("  {} Created {}", "✓".green(), ".rapina-docs/".cyan());
+        }
     }
 
     println!();
@@ -171,242 +205,6 @@ rapina migrate new create_your_table
     format!(
         "# {name}\n\nA web application built with Rapina.\n\n## Getting started\n\n```bash\nrapina dev\n```\n\n## Routes\n\n- `GET /` — Hello world\n- `GET /__rapina/health` — Health check (built-in)\n{db_section}"
     )
-}
-
-fn generate_agent_md() -> String {
-    r#"# Rapina Project
-
-This is a Rust web application built with [Rapina](https://github.com/rapina-rs/rapina), an opinionated web framework.
-
-## Key Conventions
-
-### Routes are protected by default
-All routes require JWT authentication unless explicitly marked with `#[public]`:
-
-```rust
-#[public]
-#[post("/auth/login")]
-async fn login(body: Json<LoginRequest>) -> Result<Json<TokenResponse>> { ... }
-
-// This route requires a valid JWT token
-#[get("/me")]
-async fn me(user: CurrentUser) -> Json<UserResponse> { ... }
-```
-
-### Handler pattern
-Use proc macros for route registration. Handler names follow `verb_resource` convention:
-
-```rust
-#[get("/todos")]       async fn list_todos() -> ...
-#[get("/todos/:id")]   async fn get_todo(id: Path<i32>) -> ...
-#[post("/todos")]      async fn create_todo(body: Json<CreateTodo>) -> ...
-#[put("/todos/:id")]   async fn update_todo(id: Path<i32>, body: Json<UpdateTodo>) -> ...
-#[delete("/todos/:id")] async fn delete_todo(id: Path<i32>) -> ...
-```
-
-### Typed extractors
-- `Json<T>` — request/response body (T must derive Serialize and/or Deserialize + JsonSchema)
-- `Path<T>` — URL path parameter (`:id` syntax)
-- `Query<T>` — query string parameters
-- `State<T>` — shared application state
-- `Validated<Json<T>>` — JSON body with validation (T must also derive Validate, returns 422 on failure)
-- `CurrentUser` — authenticated user identity (requires auth to be configured)
-- `Db` — database connection (requires database feature)
-
-### Error handling
-Return `Result<Json<T>>` from handlers. Use typed errors:
-
-```rust
-pub enum TodoError {
-    DbError(DbError),
-}
-
-impl IntoApiError for TodoError {
-    fn into_api_error(self) -> Error {
-        match self {
-            TodoError::DbError(e) => e.into_api_error(),
-        }
-    }
-}
-```
-
-All error responses include a `trace_id` for debugging:
-```json
-{
-  "error": { "code": "NOT_FOUND", "message": "Todo 42 not found" },
-  "trace_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-### Project structure (feature-first)
-```
-src/
-├── main.rs          # App bootstrap with builder pattern
-├── entity.rs        # Database entities (schema! macro)
-├── migrations/      # Database migrations
-└── todos/           # Feature module (always plural)
-    ├── mod.rs
-    ├── handlers.rs  # Route handlers
-    ├── dto.rs       # Request/response types
-    └── error.rs     # Domain errors
-```
-
-### Builder pattern
-```rust
-Rapina::new()
-    .with_tracing(TracingConfig::new())
-    .middleware(RequestLogMiddleware::new())
-    .with_cors(CorsConfig::permissive())
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-## CLI Commands
-- `rapina dev` — run with auto-reload
-- `rapina doctor` — diagnose project issues
-- `rapina routes` — list all registered routes
-- `rapina add resource <name>` — scaffold a new CRUD resource
-"#
-    .to_string()
-}
-
-fn generate_claude_md() -> String {
-    r#"# Rapina Project Instructions
-
-This is a Rust web application built with the Rapina framework.
-
-## Framework Overview
-
-Rapina is an opinionated Rust web framework built on hyper. Routes are protected by default (JWT auth) unless marked `#[public]`. All response types must derive `Serialize` + `JsonSchema` for OpenAPI generation. Error responses always include a `trace_id`.
-
-## Conventions
-
-### Adding a new endpoint
-
-1. Create or edit the handler in `src/<feature>/handlers.rs`
-2. Use the proc macro: `#[get("/path")]`, `#[post("/path")]`, `#[put("/path")]`, `#[delete("/path")]`
-3. Mark public routes with `#[public]` above the method macro
-4. Use `#[errors(ErrorType)]` to document error responses for OpenAPI
-5. If using `.discover()`, the route is auto-registered. Otherwise add it to the router in `main.rs`
-
-### Extractors (in handler function signatures)
-
-```rust
-// Body (only one per handler)
-body: Json<T>              // JSON body, T: Deserialize + JsonSchema
-body: Validated<Json<T>>   // JSON body with validation, T: Deserialize + JsonSchema + Validate
-body: Form<T>              // Form data
-
-// Parts (multiple allowed)
-id: Path<i32>              // URL path param (:id syntax)
-params: Query<T>           // Query string
-headers: Headers           // Full header map
-state: State<T>            // App state
-user: CurrentUser          // Authenticated user (id, claims)
-ctx: Context               // Request context (trace_id, start_time)
-db: Db                     // Database connection (requires database feature)
-jar: Cookie<T>             // Cookie values
-```
-
-### Handler naming convention
-- `list_<resources>` — GET collection
-- `get_<resource>` — GET single item
-- `create_<resource>` — POST
-- `update_<resource>` — PUT
-- `delete_<resource>` — DELETE
-
-### Builder pattern
-```rust
-Rapina::new()
-    .with_tracing(TracingConfig::new())
-    .middleware(RequestLogMiddleware::new())
-    .with_cors(CorsConfig::permissive())
-    .router(router)
-    .listen("127.0.0.1:3000")
-    .await
-```
-
-### Error handling pattern
-
-Each feature module has its own error type:
-
-```rust
-// src/todos/error.rs
-pub enum TodoError {
-    DbError(DbError),
-}
-
-impl IntoApiError for TodoError {
-    fn into_api_error(self) -> Error {
-        match self {
-            TodoError::DbError(e) => e.into_api_error(),
-        }
-    }
-}
-
-impl DocumentedError for TodoError {
-    fn error_variants() -> Vec<ErrorVariant> {
-        vec![
-            ErrorVariant { status: 404, code: "NOT_FOUND", description: "Todo not found" },
-            ErrorVariant { status: 500, code: "DATABASE_ERROR", description: "Database operation failed" },
-        ]
-    }
-}
-```
-
-Use `Error::not_found()`, `Error::bad_request()`, `Error::unauthorized()`, etc. for quick errors.
-
-### Project structure
-
-Feature-first modules. Each feature directory is plural:
-
-```
-src/todos/handlers.rs    # not src/handlers/todos.rs
-src/todos/dto.rs         # CreateTodo, UpdateTodo structs
-src/todos/error.rs       # TodoError enum
-src/todos/mod.rs         # pub mod dto; pub mod error; pub mod handlers;
-```
-
-Top-level shared files:
-- `src/entity.rs` — all database entities via `schema!` macro
-- `src/migrations/` — database migrations via `migrations!` macro
-
-### DTOs
-- Request types: `Create<Resource>`, `Update<Resource>` — derive `Deserialize` + `JsonSchema`
-- Response types: derive `Serialize` + `JsonSchema`
-- Update DTOs wrap fields in `Option<T>` for partial updates
-
-### Testing
-
-```rust
-use rapina::testing::TestClient;
-
-#[tokio::test]
-async fn test_hello() {
-    let app = Rapina::new().router(router);
-    let client = TestClient::new(app).await;
-
-    let res = client.get("/").send().await;
-    assert_eq!(res.status(), StatusCode::OK);
-
-    let body: MessageResponse = res.json();
-    assert_eq!(body.message, "Hello from Rapina!");
-}
-```
-
-`TestClient` supports `.get()`, `.post()`, `.put()`, `.delete()`, `.patch()`. Request builder has `.json()`, `.header()`, `.body()`. Response has `.status()`, `.json::<T>()`, `.text()`.
-
-## Build & Run
-
-```bash
-rapina dev              # development with auto-reload
-cargo build --release   # production build
-rapina doctor           # check for common issues
-rapina routes           # list all routes
-```
-"#
-    .to_string()
 }
 
 fn generate_cursor_rules() -> String {
@@ -528,25 +326,69 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_agent_md() {
-        let content = generate_agent_md();
+    fn test_generate_agents_md_base() {
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+        let content = generate_agents_md(&flags);
         assert!(content.contains("Rapina"));
         assert!(content.contains("#[public]"));
         assert!(content.contains("trace_id"));
         assert!(content.contains("Json<T>"));
         assert!(content.contains("IntoApiError"));
+        assert!(content.contains("DocumentedError"));
+        assert!(content.contains("TestClient"));
+        assert!(content.contains("State<T>"));
         assert!(content.contains("rapina add resource"));
+        assert!(content.contains("Don't"));
+        assert!(content.contains("BEGIN:rapina-agent-rules"));
+        assert!(content.contains("END:rapina-agent-rules"));
+        assert!(content.contains("sha256:"));
+        assert!(!content.contains("migrations.md") && !content.contains("rapina migrate up"));
     }
 
     #[test]
-    fn test_generate_claude_md() {
-        let content = generate_claude_md();
-        assert!(content.contains("Rapina"));
-        assert!(content.contains("TestClient"));
-        assert!(content.contains("#[errors("));
-        assert!(content.contains("Validated<Json<T>>"));
-        assert!(content.contains("IntoApiError"));
-        assert!(content.contains("DocumentedError"));
+    fn test_generate_agents_md_with_db() {
+        let flags = AgentsFlags {
+            with_db: true,
+            with_websocket: false,
+            with_jobs: false,
+        };
+        let content = generate_agents_md(&flags);
+        assert!(content.contains("rapina migrate up"));
+        assert!(content.contains("sea-orm-cli"));
+    }
+
+    #[test]
+    fn test_agents_md_hash_is_stable() {
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+        let a = generate_agents_md(&flags);
+        let b = generate_agents_md(&flags);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_generate_rapina_docs() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: true,
+            with_websocket: false,
+            with_jobs: false,
+        };
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+        assert!(dir.path().join(".rapina-docs/core.md").exists());
+        assert!(dir.path().join(".rapina-docs/extractors.md").exists());
+        assert!(dir.path().join(".rapina-docs/errors.md").exists());
+        assert!(dir.path().join(".rapina-docs/testing.md").exists());
+        assert!(dir.path().join(".rapina-docs/migrations.md").exists());
+        assert!(!dir.path().join(".rapina-docs/websocket.md").exists());
+        assert!(!dir.path().join(".rapina-docs/jobs.md").exists());
     }
 
     #[test]
