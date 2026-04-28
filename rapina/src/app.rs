@@ -941,9 +941,8 @@ impl Rapina {
 
         #[cfg(feature = "metrics")]
         if self.metrics {
-            let registry = MetricsRegistry::new_with_collectors(
-                std::mem::take(&mut self.custom_metrics),
-            );
+            let registry =
+                MetricsRegistry::new_with_collectors(std::mem::take(&mut self.custom_metrics));
             self.state = self.state.with(registry.clone());
             self.middlewares.add(MetricsMiddleware::new(registry));
             self.router = self
@@ -1267,9 +1266,7 @@ mod tests {
         use prometheus::IntCounter;
 
         let counter = IntCounter::new("my_app_total", "My app counter").unwrap();
-        let app = Rapina::new()
-            .enable_metrics()
-            .add_metric(Box::new(counter));
+        let app = Rapina::new().enable_metrics().add_metric(Box::new(counter));
 
         assert_eq!(app.custom_metrics.len(), 1);
     }

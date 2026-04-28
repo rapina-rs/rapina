@@ -244,11 +244,7 @@ async fn test_custom_metrics_coexist_with_builtin_metrics() {
         .with_introspection(false)
         .enable_metrics()
         .add_metric(Box::new(counter))
-        .router(Router::new().route(
-            http::Method::GET,
-            "/ping",
-            |_, _, _| async { "pong" },
-        ));
+        .router(Router::new().route(http::Method::GET, "/ping", |_, _, _| async { "pong" }));
 
     let client = TestClient::new(app).await;
     client.get("/ping").send().await;

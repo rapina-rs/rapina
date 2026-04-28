@@ -242,11 +242,8 @@ mod tests {
     fn test_custom_collector_with_labels() {
         use prometheus::{IntCounterVec, Opts};
 
-        let counter = IntCounterVec::new(
-            Opts::new("orders_total", "Total orders"),
-            &["status"],
-        )
-        .unwrap();
+        let counter =
+            IntCounterVec::new(Opts::new("orders_total", "Total orders"), &["status"]).unwrap();
         counter.with_label_values(&["placed"]).inc();
         counter.with_label_values(&["placed"]).inc();
         counter.with_label_values(&["cancelled"]).inc();
