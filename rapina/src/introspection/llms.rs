@@ -9,64 +9,59 @@ use std::fmt::Write as _;
 
 use crate::introspection::RouteInfo;
 
+macro_rules! w {
+    ($dst:expr) => { writeln!($dst).unwrap() };
+    ($dst:expr, $($t:tt)*) => { writeln!($dst, $($t)*).unwrap() };
+}
+
 /// Render the route registry as an llms.txt Markdown document.
-///
-/// The output is a single self-contained file (no index/detail split —
-/// that is a docs-site concern). JSON Schemas are rendered verbatim.
-pub fn to_llms_txt(routes: &[RouteInfo]) -> String {
+pub fn to_llms_txt(title: &str, routes: &[RouteInfo]) -> String {
     let mut out = String::new();
 
-    // Filter out internal /__rapina/* routes so the document only describes
-    // user-defined API surface.
-    let user_routes: Vec<&RouteInfo> = routes
-        .iter()
-        .filter(|r| !r.path.starts_with("/__rapina"))
-        .collect();
+    let user_routes: Vec<&RouteInfo> = routes.iter().filter(|r| !r.is_internal()).collect();
 
-    writeln!(out, "# API").unwrap();
-    writeln!(out).unwrap();
-    writeln!(
+    w!(out, "# {title}");
+    w!(out);
+    w!(
         out,
         "Built with [Rapina](https://rapina.rs) v{}.",
         env!("CARGO_PKG_VERSION")
-    )
-    .unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "## Routes").unwrap();
+    );
+    w!(out);
+    w!(out, "## Routes");
 
     for route in &user_routes {
-        writeln!(out).unwrap();
-        writeln!(out, "### {} {}", route.method, route.path).unwrap();
+        w!(out);
+        w!(out, "### {} {}", route.method, route.path);
 
         if let Some(ct) = &route.request_content_type {
             if let Some(schema) = &route.request_schema {
                 let required = route.request_body_required.unwrap_or(true);
-                writeln!(
+                w!(
                     out,
                     "\nRequest ({}){}:",
                     ct,
                     if required { "" } else { " (optional)" }
-                )
-                .unwrap();
+                );
                 let pretty = serde_json::to_string_pretty(schema).unwrap_or_default();
-                for line in pretty.lines() {
-                    writeln!(out, "  {}", line).unwrap();
-                }
+                w!(out, "```json");
+                w!(out, "{pretty}");
+                w!(out, "```");
             }
         }
 
         if let Some(schema) = &route.response_schema {
-            writeln!(out, "\nResponse:").unwrap();
+            w!(out, "\nResponse:");
             let pretty = serde_json::to_string_pretty(schema).unwrap_or_default();
-            for line in pretty.lines() {
-                writeln!(out, "  {}", line).unwrap();
-            }
+            w!(out, "```json");
+            w!(out, "{pretty}");
+            w!(out, "```");
         }
 
         if !route.error_responses.is_empty() {
-            writeln!(out, "\nErrors:").unwrap();
+            w!(out, "\nErrors:");
             for err in &route.error_responses {
-                writeln!(out, "  - {} {}: {}", err.status, err.code, err.description).unwrap();
+                w!(out, "  - {} {}: {}", err.status, err.code, err.description);
             }
         }
     }
@@ -99,36 +94,10 @@ mod tests {
     }
 
     #[test]
-    fn test_to_llms_txt_contains_route_heading() {
+    fn test_to_llms_txt_snapshot() {
         let routes = vec![make_route()];
-        let output = to_llms_txt(&routes);
-        assert!(
-            output.contains("### POST /v1/users"),
-            "missing route heading"
-        );
-    }
-
-    #[test]
-    fn test_to_llms_txt_contains_routes_section() {
-        let routes = vec![make_route()];
-        let output = to_llms_txt(&routes);
-        assert!(output.contains("## Routes"));
-    }
-
-    #[test]
-    fn test_to_llms_txt_contains_request_schema() {
-        let routes = vec![make_route()];
-        let output = to_llms_txt(&routes);
-        assert!(output.contains("Request (application/json)"));
-        assert!(output.contains("email"));
-    }
-
-    #[test]
-    fn test_to_llms_txt_contains_error_variants() {
-        let routes = vec![make_route()];
-        let output = to_llms_txt(&routes);
-        assert!(output.contains("409 CONFLICT"));
-        assert!(output.contains("email already registered"));
+        let output = to_llms_txt("My API", &routes);
+        insta::assert_snapshot!(output);
     }
 
     #[test]
@@ -144,7 +113,7 @@ mod tests {
             vec![],
         );
         let routes = vec![make_route(), internal];
-        let output = to_llms_txt(&routes);
+        let output = to_llms_txt("My API", &routes);
         assert!(
             !output.contains("/__rapina"),
             "internal routes must be filtered"
@@ -153,8 +122,13 @@ mod tests {
 
     #[test]
     fn test_to_llms_txt_empty_routes() {
-        let output = to_llms_txt(&[]);
-        assert!(output.contains("## Routes"));
-        assert!(!output.contains("###"));
+        let output = to_llms_txt("My API", &[]);
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn test_to_llms_txt_title_used_as_heading() {
+        let output = to_llms_txt("Custom Title", &[]);
+        assert!(output.starts_with("# Custom Title\n"));
     }
 }

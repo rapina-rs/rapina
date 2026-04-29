@@ -914,8 +914,11 @@ impl Rapina {
         }
 
         if self.llms_txt {
+            // Snapshot routes BEFORE registering /__rapina/llms.txt so the document
+            // doesn't reference itself. The /__rapina/* filter in to_llms_txt is
+            // defense-in-depth.
             let routes = self.router.routes();
-            let content = to_llms_txt(&routes);
+            let content = to_llms_txt(&self.openapi_title, &routes);
             self.state = self.state.with(LlmsRegistry::new(content));
             self.router = self
                 .router

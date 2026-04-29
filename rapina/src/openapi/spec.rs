@@ -232,8 +232,7 @@ pub fn build_openapi_spec(
     spec.components = Some(Components { schemas });
 
     for route in routes {
-        // skip internal rapina routes
-        if route.path.starts_with("/__rapina") {
+        if route.is_internal() {
             continue;
         }
         // Extract path parameters (e.g., :id -> id)
