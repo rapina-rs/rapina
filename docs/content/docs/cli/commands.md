@@ -14,6 +14,7 @@ rapina new my-app
 ```
 
 This creates:
+
 - `Cargo.toml` with Rapina dependencies
 - `src/main.rs` with a basic API
 - `.gitignore`
@@ -52,21 +53,21 @@ src/migrations/mod.rs      # Updated with mod + migrations! macro entry
 
 Fields use a `name:type` format. Supported types:
 
-| Type | Aliases | Rust Type | Column | Default |
-|------|---------|-----------|--------|---------|
-| `string` | | `String` | VARCHAR | none |
-| `text` | | `String` | TEXT | none |
-| `i32` | `integer` | `i32` | INTEGER | none |
-| `i64` | `bigint` | `i64` | BIGINT | none |
-| `f32` | `float` | `f32` | FLOAT | none |
-| `f64` | `double` | `f64` | DOUBLE | none |
-| `bool` | `boolean` | `bool` | BOOLEAN | `false` |
-| `uuid` | | `Uuid` | UUID | none |
-| `datetime` | `timestamptz` | `DateTime` | TIMESTAMPTZ (timezone-aware) | none |
-| `naivedatetime` | `timestamp` | `NaiveDateTime` | TIMESTAMP (without timezone) | none |
-| `date` | | `Date` | DATE | none |
-| `decimal` | | `Decimal` | DECIMAL | none |
-| `json` | | `Json` | JSON | none |
+| Type            | Aliases       | Rust Type       | Column                       | Default |
+| --------------- | ------------- | --------------- | ---------------------------- | ------- |
+| `string`        |               | `String`        | VARCHAR                      | none    |
+| `text`          |               | `String`        | TEXT                         | none    |
+| `i32`           | `integer`     | `i32`           | INTEGER                      | none    |
+| `i64`           | `bigint`      | `i64`           | BIGINT                       | none    |
+| `f32`           | `float`       | `f32`           | FLOAT                        | none    |
+| `f64`           | `double`      | `f64`           | DOUBLE                       | none    |
+| `bool`          | `boolean`     | `bool`          | BOOLEAN                      | `false` |
+| `uuid`          |               | `Uuid`          | UUID                         | none    |
+| `datetime`      | `timestamptz` | `DateTime`      | TIMESTAMPTZ (timezone-aware) | none    |
+| `naivedatetime` | `timestamp`   | `NaiveDateTime` | TIMESTAMP (without timezone) | none    |
+| `date`          |               | `Date`          | DATE                         | none    |
+| `decimal`       |               | `Decimal`       | DECIMAL                      | none    |
+| `json`          |               | `Json`          | JSON                         | none    |
 
 ### Sensible defaults
 
@@ -119,12 +120,12 @@ rapina import database --url postgres://user:pass@localhost/mydb
 
 Options:
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--url <URL>` | Database connection URL (or `DATABASE_URL` env) | *required* |
-| `--tables <T1,T2>` | Only import specific tables (comma-separated) | all tables |
-| `--schema <NAME>` | Database schema name | `public` (Postgres) |
-| `--force` | Overwrite existing files (re-import after schema changes) | false |
+| Flag               | Description                                               | Default             |
+| ------------------ | --------------------------------------------------------- | ------------------- |
+| `--url <URL>`      | Database connection URL (or `DATABASE_URL` env)           | _required_          |
+| `--tables <T1,T2>` | Only import specific tables (comma-separated)             | all tables          |
+| `--schema <NAME>`  | Database schema name                                      | `public` (Postgres) |
+| `--force`          | Overwrite existing files (re-import after schema changes) | false               |
 
 Supported databases: PostgreSQL (`postgres://`), MySQL (`mysql://`), SQLite (`sqlite://`). Each requires the corresponding feature:
 
@@ -158,10 +159,10 @@ rapina dev
 
 Options:
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-p, --port <PORT>` | Server port | 3000 |
-| `--host <HOST>` | Server host | 127.0.0.1 |
+| Flag                | Description | Default   |
+| ------------------- | ----------- | --------- |
+| `-p, --port <PORT>` | Server port | 3000      |
+| `--host <HOST>`     | Server host | 127.0.0.1 |
 
 Example:
 
@@ -179,12 +180,12 @@ rapina test
 
 Options:
 
-| Flag | Description |
-|------|-------------|
-| `--coverage` | Generate coverage report (requires cargo-llvm-cov) |
-| `-w, --watch` | Watch for changes and re-run tests |
-| `--bless` | Update snapshot files (golden-file testing) |
-| `[FILTER]` | Filter tests by name |
+| Flag          | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `--coverage`  | Generate coverage report (requires cargo-llvm-cov) |
+| `-w, --watch` | Watch for changes and re-run tests                 |
+| `--bless`     | Update snapshot files (golden-file testing)        |
+| `[FILTER]`    | Filter tests by name                               |
 
 Examples:
 
@@ -249,6 +250,7 @@ rapina doctor
 ```
 
 Checks:
+
 - Response schemas defined for all routes
 - Error documentation present
 - OpenAPI metadata (descriptions)
@@ -324,8 +326,8 @@ Output:
 
 Options:
 
-| Flag | Description |
-|------|-------------|
+| Flag       | Description                                         |
+| ---------- | --------------------------------------------------- |
 | `--failed` | Also list individual failed jobs with error details |
 
 With `--failed`:
@@ -342,6 +344,28 @@ Requires the `jobs` feature:
 cargo install rapina-cli --features jobs-postgres
 ```
 
+## rapina llms export
+
+Fetch the [`llms.txt`](/docs/core-concepts/llms-txt/) document from your running development server and write it to stdout or a file:
+
+```bash
+# Print to stdout
+rapina llms export
+
+# Write to file
+rapina llms export -o llms.txt
+```
+
+Options:
+
+| Flag                  | Description                               | Default   |
+| --------------------- | ----------------------------------------- | --------- |
+| `-o, --output <FILE>` | Output file                               | stdout    |
+| `-p, --port <PORT>`   | Port to connect to (reads `$RAPINA_PORT`) | 3000      |
+| `--host <HOST>`       | Host to connect to                        | 127.0.0.1 |
+
+Requires a running server with llms.txt enabled. llms.txt is on by default in debug builds (`rapina dev`).
+
 ## rapina openapi export
 
 Export the OpenAPI specification to a file:
@@ -354,11 +378,11 @@ rapina openapi export -o openapi.json
 
 Options:
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-o, --output <FILE>` | Output file | stdout |
-| `-p, --port <PORT>` | Port to connect to (reads `$RAPINA_PORT`, falling back to `$SERVER_PORT`) | 3000 |
-| `--host <HOST>` | Host to connect to | 127.0.0.1 |
+| Flag                  | Description                                                               | Default   |
+| --------------------- | ------------------------------------------------------------------------- | --------- |
+| `-o, --output <FILE>` | Output file                                                               | stdout    |
+| `-p, --port <PORT>`   | Port to connect to (reads `$RAPINA_PORT`, falling back to `$SERVER_PORT`) | 3000      |
+| `--host <HOST>`       | Host to connect to                                                        | 127.0.0.1 |
 
 ## rapina openapi check
 

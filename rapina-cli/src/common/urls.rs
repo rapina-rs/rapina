@@ -7,3 +7,7 @@ pub fn build_routes_url(host: &str, port: u16) -> String {
 pub fn build_openapi_url(host: &str, port: u16) -> String {
     format!("http://{}:{}/{}/openapi.json", host, port, PATH_BASE)
 }
+
+pub fn build_llms_url(host: &str, port: u16) -> String {
+    format!("http://{}:{}/{}/llms.txt", host, port, PATH_BASE)
+}

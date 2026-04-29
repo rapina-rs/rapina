@@ -1,0 +1,9 @@
+---
+source: rapina/src/introspection/llms.rs
+expression: output
+---
+# My API
+
+Built with [Rapina](https://rapina.rs) v0.11.0.
+
+## Routes

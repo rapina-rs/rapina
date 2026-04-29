@@ -44,6 +44,13 @@ pub struct RouteInfo {
 }
 
 impl RouteInfo {
+    /// Returns `true` if this route is an internal Rapina route (i.e. served
+    /// under the `/__rapina/` prefix and not part of the user-defined API
+    /// surface).
+    pub fn is_internal(&self) -> bool {
+        self.path.starts_with("/__rapina")
+    }
+
     /// Creates a new RouteInfo with the given metadata.
     #[allow(clippy::too_many_arguments)]
     pub fn new(

@@ -1,0 +1,38 @@
+---
+source: rapina/src/introspection/llms.rs
+expression: output
+---
+# My API
+
+Built with [Rapina](https://rapina.rs) v0.11.0.
+
+## Routes
+
+### POST /v1/users
+
+Request (application/json):
+```json
+{
+  "properties": {
+    "email": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+Response:
+```json
+{
+  "properties": {
+    "id": {
+      "type": "number"
+    }
+  },
+  "type": "object"
+}
+```
+
+Errors:
+  - 409 CONFLICT: email already registered

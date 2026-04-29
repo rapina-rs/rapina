@@ -7,6 +7,7 @@ pub mod doctor;
 #[cfg(feature = "import")]
 pub mod import;
 pub mod jobs;
+pub mod llms;
 pub mod migrate;
 pub mod new;
 pub mod openapi;
