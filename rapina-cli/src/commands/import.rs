@@ -18,7 +18,7 @@ struct IntrospectedTable {
 #[derive(Debug)]
 struct IntrospectedColumn {
     name: String,
-    col_type: NormalizedType,
+    col_type: ImportType,
     is_nullable: bool,
 }
 
@@ -30,90 +30,118 @@ struct IntrospectedForeignKey {
     referenced_columns: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum ImportType {
+    Standard(NormalizedType),
+    #[allow(dead_code)]
+    Unmappable(String),
+}
+
+impl ImportType {
+    fn as_normalized(&self) -> Option<&NormalizedType> {
+        if let ImportType::Standard(t) = self {
+            return Some(t);
+        }
+        None
+    }
+}
+
+impl From<NormalizedType> for ImportType {
+    fn from(t: NormalizedType) -> Self {
+        ImportType::Standard(t)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Type mappers
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "import-postgres")]
-fn map_pg_type(col_type: &sea_schema::postgres::def::Type) -> NormalizedType {
+fn map_pg_type(col_type: &sea_schema::postgres::def::Type) -> ImportType {
     use sea_schema::postgres::def::Type;
     match col_type {
-        Type::SmallInt | Type::Integer | Type::Serial | Type::SmallSerial => NormalizedType::I32,
-        Type::BigInt | Type::BigSerial => NormalizedType::I64,
-        Type::Real => NormalizedType::F32,
-        Type::DoublePrecision => NormalizedType::F64,
-        Type::Money => NormalizedType::Decimal,
-        Type::Varchar(_) | Type::Char(_) => NormalizedType::String,
-        Type::Text => NormalizedType::Text,
-        Type::Bytea => NormalizedType::Bytes,
-        Type::Boolean => NormalizedType::Bool,
-        Type::Uuid => NormalizedType::Uuid,
-        Type::TimestampWithTimeZone(_) => NormalizedType::DateTimeUtc,
-        Type::Timestamp(_) => NormalizedType::DateTime,
-        Type::Date => NormalizedType::Date,
-        Type::Time(_) => NormalizedType::Time,
-        Type::Decimal(_) | Type::Numeric(_) => NormalizedType::Decimal,
-        Type::Json | Type::JsonBinary => NormalizedType::Json,
-        other => NormalizedType::Unmappable(format!("{:?}", other)),
+        Type::SmallInt | Type::Integer | Type::Serial | Type::SmallSerial => {
+            ImportType::Standard(NormalizedType::I32)
+        }
+        Type::BigInt | Type::BigSerial => ImportType::Standard(NormalizedType::I64),
+        Type::Real => ImportType::Standard(NormalizedType::F32),
+        Type::DoublePrecision => ImportType::Standard(NormalizedType::F64),
+        Type::Money => ImportType::Standard(NormalizedType::Decimal),
+        Type::Varchar(_) | Type::Char(_) => ImportType::Standard(NormalizedType::String),
+        Type::Text => ImportType::Standard(NormalizedType::Text),
+        Type::Bytea => ImportType::Standard(NormalizedType::Bytes),
+        Type::Boolean => ImportType::Standard(NormalizedType::Bool),
+        Type::Uuid => ImportType::Standard(NormalizedType::Uuid),
+        Type::TimestampWithTimeZone(_) => ImportType::Standard(NormalizedType::DateTimeUtc),
+        Type::Timestamp(_) => ImportType::Standard(NormalizedType::DateTime),
+        Type::Date => ImportType::Standard(NormalizedType::Date),
+        Type::Time(_) => ImportType::Standard(NormalizedType::Time),
+        Type::Decimal(_) | Type::Numeric(_) => ImportType::Standard(NormalizedType::Decimal),
+        Type::Json | Type::JsonBinary => ImportType::Standard(NormalizedType::Json),
+        other => ImportType::Unmappable(format!("{:?}", other)),
     }
 }
 
 #[cfg(feature = "import-mysql")]
-fn map_mysql_type(col_type: &sea_schema::mysql::def::Type) -> NormalizedType {
+fn map_mysql_type(col_type: &sea_schema::mysql::def::Type) -> ImportType {
     use sea_schema::mysql::def::Type;
     match col_type {
         Type::TinyInt(_) | Type::SmallInt(_) | Type::MediumInt(_) | Type::Int(_) => {
-            NormalizedType::I32
+            ImportType::Standard(NormalizedType::I32)
         }
-        Type::BigInt(_) | Type::Serial => NormalizedType::I64,
-        Type::Float(_) => NormalizedType::F32,
-        Type::Double(_) => NormalizedType::F64,
+        Type::BigInt(_) | Type::Serial => ImportType::Standard(NormalizedType::I64),
+        Type::Float(_) => ImportType::Standard(NormalizedType::F32),
+        Type::Double(_) => ImportType::Standard(NormalizedType::F64),
         Type::Char(_) | Type::NChar(_) | Type::Varchar(_) | Type::NVarchar(_) => {
-            NormalizedType::String
+            ImportType::Standard(NormalizedType::String)
         }
         Type::Text(_) | Type::TinyText(_) | Type::MediumText(_) | Type::LongText(_) => {
-            NormalizedType::Text
+            ImportType::Standard(NormalizedType::Text)
         }
-        Type::Bool => NormalizedType::Bool,
-        Type::Timestamp(_) => NormalizedType::DateTimeUtc,
-        Type::DateTime(_) => NormalizedType::DateTime,
-        Type::Date => NormalizedType::Date,
-        Type::Decimal(_) => NormalizedType::Decimal,
-        Type::Json => NormalizedType::Json,
-        Type::Time(_) => NormalizedType::Time,
-        Type::Binary(s) if s.length == Some(16) => NormalizedType::Uuid,
+        Type::Bool => ImportType::Standard(NormalizedType::Bool),
+        Type::Timestamp(_) => ImportType::Standard(NormalizedType::DateTimeUtc),
+        Type::DateTime(_) => ImportType::Standard(NormalizedType::DateTime),
+        Type::Date => ImportType::Standard(NormalizedType::Date),
+        Type::Decimal(_) => ImportType::Standard(NormalizedType::Decimal),
+        Type::Json => ImportType::Standard(NormalizedType::Json),
+        Type::Time(_) => ImportType::Standard(NormalizedType::Time),
+        Type::Binary(s) if s.length == Some(16) => ImportType::Standard(NormalizedType::Uuid),
         Type::Binary(_)
         | Type::Varbinary(_)
         | Type::TinyBlob
         | Type::Blob(_)
         | Type::MediumBlob
-        | Type::LongBlob => NormalizedType::Bytes,
-        other => NormalizedType::Unmappable(format!("{:?}", other)),
+        | Type::LongBlob => ImportType::Standard(NormalizedType::Bytes),
+        other => ImportType::Unmappable(format!("{:?}", other)),
     }
 }
 
 #[cfg(feature = "import-sqlite")]
-fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedType {
+fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> ImportType {
     use sea_schema::sea_query::ColumnType;
     match col_type {
         ColumnType::TinyInteger | ColumnType::SmallInteger | ColumnType::Integer => {
-            NormalizedType::I32
+            ImportType::Standard(NormalizedType::I32)
         }
-        ColumnType::BigInteger => NormalizedType::I64,
-        ColumnType::Float => NormalizedType::F32,
-        ColumnType::Double => NormalizedType::F64,
-        ColumnType::String(_) | ColumnType::Char(_) => NormalizedType::String,
-        ColumnType::Text => NormalizedType::Text,
-        ColumnType::Boolean => NormalizedType::Bool,
-        ColumnType::TimestampWithTimeZone => NormalizedType::DateTimeUtc,
-        ColumnType::DateTime | ColumnType::Timestamp => NormalizedType::DateTime,
-        ColumnType::Date => NormalizedType::Date,
-        ColumnType::Decimal(_) | ColumnType::Money(_) => NormalizedType::Decimal,
-        ColumnType::Json | ColumnType::JsonBinary => NormalizedType::Json,
-        ColumnType::Uuid => NormalizedType::Uuid,
-        ColumnType::Time => NormalizedType::Time,
+        ColumnType::BigInteger => ImportType::Standard(NormalizedType::I64),
+        ColumnType::Float => ImportType::Standard(NormalizedType::F32),
+        ColumnType::Double => ImportType::Standard(NormalizedType::F64),
+        ColumnType::String(_) | ColumnType::Char(_) => ImportType::Standard(NormalizedType::String),
+        ColumnType::Text => ImportType::Standard(NormalizedType::Text),
+        ColumnType::Boolean => ImportType::Standard(NormalizedType::Bool),
+        ColumnType::TimestampWithTimeZone => ImportType::Standard(NormalizedType::DateTimeUtc),
+        ColumnType::DateTime | ColumnType::Timestamp => {
+            ImportType::Standard(NormalizedType::DateTime)
+        }
+        ColumnType::Date => ImportType::Standard(NormalizedType::Date),
+        ColumnType::Decimal(_) | ColumnType::Money(_) => {
+            ImportType::Standard(NormalizedType::Decimal)
+        }
+        ColumnType::Json | ColumnType::JsonBinary => ImportType::Standard(NormalizedType::Json),
+        ColumnType::Uuid => ImportType::Standard(NormalizedType::Uuid),
+        ColumnType::Time => ImportType::Standard(NormalizedType::Time),
         ColumnType::Blob | ColumnType::Binary(_) | ColumnType::VarBinary(_) => {
-            NormalizedType::Bytes
+            ImportType::Standard(NormalizedType::Bytes)
         }
         ColumnType::Custom(name) => {
             let name_str = name.to_string();
@@ -121,9 +149,10 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
             let base_name = name_str.split('(').next().unwrap_or(&name_str).trim();
             base_name
                 .parse::<NormalizedType>()
-                .unwrap_or_else(|_| NormalizedType::Unmappable(format!("{:?}", col_type)))
+                .map(ImportType::Standard)
+                .unwrap_or_else(|_| ImportType::Unmappable(format!("{:?}", col_type)))
         }
-        other => NormalizedType::Unmappable(format!("{:?}", other)),
+        other => ImportType::Unmappable(format!("{:?}", other)),
     }
 }
 
@@ -133,21 +162,24 @@ fn map_sqlite_type(col_type: &sea_schema::sea_query::ColumnType) -> NormalizedTy
 
 fn normalized_to_field_info(
     col_name: &str,
-    col_type: &NormalizedType,
+    col_type: &ImportType,
     is_nullable: bool,
-) -> Option<FieldInfo> {
-    if let NormalizedType::Unmappable(_) = col_type {
-        return None;
-    }
+) -> Result<Option<FieldInfo>, String> {
+    let normalized_type = match col_type {
+        ImportType::Standard(t) => t.clone(),
+        ImportType::Unmappable(_) => return Ok(None),
+    };
 
-    let normalized_type = col_type.clone();
+    let is_primary_key = col_name == "id";
 
-    Some(FieldInfo::new(
+    let field = FieldInfo::new(
         col_name.to_string(),
         normalized_type,
         is_nullable,
-        false,
-    ))
+        is_primary_key,
+    )?;
+
+    Ok(Some(field))
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +400,7 @@ fn filter_and_validate_tables(
 
             if let Some(pk_col) = table.columns.iter().find(|c| c.name == "id") {
                 match &pk_col.col_type {
-                    NormalizedType::I32 | NormalizedType::Uuid => {}
+                    ImportType::Standard(NormalizedType::I32 | NormalizedType::Uuid) => {}
                     other => {
                         eprintln!(
                             "  {} table {:?} skipped -- PK is {:?} (schema! requires i32 or Uuid)",
@@ -494,7 +526,7 @@ fn generate_for_table(
         && table
             .columns
             .iter()
-            .any(|c| c.name == "id" && c.col_type == NormalizedType::I32);
+            .any(|c| c.name == "id" && c.col_type == ImportType::Standard(NormalizedType::I32));
 
     let skip_columns: Vec<&str> = if is_composite_pk || !is_default_pk {
         vec!["created_at", "updated_at"]
@@ -511,9 +543,9 @@ fn generate_for_table(
         }
 
         match normalized_to_field_info(&col.name, &col.col_type, col.is_nullable) {
-            Some(fi) => fields.push(fi),
-            None => {
-                if let NormalizedType::Unmappable(ref type_name) = col.col_type {
+            Ok(Some(fi)) => fields.push(fi),
+            Ok(None) => {
+                if let ImportType::Unmappable(ref type_name) = col.col_type {
                     eprintln!(
                         "    {} column {:?}.{:?} ({}) has no schema! equivalent -- skipped",
                         "warn:".yellow(),
@@ -524,6 +556,7 @@ fn generate_for_table(
                 }
                 skipped += 1;
             }
+            Err(err) => return Err(err),
         }
     }
 
@@ -542,7 +575,9 @@ fn generate_for_table(
         .columns
         .iter()
         .find(|c| c.name == "id")
-        .map_or(NormalizedType::I32, |c| c.col_type.clone());
+        .and_then(|c| c.col_type.as_normalized())
+        .cloned()
+        .unwrap_or(NormalizedType::I32);
 
     codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
     codegen::create_migration_file(plural, &pascal_plural, &fields, false)?;
@@ -693,7 +728,10 @@ mod tests {
 
     #[test]
     fn test_normalized_to_field_info_string_not_null() {
-        let fi = normalized_to_field_info("name", &NormalizedType::String, false).unwrap();
+        let result =
+            normalized_to_field_info("name", &ImportType::Standard(NormalizedType::String), false)
+                .unwrap();
+        let fi = result.unwrap();
         assert_eq!(fi.name, "name");
         assert_eq!(fi.normalized_type, NormalizedType::String);
         assert_eq!(
@@ -704,50 +742,62 @@ mod tests {
 
     #[test]
     fn test_normalized_to_field_info_nullable() {
-        let fi = normalized_to_field_info("bio", &NormalizedType::Text, true).unwrap();
-        assert_eq!(fi.normalized_type, NormalizedType::Text);
+        let result =
+            normalized_to_field_info("bio", &ImportType::Standard(NormalizedType::String), true)
+                .unwrap();
+        let fi = result.unwrap();
+        assert_eq!(fi.normalized_type, NormalizedType::String);
         assert_eq!(
             fi.generate_column("Profiles"),
-            ".col(ColumnDef::new(Profiles::Bio).text().null())"
+            ".col(ColumnDef::new(Profiles::Bio).string().null())"
         );
     }
 
     #[test]
     fn test_normalized_to_field_info_unmappable() {
-        let result = normalized_to_field_info(
-            "geom",
-            &NormalizedType::Unmappable("geometry".into()),
-            false,
-        );
+        let result =
+            normalized_to_field_info("geom", &ImportType::Unmappable("geometry".into()), false)
+                .unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn test_normalized_to_field_info_all_types() {
         let cases = vec![
-            (NormalizedType::String, "String", ".string()"),
-            (NormalizedType::Text, "String", ".text()"),
-            (NormalizedType::I32, "i32", ".integer()"),
-            (NormalizedType::I64, "i64", ".big_integer()"),
-            (NormalizedType::F32, "f32", ".float()"),
-            (NormalizedType::F64, "f64", ".double()"),
-            (NormalizedType::Bool, "bool", ".boolean()"),
-            (NormalizedType::Uuid, "Uuid", ".uuid()"),
+            (NormalizedType::String, "String", ".string().not_null()"),
+            (NormalizedType::Text, "String", ".text().not_null()"),
+            (NormalizedType::I32, "i32", ".integer().not_null()"),
+            (NormalizedType::I64, "i64", ".big_integer().not_null()"),
+            (NormalizedType::F32, "f32", ".float().not_null()"),
+            (NormalizedType::F64, "f64", ".double().not_null()"),
+            (
+                NormalizedType::Bool,
+                "bool",
+                ".boolean().default(Expr::value(false)).not_null()",
+            ),
+            (NormalizedType::Uuid, "Uuid", ".uuid().not_null()"),
             (
                 NormalizedType::DateTimeUtc,
                 "DateTimeUtc",
-                ".timestamp_with_time_zone()",
+                ".timestamp_with_time_zone().not_null()",
             ),
-            (NormalizedType::DateTime, "DateTime", ".date_time()"),
-            (NormalizedType::Date, "Date", ".date()"),
-            (NormalizedType::Decimal, "Decimal", ".decimal()"),
-            (NormalizedType::Json, "Json", ".json()"),
-            (NormalizedType::Bytes, "Vec<u8>", ".binary()"),
-            (NormalizedType::Time, "Time", ".time()"),
+            (
+                NormalizedType::DateTime,
+                "DateTime",
+                ".date_time().not_null()",
+            ),
+            (NormalizedType::Date, "Date", ".date().not_null()"),
+            (NormalizedType::Decimal, "Decimal", ".decimal().not_null()"),
+            (NormalizedType::Json, "Json", ".json().not_null()"),
+            (NormalizedType::Bytes, "Vec<u8>", ".binary().not_null()"),
+            (NormalizedType::Time, "Time", ".time().not_null()"),
         ];
 
         for (norm_type, expected_rust, expected_col_base) in cases {
-            let fi = normalized_to_field_info("x", &norm_type, false).unwrap();
+            let result =
+                normalized_to_field_info("x", &ImportType::Standard(norm_type.clone()), false)
+                    .unwrap();
+            let fi = result.unwrap();
             assert_eq!(
                 fi.normalized_type.to_string(),
                 expected_rust,
@@ -756,14 +806,18 @@ mod tests {
             );
             assert_eq!(
                 fi.generate_column("Users"),
-                format!(
-                    ".col(ColumnDef::new(Users::X){}.not_null())",
-                    expected_col_base
-                ),
+                format!(".col(ColumnDef::new(Users::X){})", expected_col_base),
                 "column_method for {:?}",
                 norm_type
             );
         }
+    }
+
+    #[test]
+    fn test_nomalized_field_name_not_valid() {
+        let fi =
+            normalized_to_field_info("123bio", &ImportType::Standard(NormalizedType::Text), true);
+        assert!(fi.is_err())
     }
 
     #[test]
@@ -773,17 +827,17 @@ mod tests {
             columns: vec![
                 IntrospectedColumn {
                     name: "id".into(),
-                    col_type: NormalizedType::I32,
+                    col_type: ImportType::Standard(NormalizedType::I32),
                     is_nullable: false,
                 },
                 IntrospectedColumn {
                     name: "created_at".into(),
-                    col_type: NormalizedType::DateTimeUtc,
+                    col_type: ImportType::Standard(NormalizedType::DateTimeUtc),
                     is_nullable: false,
                 },
                 IntrospectedColumn {
                     name: "updated_at".into(),
-                    col_type: NormalizedType::DateTimeUtc,
+                    col_type: ImportType::Standard(NormalizedType::DateTimeUtc),
                     is_nullable: false,
                 },
             ],
@@ -799,7 +853,7 @@ mod tests {
             name: "tokens".into(),
             columns: vec![IntrospectedColumn {
                 name: "id".into(),
-                col_type: NormalizedType::I32,
+                col_type: ImportType::Standard(NormalizedType::I32),
                 is_nullable: false,
             }],
             primary_key_columns: vec!["id".into()],
@@ -815,12 +869,12 @@ mod tests {
             columns: vec![
                 IntrospectedColumn {
                     name: "id".into(),
-                    col_type: NormalizedType::I32,
+                    col_type: ImportType::Standard(NormalizedType::I32),
                     is_nullable: false,
                 },
                 IntrospectedColumn {
                     name: "created_at".into(),
-                    col_type: NormalizedType::DateTimeUtc,
+                    col_type: ImportType::Standard(NormalizedType::DateTimeUtc),
                     is_nullable: false,
                 },
             ],
@@ -880,7 +934,7 @@ mod tests {
             name: "events".into(),
             columns: vec![IntrospectedColumn {
                 name: "event_id".into(),
-                col_type: NormalizedType::I32,
+                col_type: ImportType::Standard(NormalizedType::I32),
                 is_nullable: false,
             }],
             primary_key_columns: vec!["event_id".into()],
@@ -896,7 +950,7 @@ mod tests {
             name: "events".into(),
             columns: vec![IntrospectedColumn {
                 name: "id".into(),
-                col_type: NormalizedType::Uuid,
+                col_type: ImportType::Standard(NormalizedType::Uuid),
                 is_nullable: false,
             }],
             primary_key_columns: vec!["id".into()],
@@ -913,7 +967,7 @@ mod tests {
             name: "events".into(),
             columns: vec![IntrospectedColumn {
                 name: "id".into(),
-                col_type: NormalizedType::String, // Not i32 or Uuid
+                col_type: ImportType::Standard(NormalizedType::String), // Not i32 or Uuid
                 is_nullable: false,
             }],
             primary_key_columns: vec!["id".into()],
@@ -929,7 +983,7 @@ mod tests {
             name: "users".into(),
             columns: vec![IntrospectedColumn {
                 name: "id".into(),
-                col_type: NormalizedType::I32,
+                col_type: ImportType::Standard(NormalizedType::I32),
                 is_nullable: false,
             }],
             primary_key_columns: vec!["id".into()],
@@ -947,7 +1001,7 @@ mod tests {
                 name: "users".into(),
                 columns: vec![IntrospectedColumn {
                     name: "id".into(),
-                    col_type: NormalizedType::I32,
+                    col_type: ImportType::Standard(NormalizedType::I32),
                     is_nullable: false,
                 }],
                 primary_key_columns: vec!["id".into()],
@@ -957,7 +1011,7 @@ mod tests {
                 name: "posts".into(),
                 columns: vec![IntrospectedColumn {
                     name: "id".into(),
-                    col_type: NormalizedType::I32,
+                    col_type: ImportType::Standard(NormalizedType::I32),
                     is_nullable: false,
                 }],
                 primary_key_columns: vec!["id".into()],
@@ -977,7 +1031,7 @@ mod tests {
                 name: "users".into(),
                 columns: vec![IntrospectedColumn {
                     name: "id".into(),
-                    col_type: NormalizedType::I32,
+                    col_type: ImportType::Standard(NormalizedType::I32),
                     is_nullable: false,
                 }],
                 primary_key_columns: vec!["id".into()],
@@ -988,12 +1042,12 @@ mod tests {
                 columns: vec![
                     IntrospectedColumn {
                         name: "id".into(),
-                        col_type: NormalizedType::I32,
+                        col_type: ImportType::Standard(NormalizedType::I32),
                         is_nullable: false,
                     },
                     IntrospectedColumn {
                         name: "user_id".into(),
-                        col_type: NormalizedType::I32,
+                        col_type: ImportType::Standard(NormalizedType::I32),
                         is_nullable: false,
                     },
                 ],
@@ -1027,19 +1081,40 @@ mod tests {
     #[test]
     fn test_map_pg_type_integers() {
         use sea_schema::postgres::def::Type;
-        assert_eq!(map_pg_type(&Type::SmallInt), NormalizedType::I32);
-        assert_eq!(map_pg_type(&Type::Integer), NormalizedType::I32);
-        assert_eq!(map_pg_type(&Type::Serial), NormalizedType::I32);
-        assert_eq!(map_pg_type(&Type::BigInt), NormalizedType::I64);
-        assert_eq!(map_pg_type(&Type::BigSerial), NormalizedType::I64);
+        assert_eq!(
+            map_pg_type(&Type::SmallInt),
+            ImportType::Standard(NormalizedType::I32)
+        );
+        assert_eq!(
+            map_pg_type(&Type::Integer),
+            ImportType::Standard(NormalizedType::I32)
+        );
+        assert_eq!(
+            map_pg_type(&Type::Serial),
+            ImportType::Standard(NormalizedType::I32)
+        );
+        assert_eq!(
+            map_pg_type(&Type::BigInt),
+            ImportType::Standard(NormalizedType::I64)
+        );
+        assert_eq!(
+            map_pg_type(&Type::BigSerial),
+            ImportType::Standard(NormalizedType::I64)
+        );
     }
 
     #[cfg(feature = "import-postgres")]
     #[test]
     fn test_map_pg_type_floats() {
         use sea_schema::postgres::def::Type;
-        assert_eq!(map_pg_type(&Type::Real), NormalizedType::F32);
-        assert_eq!(map_pg_type(&Type::DoublePrecision), NormalizedType::F64);
+        assert_eq!(
+            map_pg_type(&Type::Real),
+            ImportType::Standard(NormalizedType::F32)
+        );
+        assert_eq!(
+            map_pg_type(&Type::DoublePrecision),
+            ImportType::Standard(NormalizedType::F64)
+        );
     }
 
     #[cfg(feature = "import-postgres")]
@@ -1048,20 +1123,38 @@ mod tests {
         use sea_schema::postgres::def::{StringAttr, Type};
         assert_eq!(
             map_pg_type(&Type::Varchar(StringAttr { length: None })),
-            NormalizedType::String
+            ImportType::Standard(NormalizedType::String)
         );
-        assert_eq!(map_pg_type(&Type::Text), NormalizedType::Text);
+        assert_eq!(
+            map_pg_type(&Type::Text),
+            ImportType::Standard(NormalizedType::Text)
+        );
     }
 
     #[cfg(feature = "import-postgres")]
     #[test]
     fn test_map_pg_type_special() {
         use sea_schema::postgres::def::Type;
-        assert_eq!(map_pg_type(&Type::Boolean), NormalizedType::Bool);
-        assert_eq!(map_pg_type(&Type::Uuid), NormalizedType::Uuid);
-        assert_eq!(map_pg_type(&Type::Date), NormalizedType::Date);
-        assert_eq!(map_pg_type(&Type::Json), NormalizedType::Json);
-        assert_eq!(map_pg_type(&Type::JsonBinary), NormalizedType::Json);
+        assert_eq!(
+            map_pg_type(&Type::Boolean),
+            ImportType::Standard(NormalizedType::Bool)
+        );
+        assert_eq!(
+            map_pg_type(&Type::Uuid),
+            ImportType::Standard(NormalizedType::Uuid)
+        );
+        assert_eq!(
+            map_pg_type(&Type::Date),
+            ImportType::Standard(NormalizedType::Date)
+        );
+        assert_eq!(
+            map_pg_type(&Type::Json),
+            ImportType::Standard(NormalizedType::Json)
+        );
+        assert_eq!(
+            map_pg_type(&Type::JsonBinary),
+            ImportType::Standard(NormalizedType::Json)
+        );
     }
 
     #[cfg(feature = "import-postgres")]
@@ -1070,7 +1163,7 @@ mod tests {
         use sea_schema::postgres::def::Type;
         assert!(matches!(
             map_pg_type(&Type::Point),
-            NormalizedType::Unmappable(_)
+            ImportType::Unmappable(_)
         ));
     }
 
@@ -1078,8 +1171,14 @@ mod tests {
     #[test]
     fn test_map_sqlite_type_special() {
         use sea_schema::sea_query::ColumnType;
-        assert_eq!(map_sqlite_type(&ColumnType::Uuid), NormalizedType::Uuid);
-        assert_eq!(map_sqlite_type(&ColumnType::Integer), NormalizedType::I32);
+        assert_eq!(
+            map_sqlite_type(&ColumnType::Uuid),
+            ImportType::Standard(NormalizedType::Uuid)
+        );
+        assert_eq!(
+            map_sqlite_type(&ColumnType::Integer),
+            ImportType::Standard(NormalizedType::I32)
+        );
     }
 
     #[cfg(feature = "import-mysql")]
@@ -1091,11 +1190,11 @@ mod tests {
                 length: Some(16),
                 ..Default::default()
             })),
-            NormalizedType::Uuid
+            ImportType::Standard(NormalizedType::Uuid)
         );
         assert_eq!(
             map_mysql_type(&Type::Int(NumericAttr::default())),
-            NormalizedType::I32
+            ImportType::Standard(NormalizedType::I32)
         );
     }
 }

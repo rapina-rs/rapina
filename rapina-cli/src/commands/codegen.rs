@@ -1,3 +1,5 @@
+use crate::commands::schema_type_name;
+
 use super::{Colorize, FieldInfo, NormalizedType};
 use std::fs;
 use std::path::Path;
@@ -451,7 +453,13 @@ pub(crate) fn generate_schema_block(
 ) -> String {
     let schema_fields: Vec<String> = fields
         .iter()
-        .map(|f| format!("        {}: {},", f.name, f.schema_type_name()))
+        .map(|f| {
+            format!(
+                "        {}: {},",
+                f.name,
+                schema_type_name(&f.normalized_type, f.nullable)
+            )
+        })
         .collect();
 
     let mut attrs = String::new();

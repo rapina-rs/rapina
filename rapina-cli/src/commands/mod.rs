@@ -1,4 +1,17 @@
-//! CLI command implementations.
+//! Core command layer for `rapina-cli`.
+//!
+//! This module has two responsibilities:
+//! 1. Expose each command module (`add`, `migrate`, `routes`, etc.).
+//! 2. Provide shared command-domain primitives used across generators/importers.
+//!
+//! The shared primitives here are intentionally generic and CLI-oriented:
+//! - [`NormalizedType`]: canonical field type vocabulary accepted by the CLI.
+//! - [`FieldInfo`]: normalized description of a user/database field.
+//! - [`ValidationContext`]: naming rules for resources and fields.
+//!
+//! Important boundary: database-import-specific edge cases must stay in
+//! `commands/import.rs` (for example unmappable vendor-specific types), while
+//! this module only keeps types that are valid across the command surface.
 
 pub mod add;
 pub(crate) mod codegen;
@@ -19,7 +32,8 @@ pub mod test;
 
 #[cfg(feature = "import-openapi")]
 pub mod import_openapi;
-pub(crate) use colored::Colorize;
+
+use colored::Colorize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NormalizedType {
@@ -38,11 +52,12 @@ pub(crate) enum NormalizedType {
     Json,
     Bytes,
     Time,
-    #[cfg(feature = "import")]
-    #[allow(dead_code)]
-    Unmappable(String),
 }
 
+/// Converts user-facing type aliases into the CLI canonical type system.
+///
+/// This parser is used by command inputs (e.g. schema definitions from flags)
+/// and should remain stable and forgiving with common aliases.
 impl std::str::FromStr for NormalizedType {
     type Err = String;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -67,6 +82,12 @@ impl std::str::FromStr for NormalizedType {
     }
 }
 
+/// Human-readable canonical type label used by CLI/codegen internals.
+///
+/// This is **not** the same mapping used by generated schema Rust types
+/// (see [`schema_type_name`]). For example:
+/// - `DateTimeUtc` -> `"DateTimeUtc"` here
+/// - `DateTimeUtc` -> `"DateTime"` in [`schema_type_name`]
 impl std::fmt::Display for NormalizedType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
@@ -84,14 +105,13 @@ impl std::fmt::Display for NormalizedType {
             NormalizedType::Json => "Json",
             NormalizedType::Bytes => "Vec<u8>",
             NormalizedType::Time => "Time",
-            #[cfg(feature = "import")]
-            NormalizedType::Unmappable(s) => s,
         };
         write!(f, "{}", s)
     }
 }
 
 impl NormalizedType {
+    /// Returns SeaORM import names for types that require explicit imports.
     pub(crate) fn sea_orm_import_name(&self) -> Option<&'static str> {
         match self {
             NormalizedType::DateTimeUtc => Some("DateTimeUtc"),
@@ -106,14 +126,19 @@ impl NormalizedType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct FieldInfo {
+    /// Source field name in snake_case (e.g. `created_at`).
     pub name: String,
+    /// Column enum variant identifier in PascalCase (e.g. `CreatedAt`).
     pub ident: String,
+    /// Canonical type resolved by CLI parsing/introspection.
     pub normalized_type: NormalizedType,
-    _column_method: String,
+    /// Whether generated schema/migration should mark the column nullable.
     pub nullable: bool,
+    /// Whether this field is part of the primary key in generated artifacts.
     pub is_primary_key: bool,
 }
 
+/// Parses `name:type` CLI field arguments into a validated [`FieldInfo`].
 impl std::str::FromStr for FieldInfo {
     type Err = String;
 
@@ -133,7 +158,6 @@ impl std::str::FromStr for FieldInfo {
             name: name.to_string(),
             ident,
             normalized_type,
-            _column_method: String::new(),
             nullable,
             is_primary_key,
         })
@@ -147,16 +171,16 @@ impl FieldInfo {
         normalized_type: NormalizedType,
         nullable: bool,
         is_primary_key: bool,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        ValidationContext::Field.validate(&name)?;
         let ident = codegen::to_pascal_case(&name);
-        Self {
+        Ok(Self {
             name,
             ident,
             normalized_type,
-            _column_method: String::new(),
             nullable,
             is_primary_key,
-        }
+        })
     }
 
     fn generate_column(&self, table_pascal_plural: &str) -> String {
@@ -176,8 +200,6 @@ impl FieldInfo {
             NormalizedType::Json => ".json()",
             NormalizedType::Bytes => ".binary()",
             NormalizedType::Time => ".time()",
-            #[cfg(feature = "import")]
-            NormalizedType::Unmappable(_) => "",
         };
 
         let mut method = base.to_string();
@@ -203,34 +225,6 @@ impl FieldInfo {
             table_pascal_plural, self.ident, method
         )
     }
-
-    pub(crate) fn schema_type_name(&self) -> String {
-        let s = match &self.normalized_type {
-            NormalizedType::String => "String".to_string(),
-            NormalizedType::Text => "Text".to_string(),
-            NormalizedType::I32 => "i32".to_string(),
-            NormalizedType::I64 => "i64".to_string(),
-            NormalizedType::F32 => "f32".to_string(),
-            NormalizedType::F64 => "f64".to_string(),
-            NormalizedType::Bool => "bool".to_string(),
-            NormalizedType::Uuid => "Uuid".to_string(),
-            NormalizedType::DateTimeUtc => "DateTime".to_string(),
-            NormalizedType::DateTime => "NaiveDateTime".to_string(),
-            NormalizedType::Date => "Date".to_string(),
-            NormalizedType::Decimal => "Decimal".to_string(),
-            NormalizedType::Json => "Json".to_string(),
-            NormalizedType::Bytes => "Vec<u8>".to_string(),
-            NormalizedType::Time => "Time".to_string(),
-            #[cfg(feature = "import")]
-            NormalizedType::Unmappable(s) => s.clone(),
-        };
-
-        if self.nullable {
-            format!("Option<{s}>")
-        } else {
-            s
-        }
-    }
 }
 
 pub(crate) enum ValidationContext {
@@ -246,6 +240,10 @@ impl ValidationContext {
         }
     }
 
+    /// Validates CLI identifiers for resources/fields.
+    ///
+    /// Rules are intentionally strict to guarantee generated Rust identifiers,
+    /// module names, and schema symbols remain deterministic and compile-safe.
     pub(crate) fn validate(&self, name: &str) -> Result<(), String> {
         let ctx_prefix = self.as_str();
 
@@ -253,7 +251,7 @@ impl ValidationContext {
             return Err(format!("{} cannot be empty", ctx_prefix));
         }
 
-        if name.chars().next().unwrap().is_ascii_digit() {
+        if name.starts_with(|c: char| c.is_ascii_digit()) {
             return Err(format!("{} cannot start with a digit", ctx_prefix));
         }
 
@@ -289,6 +287,34 @@ impl ValidationContext {
     }
 }
 
+/// Returns the concrete Rust type name used in generated `schema!` fields.
+///
+/// This mapping is schema-code specific and can differ from [`Display`] for
+/// [`NormalizedType`]. In particular:
+/// - `NormalizedType::DateTimeUtc` maps to `"DateTime"`
+/// - `NormalizedType::DateTime` maps to `"NaiveDateTime"`
+pub(crate) fn schema_type_name(normalized: &NormalizedType, nullable: bool) -> String {
+    let s = match normalized {
+        NormalizedType::String => "String".to_string(),
+        NormalizedType::Text => "Text".to_string(),
+        NormalizedType::I32 => "i32".to_string(),
+        NormalizedType::I64 => "i64".to_string(),
+        NormalizedType::F32 => "f32".to_string(),
+        NormalizedType::F64 => "f64".to_string(),
+        NormalizedType::Bool => "bool".to_string(),
+        NormalizedType::Uuid => "Uuid".to_string(),
+        NormalizedType::DateTimeUtc => "DateTime".to_string(),
+        NormalizedType::DateTime => "NaiveDateTime".to_string(),
+        NormalizedType::Date => "Date".to_string(),
+        NormalizedType::Decimal => "Decimal".to_string(),
+        NormalizedType::Json => "Json".to_string(),
+        NormalizedType::Bytes => "Vec<u8>".to_string(),
+        NormalizedType::Time => "Time".to_string(),
+    };
+
+    if nullable { format!("Option<{s}>") } else { s }
+}
+
 /// Verify that we're in a valid Rapina project directory.
 pub fn verify_rapina_project() -> Result<toml::Value, String> {
     let cargo_toml = std::path::Path::new("Cargo.toml");
@@ -319,9 +345,8 @@ pub fn verify_rapina_project() -> Result<toml::Value, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::{FieldInfo, NormalizedType, schema_type_name};
     use crate::commands::ValidationContext;
-
-    use super::{FieldInfo, NormalizedType};
 
     #[test]
     fn test_parse_field_valid() {
@@ -540,26 +565,20 @@ mod tests {
     #[test]
     fn test_normalized_type_schema_name() {
         let filds = vec![
-            ("name:string".parse::<FieldInfo>().unwrap(), "String"),
-            ("age:i32".parse::<FieldInfo>().unwrap(), "i32"),
-            ("is_active:bool".parse::<FieldInfo>().unwrap(), "bool"),
-            ("date:date".parse::<FieldInfo>().unwrap(), "Date"),
-            ("time:time".parse::<FieldInfo>().unwrap(), "Time"),
-            (
-                "datetime:datetime".parse::<FieldInfo>().unwrap(),
-                "DateTime",
-            ),
-            (
-                "datetimeutc:datetimeutc".parse::<FieldInfo>().unwrap(),
-                "DateTime",
-            ),
-            ("decimal:decimal".parse::<FieldInfo>().unwrap(), "Decimal"),
-            ("json:json".parse::<FieldInfo>().unwrap(), "Json"),
-            ("bytes:bytes".parse::<FieldInfo>().unwrap(), "Vec<u8>"),
+            (NormalizedType::String, "String"),
+            (NormalizedType::I32, "i32"),
+            (NormalizedType::Bool, "bool"),
+            (NormalizedType::Date, "Date"),
+            (NormalizedType::Time, "Time"),
+            (NormalizedType::DateTime, "NaiveDateTime"),
+            (NormalizedType::DateTimeUtc, "DateTime"),
+            (NormalizedType::Decimal, "Decimal"),
+            (NormalizedType::Json, "Json"),
+            (NormalizedType::Bytes, "Vec<u8>"),
         ];
 
-        for field in filds {
-            assert_eq!(field.0.schema_type_name(), field.1);
+        for (normalized_type, expected) in filds {
+            assert_eq!(schema_type_name(&normalized_type, false), expected);
         }
     }
 
