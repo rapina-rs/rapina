@@ -224,13 +224,7 @@ pub struct NamedHeader<T, const N: usize>(pub Header<T>, std::marker::PhantomDat
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use http::Request;
-
-    use crate::extract::PathParams;
-    use crate::state::AppState;
-    use crate::test::{TestRequest, empty_params, empty_state};
+    use crate::test::TestRequest;
 
     use super::*;
 
@@ -345,14 +339,14 @@ mod tests {
 
     #[test]
     fn test_header_value_bool() {
-        assert_eq!(bool::from_header_str("true").unwrap(), true);
-        assert_eq!(bool::from_header_str("false").unwrap(), false);
+        assert!(bool::from_header_str("true").unwrap());
+        assert!(!bool::from_header_str("false").unwrap());
         assert!(bool::from_header_str("yes").is_err());
     }
 
     #[test]
     fn test_header_value_f64() {
-        assert_eq!(f64::from_header_str("3.14").unwrap(), 3.14);
+        assert_eq!(f64::from_header_str("1.5").unwrap(), 1.5_f64);
         assert!(f64::from_header_str("abc").is_err());
     }
 }
