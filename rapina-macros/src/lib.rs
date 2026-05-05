@@ -321,7 +321,7 @@ fn route_macro_core(
 
         // Check if the single arg is a header type
         let single_is_header = args.len() == 1
-            && args.first().map_or(false, |arg| {
+            && args.first().is_some_and(|arg| {
                 if let FnArg::Typed(pt) = arg {
                     detect_header_type(&pt.ty).is_some()
                 } else {
