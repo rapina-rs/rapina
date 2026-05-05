@@ -15,6 +15,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 use validator::Validate;
 
+pub mod header;
+pub use header::{Header, HeaderValue, extract_header, extract_optional_header};
+
 #[cfg(feature = "multipart")]
 pub mod multipart;
 #[cfg(feature = "multipart")]

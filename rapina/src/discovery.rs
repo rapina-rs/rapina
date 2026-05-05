@@ -16,8 +16,19 @@
 //! The `#[public]` attribute emits a [`PublicMarker`] so the discovery loop
 //! can mark routes as public without manual `.public_route()` calls.
 
+use serde::Serialize;
+
 use crate::error::ErrorVariant;
 use crate::router::Router;
+
+/// Metadata about a typed header parameter declared on a route handler.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct HeaderParamInfo {
+    /// The HTTP header name (e.g. "X-Request-Id").
+    pub name: String,
+    /// Whether the header is required (`Header<T>`) or optional (`Option<Header<T>>`).
+    pub required: bool,
+}
 
 /// Metadata about a route handler, collected at link time via `inventory`.
 ///
@@ -41,6 +52,8 @@ pub struct RouteDescriptor {
     pub request_body_required: fn() -> Option<bool>,
     /// Returns documented error variants for this route
     pub error_responses: fn() -> Vec<ErrorVariant>,
+    /// Returns typed header parameters declared on this handler
+    pub header_parameters: fn() -> Vec<HeaderParamInfo>,
     /// Registers this route on the given Router and returns it
     pub register: fn(Router) -> Router,
 }

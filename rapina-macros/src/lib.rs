@@ -1,3 +1,4 @@
+use heck::ToKebabCase;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -246,6 +247,34 @@ fn route_macro_core(
             (quote! {}, quote! {}, quote! {})
         };
 
+    // Collect header params (also strips #[header("name")] attrs from inputs)
+    let header_params = collect_header_params(&mut func.sig.inputs);
+
+    // Build an index: arg_idx → &HeaderParamMeta for O(1) lookup during codegen
+    let header_by_arg: std::collections::HashMap<usize, &HeaderParamMeta> =
+        header_params.iter().map(|p| (p.arg_idx, p)).collect();
+
+    // Build header_parameters() impl for the Handler trait
+    let header_parameters_impl = if header_params.is_empty() {
+        quote! {}
+    } else {
+        let entries = header_params.iter().map(|p| {
+            let name = &p.name;
+            let required = p.required;
+            quote! {
+                rapina::discovery::HeaderParamInfo {
+                    name: #name.to_string(),
+                    required: #required,
+                }
+            }
+        });
+        quote! {
+            fn header_parameters() -> Vec<rapina::discovery::HeaderParamInfo> {
+                vec![#(#entries),*]
+            }
+        }
+    };
+
     let args: Vec<_> = func.sig.inputs.iter().collect();
 
     // Extract return type for type annotation (helps with type inference in async blocks)
@@ -281,8 +310,27 @@ fn route_macro_core(
     } else {
         let inner_block = &func.block;
 
-        if args.len() == 1 {
-            // Single arg: pass request directly to FromRequest
+        // Check if all args are header extractors (so we never need to split req into parts)
+        let all_headers = args.iter().all(|arg| {
+            if let FnArg::Typed(pt) = arg {
+                detect_header_type(&pt.ty).is_some()
+            } else {
+                false
+            }
+        });
+
+        // Check if the single arg is a header type
+        let single_is_header = args.len() == 1
+            && args.first().map_or(false, |arg| {
+                if let FnArg::Typed(pt) = arg {
+                    detect_header_type(&pt.ty).is_some()
+                } else {
+                    false
+                }
+            });
+
+        if args.len() == 1 && !single_is_header {
+            // Single non-header arg: pass request directly to FromRequest
             let arg = &args[0];
             if let FnArg::Typed(pat_type) = arg {
                 let pat = &pat_type.pat;
@@ -302,8 +350,36 @@ fn route_macro_core(
             } else {
                 unreachable!("handler argument must be a typed pattern")
             }
+        } else if all_headers {
+            // All args are header extractors — extract from parts, no body split needed
+            let mut header_extractions = Vec::new();
+            for (i, arg) in args.iter().enumerate() {
+                if let FnArg::Typed(pat_type) = arg {
+                    let pat = &pat_type.pat;
+                    let tmp = syn::Ident::new(
+                        &format!("__rapina_arg_{}", i),
+                        proc_macro2::Span::call_site(),
+                    );
+                    let meta = header_by_arg.get(&i).expect("all_headers: missing meta");
+                    header_extractions.push(gen_header_extraction(
+                        &meta.inner_type,
+                        meta.required,
+                        &meta.name,
+                        &tmp,
+                    ));
+                    header_extractions.push(quote! { let #pat = #tmp; });
+                }
+            }
+            quote! {
+                let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+                #(#header_extractions)*
+                let __rapina_result #return_type_annotation = (async #inner_block).await;
+                let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
+                #cache_header_injection
+                __rapina_response
+            }
         } else {
-            // Multiple args: all but last use FromRequestParts, last uses FromRequest
+            // Multiple args: all but last use FromRequestParts (or header extraction), last uses FromRequest
             let mut parts_extractions = Vec::new();
 
             for (i, arg) in args[..args.len() - 1].iter().enumerate() {
@@ -314,13 +390,24 @@ fn route_macro_core(
                         &format!("__rapina_arg_{}", i),
                         proc_macro2::Span::call_site(),
                     );
-                    parts_extractions.push(quote! {
-                        let #tmp = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
-                            Ok(v) => v,
-                            Err(e) => return rapina::response::IntoResponse::into_response(e),
-                        };
-                        let #pat = #tmp;
-                    });
+                    if detect_header_type(arg_type).is_some() {
+                        let meta = header_by_arg.get(&i).expect("mixed: missing meta");
+                        parts_extractions.push(gen_header_extraction(
+                            &meta.inner_type,
+                            meta.required,
+                            &meta.name,
+                            &tmp,
+                        ));
+                        parts_extractions.push(quote! { let #pat = #tmp; });
+                    } else {
+                        parts_extractions.push(quote! {
+                            let #tmp = match <#arg_type as rapina::extract::FromRequestParts>::from_request_parts(&__rapina_parts, &__rapina_params, &__rapina_state).await {
+                                Ok(v) => v,
+                                Err(e) => return rapina::response::IntoResponse::into_response(e),
+                            };
+                            let #pat = #tmp;
+                        });
+                    }
                 }
             }
 
@@ -328,17 +415,32 @@ fn route_macro_core(
             let last_extraction = if let FnArg::Typed(pat_type) = last_arg {
                 let pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
+                let last_idx = args.len() - 1;
                 let tmp = syn::Ident::new(
-                    &format!("__rapina_arg_{}", args.len() - 1),
+                    &format!("__rapina_arg_{}", last_idx),
                     proc_macro2::Span::call_site(),
                 );
-                quote! {
-                    let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
-                    let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
-                        Ok(v) => v,
-                        Err(e) => return rapina::response::IntoResponse::into_response(e),
-                    };
-                    let #pat = #tmp;
+                if detect_header_type(arg_type).is_some() {
+                    let meta = header_by_arg
+                        .get(&last_idx)
+                        .expect("last arg: missing meta");
+                    let header_extr =
+                        gen_header_extraction(&meta.inner_type, meta.required, &meta.name, &tmp);
+                    quote! {
+                        #header_extr
+                        let #pat = #tmp;
+                        // Reconstruct the request (body not consumed for header-only last arg)
+                        let _ = __rapina_body;
+                    }
+                } else {
+                    quote! {
+                        let __rapina_req = rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
+                        let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
+                            Ok(v) => v,
+                            Err(e) => return rapina::response::IntoResponse::into_response(e),
+                        };
+                        let #pat = #tmp;
+                    }
                 }
             } else {
                 unreachable!("handler argument must be a typed pattern")
@@ -377,6 +479,7 @@ fn route_macro_core(
             #request_content_type_impl
             #request_body_required_impl
             #error_responses_impl
+            #header_parameters_impl
 
             fn call(
                 &self,
@@ -406,6 +509,7 @@ fn route_macro_core(
                 request_content_type: <#func_name as rapina::handler::Handler>::request_content_type,
                 request_body_required: <#func_name as rapina::handler::Handler>::request_body_required,
                 error_responses: <#func_name as rapina::handler::Handler>::error_responses,
+                header_parameters: <#func_name as rapina::handler::Handler>::header_parameters,
                 register: #register_fn_name,
             }
         }
@@ -548,6 +652,133 @@ fn extract_public_attr(attrs: &mut Vec<syn::Attribute>) -> bool {
     } else {
         false
     }
+}
+
+/// Generate the extraction code for a `Header<T>` or `Option<Header<T>>` parameter.
+///
+/// `header_name` is the resolved HTTP header name (kebab-case, possibly from
+/// an explicit `#[header("name")]` attribute).
+fn gen_header_extraction(
+    inner_type: &syn::Type,
+    required: bool,
+    header_name: &str,
+    tmp: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    if required {
+        quote! {
+            let #tmp = match rapina::extract::extract_header::<#inner_type>(&__rapina_parts, #header_name) {
+                Ok(v) => rapina::extract::Header::new(#header_name, v),
+                Err(e) => return rapina::response::IntoResponse::into_response(e),
+            };
+        }
+    } else {
+        quote! {
+            let #tmp = match rapina::extract::extract_optional_header::<#inner_type>(&__rapina_parts, #header_name) {
+                Ok(v) => v,
+                Err(e) => return rapina::response::IntoResponse::into_response(e),
+            };
+        }
+    }
+}
+
+/// Metadata about a single `Header<T>` or `Option<Header<T>>` parameter.
+struct HeaderParamMeta {
+    /// Zero-based index of this param in the handler's argument list.
+    arg_idx: usize,
+    /// The HTTP header name (e.g. "x-request-id").
+    name: String,
+    /// Whether the parameter is required (`Header<T>`) or optional (`Option<Header<T>>`).
+    required: bool,
+    /// The inner `T` type (for generating the extraction call).
+    inner_type: syn::Type,
+}
+
+/// Extract `#[header("name")]` attribute from a parameter's attribute list.
+///
+/// Returns the explicit header name if present, removing the attribute.
+fn extract_header_attr(attrs: &mut Vec<syn::Attribute>) -> Option<String> {
+    let idx = attrs
+        .iter()
+        .position(|attr| attr.path().is_ident("header"))?;
+    let attr = attrs.remove(idx);
+    let lit: LitStr = attr.parse_args().expect("expected #[header(\"name\")]");
+    Some(lit.value())
+}
+
+/// Detect if `ty` is `Header<T>` (required) or `Option<Header<T>>` (optional).
+///
+/// Returns `Some((inner_type, required))` on match, `None` otherwise.
+fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    let last = type_path.path.segments.last()?;
+
+    // Direct Header<T>
+    if last.ident == "Header" {
+        if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+            if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                return Some((inner.clone(), true));
+            }
+        }
+    }
+
+    // Option<Header<T>>
+    if last.ident == "Option" {
+        if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+            if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                if let Some((inner_t, _)) = detect_header_type(inner) {
+                    return Some((inner_t, false));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Collect all `Header<T>` / `Option<Header<T>>` parameters from handler inputs.
+///
+/// Also strips any `#[header("name")]` attributes from the parameters
+/// (they are not valid Rust attributes and must be removed before codegen).
+fn collect_header_params(
+    inputs: &mut syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> Vec<HeaderParamMeta> {
+    let mut params = Vec::new();
+
+    for (arg_idx, arg) in inputs.iter_mut().enumerate() {
+        let syn::FnArg::Typed(pat_type) = arg else {
+            continue;
+        };
+
+        let Some((inner_type, required)) = detect_header_type(&pat_type.ty) else {
+            continue;
+        };
+
+        // Check for explicit #[header("name")] override on the parameter
+        let explicit_name = extract_header_attr(&mut pat_type.attrs);
+
+        // Derive header name from snake_case param name, or use explicit override.
+        let name = if let Some(n) = explicit_name {
+            n
+        } else if let Pat::Ident(pat_ident) = &*pat_type.pat {
+            pat_ident.ident.to_string().to_kebab_case()
+        } else {
+            // Destructure pattern — can't infer name, user must use #[header("name")]
+            panic!(
+                "Header<T> parameter with a destructure pattern must have a #[header(\"name\")] attribute"
+            );
+        };
+
+        params.push(HeaderParamMeta {
+            arg_idx,
+            name,
+            required,
+            inner_type,
+        });
+    }
+
+    params
 }
 
 /// Registers a channel handler for the relay system.

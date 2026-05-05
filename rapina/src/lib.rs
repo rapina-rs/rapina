@@ -141,7 +141,9 @@ pub mod prelude {
     };
     pub use crate::context::RequestContext;
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
-    pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
+    pub use crate::extract::{
+        Context, Cookie, Form, Header, Headers, Json, Path, Query, State, Validated,
+    };
     #[cfg(feature = "multipart")]
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
