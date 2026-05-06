@@ -492,13 +492,22 @@ pub(crate) fn generate_migration(
     pascal_plural: &str,
     fields: &[FieldInfo],
     with_timestamps: bool,
+    primary_key: Option<&[String]>,
 ) -> String {
     let (mut column_defs, mut iden_variants): (Vec<String>, Vec<String>) = fields
         .iter()
         .map(|f| {
+            let mut field = f.clone();
+            if let Some(pk_names) = primary_key {
+                field.is_primary_key = pk_names.contains(&field.name);
+                field.is_composite_pk_member = field.is_primary_key && pk_names.len() > 1;
+            }
             (
-                format!("                    {}", f.generate_column(pascal_plural)),
-                format!("    {},", f.ident),
+                format!(
+                    "                    {}",
+                    field.generate_column(pascal_plural)
+                ),
+                format!("    {},", field.ident),
             )
         })
         .unzip();
@@ -661,6 +670,7 @@ pub(crate) fn create_migration_file(
     pascal_plural: &str,
     fields: &[FieldInfo],
     with_timestamps: bool,
+    primary_key: Option<&[String]>,
 ) -> Result<(), String> {
     let migrations_dir = Path::new("src/migrations");
 
@@ -676,7 +686,7 @@ pub(crate) fn create_migration_file(
     let filename = format!("{}.rs", module_name);
     let filepath = migrations_dir.join(&filename);
 
-    let template = generate_migration(plural, pascal_plural, fields, with_timestamps);
+    let template = generate_migration(plural, pascal_plural, fields, with_timestamps, primary_key);
     fs::write(&filepath, template).map_err(|e| format!("Failed to write migration file: {}", e))?;
     println!(
         "  {} Created {}",
@@ -1264,10 +1274,70 @@ mod tests {
             "title:string".parse().unwrap(),
             "published:bool".parse().unwrap(),
         ];
-        let content = generate_migration("posts", "Posts", &fields, false);
+        let content = generate_migration("posts", "Posts", &fields, false, None);
 
         assert!(content.contains(".string().not_null()"));
         assert!(content.contains(".boolean().default(Expr::value(false)).not_null()"));
+    }
+
+    #[test]
+    fn test_generate_migration_composite_pk() {
+        let fields: Vec<FieldInfo> = vec![
+            "user_id:i32".parse().unwrap(),
+            "role_id:i32".parse().unwrap(),
+        ];
+        let pk = vec!["user_id".to_string(), "role_id".to_string()];
+        let content = generate_migration("user_roles", "UserRoles", &fields, false, Some(&pk));
+
+        // Composite PK columns must NOT have .auto_increment() — invalid SQL on all major DBs
+        assert!(
+            !content.contains(".auto_increment()"),
+            "composite PK columns must NOT have .auto_increment()"
+        );
+        // Both PK columns get .primary_key()
+        let pk_count = content.matches(".primary_key()").count();
+        assert_eq!(
+            pk_count, 2,
+            "both composite PK columns must have .primary_key()"
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_custom_named_pk() {
+        let fields: Vec<FieldInfo> = vec![
+            "uuid_pk:uuid".parse().unwrap(),
+            "title:string".parse().unwrap(),
+        ];
+        let pk = vec!["uuid_pk".to_string()];
+        let content = generate_migration("items", "Items", &fields, false, Some(&pk));
+
+        assert!(
+            content.contains(".uuid().not_null().primary_key()"),
+            "uuid_pk should have .primary_key()"
+        );
+        assert!(
+            !content.contains(".uuid().not_null().primary_key().auto_increment()"),
+            "uuid pk must NOT have .auto_increment()"
+        );
+        assert!(
+            content.contains(".string().not_null()"),
+            "title should be a plain string column"
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_default_id_pk_regression() {
+        // When primary_key=None, is_primary_key from FieldInfo (set by heuristic name=="id") is used.
+        let mut fields: Vec<FieldInfo> =
+            vec!["id:i32".parse().unwrap(), "name:string".parse().unwrap()];
+        fields[0].is_primary_key = true;
+        let content = generate_migration("users", "Users", &fields, false, None);
+
+        assert!(
+            content.contains(".integer().not_null().primary_key().auto_increment()"),
+            "id field with is_primary_key=true and None pk list should still emit .primary_key()"
+        );
+        assert!(content.contains(".string().not_null()"));
     }
 
     #[test]

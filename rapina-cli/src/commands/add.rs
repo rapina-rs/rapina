@@ -49,7 +49,7 @@ pub fn resource(name: String, fields: Vec<FieldInfo>, with_timestamps: bool) -> 
 
     codegen::create_feature_module(&name, plural, pascal, &fields, &pk_type, false)?;
     codegen::update_entity_file(pascal, &fields, timestamps_attr, None, false)?;
-    codegen::create_migration_file(plural, pascal_plural, &fields, with_timestamps)?;
+    codegen::create_migration_file(plural, pascal_plural, &fields, with_timestamps, None)?;
 
     if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
         eprintln!("  {} Could not auto-wire main.rs: {}", "!".yellow(), e);
@@ -234,7 +234,7 @@ mod tests {
             "title:string".parse().unwrap(),
             "published:bool".parse().unwrap(),
         ];
-        let content = codegen::generate_migration("posts", "Posts", &fields, false);
+        let content = codegen::generate_migration("posts", "Posts", &fields, false, None);
 
         assert!(content.contains("MigrationTrait for Migration"));
         assert!(content.contains("Posts::Table"));
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_generate_migration_with_timestamps() {
         let fields = vec!["title:string".parse().unwrap()];
-        let content = codegen::generate_migration("posts", "Posts", &fields, true);
+        let content = codegen::generate_migration("posts", "Posts", &fields, true, None);
 
         assert!(content.contains("Posts::CreatedAt"));
         assert!(content.contains("Posts::UpdatedAt"));
