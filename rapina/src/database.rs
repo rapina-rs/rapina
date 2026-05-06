@@ -207,13 +207,13 @@ impl DatabaseConfig {
 }
 
 fn parse_env_bool(var: &str) -> Option<bool> {
-    std::env::var(var).ok().and_then(|v| {
-        match v.to_lowercase().as_str() {
+    std::env::var(var)
+        .ok()
+        .and_then(|v| match v.to_lowercase().as_str() {
             "1" | "true" | "yes" => Some(true),
             "0" | "false" | "no" => Some(false),
             _ => v.parse().ok(),
-        }
-    })
+        })
 }
 
 /// Wrapper around SeaORM's `DbErr` for Rapina error integration.

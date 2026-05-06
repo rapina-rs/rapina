@@ -1,7 +1,7 @@
 #![cfg(feature = "sqlite")]
 
-use rapina::migration::prelude::*;
 use rapina::migration::MigratorTrait;
+use rapina::migration::prelude::*;
 use rapina::sea_orm::Database;
 
 mod test_migration {
