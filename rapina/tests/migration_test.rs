@@ -1,6 +1,7 @@
 #![cfg(feature = "sqlite")]
 
 use rapina::migration::prelude::*;
+use rapina::migration::MigratorTrait;
 use rapina::sea_orm::Database;
 
 mod test_migration {
@@ -346,4 +347,33 @@ mod migrator_trait_tests {
         let conn = Database::connect("sqlite::memory:").await.unwrap();
         Migrator::status(&conn).await.unwrap();
     }
+}
+
+#[test]
+fn test_format_pending_migrations_warning() {
+    let msg = rapina::migration::format_pending_migrations_warning(&["m_a", "m_b"]);
+    assert!(msg.contains("2 unapplied migration(s)"));
+    assert!(msg.contains("m_a"));
+    assert!(msg.contains("rapina migrate up"));
+    assert!(msg.contains("rapina migrate init"));
+}
+
+#[tokio::test]
+async fn test_startup_migrations_auto_apply_false_leaves_pending() {
+    let conn = Database::connect("sqlite::memory:").await.unwrap();
+    rapina::migration::run_startup_migrations::<Migrator>(&conn, false)
+        .await
+        .unwrap();
+    let pending = Migrator::get_pending_migrations(&conn).await.unwrap();
+    assert_eq!(pending.len(), 1);
+}
+
+#[tokio::test]
+async fn test_startup_migrations_auto_apply_true_applies() {
+    let conn = Database::connect("sqlite::memory:").await.unwrap();
+    rapina::migration::run_startup_migrations::<Migrator>(&conn, true)
+        .await
+        .unwrap();
+    let pending = Migrator::get_pending_migrations(&conn).await.unwrap();
+    assert!(pending.is_empty());
 }
