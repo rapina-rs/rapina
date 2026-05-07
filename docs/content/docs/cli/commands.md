@@ -137,6 +137,12 @@ cargo install rapina-cli --features import-sqlite
 
 For each valid table, the command generates the same files as `rapina add resource`: a feature module (`src/<plural>/`), a `schema!` block in `src/entity.rs`, and a timestamped migration.
 
+When both sides of a foreign key are being imported, the command generates relationship fields in the `schema!` block instead of plain integer columns:
+
+- Non-nullable FK (`author_id NOT NULL → users.id`) → `author: User` (BelongsTo)
+- Nullable FK (`author_id NULL → users.id`) → `author: Option<User>` (BelongsTo)
+- Referenced table receives → `comments: Vec<Comment>` (HasMany)
+
 Tables are skipped if they have no primary key, a composite primary key, or are internal migration tables (`seaql_migrations`, `sqlx_migrations`, `__diesel_schema_migrations`).
 
 ### Re-importing with `--force`
