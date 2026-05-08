@@ -97,7 +97,7 @@ tower-service = { version = "0.3", optional = true }
 tower-layer = { version = "0.3", optional = true }
 
 # WebSocket (optional)
-hyper-tungstenite = { version = "0.19", optional = true }
+hyper-tungstenite = { version = "0.20", optional = true }
 tokio-tungstenite = { version = "0.28", optional = true }
 futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
 
