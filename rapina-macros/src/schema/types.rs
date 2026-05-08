@@ -30,7 +30,7 @@ impl ScalarType {
             "String" => Some(ScalarType::String),
             "Text" => Some(ScalarType::Text),
             "i32" | "i16" | "i8" | "u16" | "u8" | "integer" | "int" => Some(ScalarType::I32),
-            "i64" | "u64" | "u32" | "bigint" => Some(ScalarType::I64),
+            "i64" | "bigint" => Some(ScalarType::I64),
             "f32" | "float" => Some(ScalarType::F32),
             "f64" | "double" => Some(ScalarType::F64),
             "bool" | "boolean" => Some(ScalarType::Bool),

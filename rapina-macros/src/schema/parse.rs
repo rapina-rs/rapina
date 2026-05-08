@@ -328,7 +328,17 @@ fn parse_field_type(input: ParseStream) -> Result<RawFieldType> {
                 });
             }
 
+            // Reject Vec<u32> / Vec<u64> — not a valid relationship or scalar
+            if inner == "u32" || inner == "u64" {
+                return Err(unsupported_unsigned_error(&inner));
+            }
+
             return Ok(RawFieldType::Vec { inner });
+        }
+
+        // Reject unsigned types that have no safe DB mapping
+        if matches!(ident_str.as_str(), "u32" | "u64") {
+            return Err(unsupported_unsigned_error(&ident));
         }
 
         // Try to parse as scalar
@@ -347,6 +357,18 @@ fn parse_field_type(input: ParseStream) -> Result<RawFieldType> {
     } else {
         Err(syn::Error::new(input.span(), "expected type"))
     }
+}
+
+fn unsupported_unsigned_error(ident: &Ident) -> syn::Error {
+    let suggestion = if ident == "u64" { "i64" } else { "i32" };
+    syn::Error::new(
+        ident.span(),
+        format!(
+            "unsigned integer type `{}` is not supported in schema! blocks: \
+             use `{}` instead",
+            ident, suggestion
+        ),
+    )
 }
 
 enum InnerType {
@@ -370,6 +392,11 @@ fn parse_inner_type(input: ParseStream) -> Result<InnerType> {
 
         // We don't support Option<Vec<Entity>> yet, but if we did it would be handled here
         return Ok(InnerType::Ident(ident));
+    }
+
+    // Reject unsigned types that have no safe DB mapping
+    if matches!(ident_str.as_str(), "u32" | "u64") {
+        return Err(unsupported_unsigned_error(&ident));
     }
 
     if let Some(scalar) = ScalarType::from_ident(&ident_str) {
@@ -846,5 +873,119 @@ mod tests {
 
         let schema = parse_schema(input).unwrap();
         assert!(schema.entities[0].attrs.primary_key.is_none());
+    }
+
+    #[test]
+    fn test_u64_field_produces_compile_error() {
+        let input = quote! {
+            Entity {
+                view_count: u64,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("u64"),
+            "error should mention u64, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("not supported"),
+            "error should say 'not supported', got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_u32_field_produces_compile_error() {
+        let input = quote! {
+            Entity {
+                count: u32,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("u32"),
+            "error should mention u32, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("not supported"),
+            "error should say 'not supported', got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_option_u64_field_produces_compile_error() {
+        let input = quote! {
+            Entity {
+                view_count: Option<u64>,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("u64"),
+            "error should mention u64, got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_option_u32_field_produces_compile_error() {
+        let input = quote! {
+            Entity {
+                count: Option<u32>,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("u32"),
+            "error should mention u32, got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_i64_field_still_works() {
+        let input = quote! {
+            Entity {
+                view_count: i64,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        if let RawFieldType::Scalar { scalar, .. } = &schema.entities[0].fields[0].ty {
+            assert_eq!(*scalar, ScalarType::I64);
+        } else {
+            panic!("Expected i64 scalar");
+        }
+    }
+
+    #[test]
+    fn test_i32_field_still_works() {
+        let input = quote! {
+            Entity {
+                count: i32,
+            }
+        };
+
+        let schema = parse_schema(input).unwrap();
+        if let RawFieldType::Scalar { scalar, .. } = &schema.entities[0].fields[0].ty {
+            assert_eq!(*scalar, ScalarType::I32);
+        } else {
+            panic!("Expected i32 scalar");
+        }
     }
 }
