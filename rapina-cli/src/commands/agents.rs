@@ -25,8 +25,91 @@ pub struct AgentsFlags {
 /// - `sqlite` / `postgres` / `mysql` → `with_db`
 /// - `websocket` → `with_websocket`
 /// - `jobs` → `with_jobs`
+///
+/// In monorepo setups where the member declares `rapina.workspace = true` and the
+/// real feature list lives in `[workspace.dependencies]` of the workspace root,
+/// this single-document inspection misses the inherited features and silently
+/// returns all-false flags. Use [`detect_flags_with_workspace`] when the
+/// member's directory is known so workspace inheritance is resolved.
 pub fn detect_flags(cargo: &toml::Value) -> AgentsFlags {
-    let features: Vec<String> = cargo
+    let features = read_member_features(cargo);
+    flags_from_features(features.iter().map(String::as_str))
+}
+
+/// Workspace-aware variant of [`detect_flags`].
+///
+/// `member_cargo` is the parsed `Cargo.toml` of the project that wants
+/// `AGENTS.md`. `member_dir` is the directory that file lives in — used to walk
+/// up the tree to find a workspace root.
+///
+/// Resolution order:
+///
+/// 1. Read `dependencies.rapina.features` from the member's `Cargo.toml`.
+/// 2. If the member declares `rapina.workspace = true`, walk up from `member_dir`
+///    to find the first `Cargo.toml` whose top level contains a `[workspace]`
+///    table, then read `workspace.dependencies.rapina.features` from it.
+/// 3. Union the two feature sets (a feature appearing in both is not
+///    double-counted) and map the union onto `AgentsFlags`.
+///
+/// Errors reading or parsing the workspace `Cargo.toml` fall back to the
+/// member-level features rather than aborting — the missing fragments are
+/// preferable to a panic in `rapina doctor`-style commands.
+pub fn detect_flags_with_workspace(cargo: &toml::Value, member_dir: &Path) -> AgentsFlags {
+    let mut features = read_member_features(cargo);
+
+    if member_inherits_rapina_from_workspace(cargo) {
+        if let Some(workspace_features) = workspace_rapina_features(member_dir) {
+            for feature in workspace_features {
+                if !features.contains(&feature) {
+                    features.push(feature);
+                }
+            }
+        }
+    }
+
+    flags_from_features(features.iter().map(String::as_str))
+}
+
+/// Whether the member's `Cargo.toml` says `rapina.workspace = true` (i.e. defers
+/// the dependency definition to the workspace root). The check is conservative
+/// — anything other than the explicit `workspace = true` form is treated as an
+/// inline dependency that already provides its own features.
+fn member_inherits_rapina_from_workspace(cargo: &toml::Value) -> bool {
+    cargo
+        .get("dependencies")
+        .and_then(|deps| deps.get("rapina"))
+        .and_then(|rapina| match rapina {
+            toml::Value::Table(t) => t.get("workspace").and_then(|w| w.as_bool()),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+/// Walk up from `member_dir` looking for a `Cargo.toml` whose top level
+/// contains a `[workspace]` table; return its
+/// `[workspace.dependencies.rapina.features]` array, if any.
+fn workspace_rapina_features(member_dir: &Path) -> Option<Vec<String>> {
+    let mut dir = member_dir;
+    loop {
+        let candidate = dir.join("Cargo.toml");
+        if candidate.exists() {
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if let Ok(parsed) = toml::from_str::<toml::Value>(&content) {
+                    if parsed.get("workspace").is_some() {
+                        return Some(read_workspace_rapina_features(&parsed));
+                    }
+                }
+            }
+        }
+        match dir.parent() {
+            Some(parent) if parent != dir => dir = parent,
+            _ => return None,
+        }
+    }
+}
+
+fn read_member_features(cargo: &toml::Value) -> Vec<String> {
+    cargo
         .get("dependencies")
         .and_then(|d| d.get("rapina"))
         .and_then(|r| r.get("features"))
@@ -36,14 +119,40 @@ pub fn detect_flags(cargo: &toml::Value) -> AgentsFlags {
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
 
+fn read_workspace_rapina_features(workspace_cargo: &toml::Value) -> Vec<String> {
+    workspace_cargo
+        .get("workspace")
+        .and_then(|ws| ws.get("dependencies"))
+        .and_then(|deps| deps.get("rapina"))
+        .and_then(|r| r.get("features"))
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn flags_from_features<'a>(features: impl Iterator<Item = &'a str>) -> AgentsFlags {
+    let mut with_db = false;
+    let mut with_websocket = false;
+    let mut with_jobs = false;
+    for feature in features {
+        match feature {
+            "sqlite" | "postgres" | "mysql" => with_db = true,
+            "websocket" => with_websocket = true,
+            "jobs" => with_jobs = true,
+            _ => {}
+        }
+    }
     AgentsFlags {
-        with_db: features
-            .iter()
-            .any(|f| f == "sqlite" || f == "postgres" || f == "mysql"),
-        with_websocket: features.iter().any(|f| f == "websocket"),
-        with_jobs: features.iter().any(|f| f == "jobs"),
+        with_db,
+        with_websocket,
+        with_jobs,
     }
 }
 
@@ -261,9 +370,15 @@ pub fn check_drift(base: &Path) -> DriftStatus {
         }
     };
 
-    // Detect current project flags
+    // Detect current project flags. `verify_rapina_project` reads
+    // `./Cargo.toml`, so the cwd is the member directory we need to walk up
+    // from when resolving workspace-inherited features.
     let flags = match super::verify_rapina_project() {
-        Ok(cargo) => detect_flags(&cargo),
+        Ok(cargo) => match std::env::current_dir() {
+            Ok(cwd) => detect_flags_with_workspace(&cargo, &cwd),
+            // If we can't resolve cwd we still have member-level features.
+            Err(_) => detect_flags(&cargo),
+        },
         Err(_) => return DriftStatus::NotInProject,
     };
 
@@ -332,7 +447,7 @@ pub fn fix_agents(base: &Path, force: bool) -> Result<(), String> {
         // Cargo.toml found — detect which optional fragments to include.
         // If the file can't be parsed, fall back to always-on fragments only.
         Ok(content) => toml::from_str::<toml::Value>(&content)
-            .map(|parsed| detect_flags(&parsed))
+            .map(|parsed| detect_flags_with_workspace(&parsed, base))
             .unwrap_or_else(|e| {
                 eprintln!(
                     "Warning: could not parse Cargo.toml ({e}), generating base fragments only"
@@ -551,6 +666,189 @@ rapina = "0.11""#,
         )
         .unwrap();
         let flags = detect_flags(&cargo);
+        assert!(!flags.with_db);
+        assert!(!flags.with_websocket);
+        assert!(!flags.with_jobs);
+    }
+
+    /// Regression for #545: when the member uses
+    /// `rapina.workspace = true`, `detect_flags_with_workspace` must read
+    /// features from the workspace root's `[workspace.dependencies]` rather
+    /// than silently returning `with_db: false`.
+    #[test]
+    fn test_detect_flags_with_workspace_inherits_features_from_root() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(
+            workspace.path().join("Cargo.toml"),
+            r#"[workspace]
+members = ["api"]
+
+[workspace.dependencies]
+rapina = { version = "0.11", features = ["postgres"] }
+"#,
+        )
+        .unwrap();
+
+        let member_dir = workspace.path().join("api");
+        std::fs::create_dir_all(&member_dir).unwrap();
+        let member_cargo: toml::Value = toml::from_str(
+            r#"[package]
+name = "api"
+version = "0.1.0"
+
+[dependencies]
+rapina.workspace = true
+"#,
+        )
+        .unwrap();
+
+        let flags = detect_flags_with_workspace(&member_cargo, &member_dir);
+        assert!(
+            flags.with_db,
+            "workspace.dependencies postgres should set with_db"
+        );
+        assert!(!flags.with_websocket);
+        assert!(!flags.with_jobs);
+    }
+
+    /// When features are split across the member and the workspace root,
+    /// `detect_flags_with_workspace` must merge them so every fragment that
+    /// any layer asks for is enabled.
+    #[test]
+    fn test_detect_flags_with_workspace_merges_member_and_root_features() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(
+            workspace.path().join("Cargo.toml"),
+            r#"[workspace]
+members = ["api"]
+
+[workspace.dependencies]
+rapina = { version = "0.11", features = ["postgres"] }
+"#,
+        )
+        .unwrap();
+
+        let member_dir = workspace.path().join("api");
+        std::fs::create_dir_all(&member_dir).unwrap();
+        // Member adds `websocket` on top of the inherited `postgres`. Cargo
+        // doesn't actually allow this exact shape (you can't both set
+        // `workspace = true` and inline-add features), but the resolver here
+        // is intentionally permissive about the source layout — the only
+        // promise is "every feature mentioned anywhere makes it into flags".
+        let member_cargo: toml::Value = toml::from_str(
+            r#"[package]
+name = "api"
+version = "0.1.0"
+
+[dependencies]
+rapina = { workspace = true, features = ["websocket"] }
+"#,
+        )
+        .unwrap();
+
+        let flags = detect_flags_with_workspace(&member_cargo, &member_dir);
+        assert!(flags.with_db);
+        assert!(flags.with_websocket);
+        assert!(!flags.with_jobs);
+    }
+
+    /// Duplicates between member and workspace must not be treated as an
+    /// error: `flags_from_features` is set-style, so a feature appearing in
+    /// both places maps to the same flag once.
+    #[test]
+    fn test_detect_flags_with_workspace_dedupes_overlapping_features() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(
+            workspace.path().join("Cargo.toml"),
+            r#"[workspace]
+members = ["api"]
+
+[workspace.dependencies]
+rapina = { version = "0.11", features = ["postgres"] }
+"#,
+        )
+        .unwrap();
+
+        let member_dir = workspace.path().join("api");
+        std::fs::create_dir_all(&member_dir).unwrap();
+        let member_cargo: toml::Value = toml::from_str(
+            r#"[package]
+name = "api"
+version = "0.1.0"
+
+[dependencies]
+rapina = { workspace = true, features = ["postgres"] }
+"#,
+        )
+        .unwrap();
+
+        let flags = detect_flags_with_workspace(&member_cargo, &member_dir);
+        assert!(flags.with_db);
+        assert!(!flags.with_websocket);
+        assert!(!flags.with_jobs);
+    }
+
+    /// Non-workspace projects (i.e. the existing happy path) still take
+    /// features only from the member's own `[dependencies]` block —
+    /// `detect_flags_with_workspace` must NOT walk up looking for an unrelated
+    /// parent `Cargo.toml` when the member declares `rapina` inline.
+    #[test]
+    fn test_detect_flags_with_workspace_ignores_root_when_member_declares_inline() {
+        let outer = tempfile::tempdir().unwrap();
+        // A parent Cargo.toml with a [workspace] table that defines a
+        // different rapina feature set. The member doesn't reference it.
+        std::fs::write(
+            outer.path().join("Cargo.toml"),
+            r#"[workspace]
+members = ["api"]
+
+[workspace.dependencies]
+rapina = { version = "0.11", features = ["postgres", "websocket"] }
+"#,
+        )
+        .unwrap();
+
+        let member_dir = outer.path().join("api");
+        std::fs::create_dir_all(&member_dir).unwrap();
+        let member_cargo: toml::Value = toml::from_str(
+            r#"[package]
+name = "api"
+version = "0.1.0"
+
+[dependencies]
+rapina = { version = "0.11", features = ["jobs"] }
+"#,
+        )
+        .unwrap();
+
+        let flags = detect_flags_with_workspace(&member_cargo, &member_dir);
+        assert!(
+            !flags.with_db,
+            "inline rapina dep must not inherit workspace features"
+        );
+        assert!(!flags.with_websocket);
+        assert!(flags.with_jobs);
+    }
+
+    /// If the workspace root's `Cargo.toml` is missing or unparseable, the
+    /// resolver falls back to the member's own features rather than
+    /// panicking.
+    #[test]
+    fn test_detect_flags_with_workspace_missing_root_falls_back_to_member() {
+        let dir = tempfile::tempdir().unwrap();
+        // No parent Cargo.toml at all. `member_dir` is just a leaf directory.
+        let member_cargo: toml::Value = toml::from_str(
+            r#"[package]
+name = "api"
+version = "0.1.0"
+
+[dependencies]
+rapina = { workspace = true }
+"#,
+        )
+        .unwrap();
+
+        let flags = detect_flags_with_workspace(&member_cargo, dir.path());
         assert!(!flags.with_db);
         assert!(!flags.with_websocket);
         assert!(!flags.with_jobs);
