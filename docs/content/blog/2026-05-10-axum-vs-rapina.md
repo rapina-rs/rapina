@@ -125,7 +125,11 @@ There's also `rapina routes`, which prints the registered routes table from the 
 
 ## Middleware: tower vs Rapina-native
 
-Axum's middleware story is tower's middleware story. Tower is the abstraction that powers half the Rust HTTP ecosystem, and once you understand it, you can compose middleware across hyper clients, axum servers, tonic gRPC servers, and anything else built on tower. The flip side is that tower has a steep learning curve. Writing a custom tower middleware involves three traits, a service factory, and at least one `Pin<Box<dyn Future>>` if you're not careful.
+Axum's middleware story is tower's middleware story. Tower is the abstraction that powers much of the Rust HTTP ecosystem, and once you understand it, you can compose middleware across hyper clients, axum servers, tonic gRPC servers, and anything else built on tower.
+
+Composing built-in middleware looks roughly the same on both sides.
+
+Axum with tower-http:
 
 ```rust
 let app = Router::new()
@@ -134,7 +138,16 @@ let app = Router::new()
     .layer(TimeoutLayer::new(Duration::from_secs(10)));
 ```
 
-Rapina's middleware is a single trait with one method. You implement `handle`, wrap the async body in `Box::pin(async move { ... })`, and call `next.run(req)` when ready to pass control downstream. No service factory, no `poll_ready` ritual, no two-trait split.
+Rapina:
+
+```rust
+Rapina::new()
+    .middleware(TraceIdMiddleware)
+    .middleware(TimeoutMiddleware::new(Duration::from_secs(10)))
+    .router(router)
+```
+
+The difference shows up when you write a middleware from scratch. Tower involves implementing `Service`, often `Layer`, and managing the response future by hand. Rapina's middleware is a single trait with one method: you implement `handle`, wrap the async body in `Box::pin(async move { ... })`, and call `next.run(req)` to pass control downstream.
 
 ```rust
 use rapina::middleware::{BoxFuture, Middleware, Next};
@@ -160,7 +173,7 @@ impl Middleware for LogMiddleware {
 }
 ```
 
-The cost: you give up access to the rest of the tower ecosystem unless you wrap things explicitly. Rapina exposes a `TowerLayerMiddleware` adapter for the cases that matter, but you're not getting tower-http for free.
+The tradeoff: Rapina gives you a friendlier API for custom middleware but you lose direct access to the tower ecosystem. Rapina exposes a `TowerLayerMiddleware` adapter for the cases that matter, but you're not getting tower-http for free.
 
 If your team writes a lot of custom middleware, Rapina's API is friendlier. If your team mostly composes existing tower layers, Axum's interop is the bigger win.
 
