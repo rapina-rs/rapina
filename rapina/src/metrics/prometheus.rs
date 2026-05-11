@@ -263,4 +263,26 @@ mod tests {
         let o2 = r2.encode();
         assert_eq!(o1, o2);
     }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    fn test_custom_collector_name_collision_with_builtin_panics() {
+        use prometheus::IntCounter;
+
+        // "http_requests_in_flight" is a built-in Rapina metric; registering
+        // a custom collector with the same name must panic.
+        let collider = IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
+        MetricsRegistry::new_with_collectors(vec![Box::new(collider)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    fn test_duplicate_custom_collector_names_panic() {
+        use prometheus::IntCounter;
+
+        // Two custom collectors sharing the same metric name must also panic.
+        let c1 = IntCounter::new("duplicate_metric_total", "first").unwrap();
+        let c2 = IntCounter::new("duplicate_metric_total", "second").unwrap();
+        MetricsRegistry::new_with_collectors(vec![Box::new(c1), Box::new(c2)]);
+    }
 }

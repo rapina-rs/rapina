@@ -1352,6 +1352,40 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    #[cfg(feature = "metrics")]
+    fn test_add_metric_collision_with_builtin_panics() {
+        use prometheus::IntCounter;
+
+        // "http_requests_in_flight" is registered by Rapina internally;
+        // a custom collector with the same name must panic during prepare().
+        let collider =
+            IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
+
+        Rapina::new()
+            .enable_metrics()
+            .add_metric(collider)
+            .prepare();
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    #[cfg(feature = "metrics")]
+    fn test_add_metric_duplicate_custom_names_panics() {
+        use prometheus::IntCounter;
+
+        // Two user-supplied collectors sharing the same name must panic during prepare().
+        let c1 = IntCounter::new("my_custom_events_total", "first").unwrap();
+        let c2 = IntCounter::new("my_custom_events_total", "second").unwrap();
+
+        Rapina::new()
+            .enable_metrics()
+            .add_metric(c1)
+            .add_metric(c2)
+            .prepare();
+    }
+
+    #[test]
     fn test_rapina_shutdown_timeout_default() {
         let app = Rapina::new();
         assert_eq!(app.shutdown_timeout, Duration::from_secs(30));
