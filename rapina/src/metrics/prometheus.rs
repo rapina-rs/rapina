@@ -271,7 +271,8 @@ mod tests {
 
         // "http_requests_in_flight" is a built-in Rapina metric; registering
         // a custom collector with the same name must panic.
-        let collider = IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
+        let collider =
+            IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
         MetricsRegistry::new_with_collectors(vec![Box::new(collider)]);
     }
 
