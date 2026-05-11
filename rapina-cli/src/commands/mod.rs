@@ -14,6 +14,7 @@
 //! this module only keeps types that are valid across the command surface.
 
 pub mod add;
+pub mod agents;
 pub(crate) mod codegen;
 pub mod dev;
 pub mod doctor;
