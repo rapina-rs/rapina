@@ -1,7 +1,7 @@
 //! Typed header extractor.
 //!
 //! `Header<T>` extracts a single HTTP header and parses it into `T` via the
-//! [`HeaderValue`] trait.  The header name is derived automatically from the
+//! [`FromHeaderStr`] trait.  The header name is derived automatically from the
 //! Rust identifier (snake_case → kebab-case) or can be overridden with the
 //! `#[header("explicit-name")]` attribute on the handler parameter.
 //!
@@ -42,6 +42,13 @@ pub struct Header<T> {
 
 impl<T> Header<T> {
     /// Creates a new `Header` wrapper (used internally by the extractor impl).
+    ///
+    /// # Note
+    ///
+    /// The `name` parameter must be `&'static str` because the proc-macro
+    /// emits string literals at compile time. Runtime construction from a
+    /// dynamic string is intentionally not supported — this type is designed
+    /// for macro-generated extraction only.
     pub fn new(name: &'static str, value: T) -> Self {
         Self { value, name }
     }
@@ -64,26 +71,32 @@ impl<T> Deref for Header<T> {
     }
 }
 
-// ── HeaderValue trait ────────────────────────────────────────────────────────
+// ── FromHeaderStr trait ──────────────────────────────────────────────────────
 
 /// Trait for types that can be parsed from an HTTP header value string.
 ///
 /// Implement this for custom types.  Blanket impls are provided for `String`,
 /// `uuid::Uuid`, and all primitive integer types.
-pub trait HeaderValue: Sized {
+///
+/// # Naming
+///
+/// This trait is intentionally named `FromHeaderStr` (not `HeaderValue`) to
+/// avoid a name collision with [`http::HeaderValue`], which is re-exported by
+/// many HTTP crates and is commonly imported via glob (`use http::*`).
+pub trait FromHeaderStr: Sized {
     /// Parse the raw header string into `Self`.
     ///
     /// Return `Err` with a human-readable reason on failure.
     fn from_header_str(s: &str) -> Result<Self, String>;
 }
 
-impl HeaderValue for String {
+impl FromHeaderStr for String {
     fn from_header_str(s: &str) -> Result<Self, String> {
         Ok(s.to_owned())
     }
 }
 
-impl HeaderValue for uuid::Uuid {
+impl FromHeaderStr for uuid::Uuid {
     fn from_header_str(s: &str) -> Result<Self, String> {
         uuid::Uuid::parse_str(s).map_err(|e| e.to_string())
     }
@@ -91,7 +104,7 @@ impl HeaderValue for uuid::Uuid {
 
 macro_rules! impl_header_value_fromstr {
     ($($ty:ty),+ $(,)?) => {
-        $(impl HeaderValue for $ty {
+        $(impl FromHeaderStr for $ty {
             fn from_header_str(s: &str) -> Result<Self, String> {
                 <$ty as FromStr>::from_str(s).map_err(|e| e.to_string())
             }
@@ -109,7 +122,7 @@ impl_header_value_fromstr!(
 ///
 /// Called by the proc-macro-generated `FromRequestParts` impl for `Header<T>`.
 /// Returns a structured error on missing or unparseable headers.
-pub fn extract_header<T: HeaderValue>(
+pub fn extract_header<T: FromHeaderStr>(
     parts: &http::request::Parts,
     name: &'static str,
 ) -> Result<T, Error> {
@@ -166,11 +179,13 @@ pub fn extract_header<T: HeaderValue>(
 /// Extract an optional typed header.
 ///
 /// Returns `None` if the header is absent, `Err` only if the header is present
-/// but cannot be parsed.
-pub fn extract_optional_header<T: HeaderValue>(
+/// but cannot be parsed.  Like [`extract_header`], returns the raw parsed `T`
+/// rather than a wrapped `Header<T>` — the caller is responsible for wrapping
+/// via [`Header::new`] when needed.
+pub fn extract_optional_header<T: FromHeaderStr>(
     parts: &http::request::Parts,
     name: &'static str,
-) -> Result<Option<Header<T>>, Error> {
+) -> Result<Option<T>, Error> {
     let raw = match parts.headers.get(name) {
         None => return Ok(None),
         Some(v) => v.to_str().map_err(|_| {
@@ -186,19 +201,17 @@ pub fn extract_optional_header<T: HeaderValue>(
         })?,
     };
 
-    T::from_header_str(raw)
-        .map(|v| Some(Header::new(name, v)))
-        .map_err(|reason| {
-            Error::new(
-                400,
-                "INVALID_HEADER",
-                format!("Invalid value for header '{name}': {reason}"),
-            )
-            .with_details(serde_json::json!({
-                "header": name,
-                "reason": reason,
-            }))
-        })
+    T::from_header_str(raw).map(Some).map_err(|reason| {
+        Error::new(
+            400,
+            "INVALID_HEADER",
+            format!("Invalid value for header '{name}': {reason}"),
+        )
+        .with_details(serde_json::json!({
+            "header": name,
+            "reason": reason,
+        }))
+    })
 }
 
 // ── Macro-generated FromRequestParts helper ──────────────────────────────────
@@ -207,20 +220,10 @@ pub fn extract_optional_header<T: HeaderValue>(
 // handler parameter `foo: Header<T>`.  We expose the two helpers as public API
 // so the generated code compiles without needing to reach into private modules.
 
-/// Convenience re-export used by macro-generated code.
+#[doc(hidden)]
 pub use extract_header as __extract_header;
-/// Convenience re-export used by macro-generated code.
+#[doc(hidden)]
 pub use extract_optional_header as __extract_optional_header;
-
-// ── Placeholder FromRequestParts impl (test / manual use) ────────────────────
-//
-// A blanket impl is NOT possible here because `Header<T>` wraps a name that
-// must be supplied by the macro.  We provide a dummy impl gated behind a
-// test-only feature flag so unit tests can call `from_request_parts` directly
-// with a hard-coded name.  Production handler wiring goes through the macro.
-
-#[cfg(test)]
-pub struct NamedHeader<T, const N: usize>(pub Header<T>, std::marker::PhantomData<[(); N]>);
 
 #[cfg(test)]
 mod tests {
@@ -297,7 +300,7 @@ mod tests {
         let parts = parts_with_header("x-request-id", "abc");
         let result = extract_optional_header::<String>(&parts, "x-request-id").unwrap();
         assert!(result.is_some());
-        assert_eq!(*result.unwrap(), "abc");
+        assert_eq!(result.unwrap(), "abc");
     }
 
     #[test]

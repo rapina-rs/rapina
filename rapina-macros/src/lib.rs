@@ -248,7 +248,10 @@ fn route_macro_core(
         };
 
     // Collect header params (also strips #[header("name")] attrs from inputs)
-    let header_params = collect_header_params(&mut func.sig.inputs);
+    let header_params = match collect_header_params(&mut func.sig.inputs) {
+        Ok(p) => p,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Build an index: arg_idx → &HeaderParamMeta for O(1) lookup during codegen
     let header_by_arg: std::collections::HashMap<usize, &HeaderParamMeta> =
@@ -371,7 +374,7 @@ fn route_macro_core(
                 }
             }
             quote! {
-                let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+                let (__rapina_parts, _) = __rapina_req.into_parts();
                 #(#header_extractions)*
                 let __rapina_result #return_type_annotation = (async #inner_block).await;
                 let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
@@ -674,7 +677,8 @@ fn gen_header_extraction(
     } else {
         quote! {
             let #tmp = match rapina::extract::extract_optional_header::<#inner_type>(&__rapina_parts, #header_name) {
-                Ok(v) => v,
+                Ok(Some(v)) => Some(rapina::extract::Header::new(#header_name, v)),
+                Ok(None) => None,
                 Err(e) => return rapina::response::IntoResponse::into_response(e),
             };
         }
@@ -708,6 +712,16 @@ fn extract_header_attr(attrs: &mut Vec<syn::Attribute>) -> Option<String> {
 /// Detect if `ty` is `Header<T>` (required) or `Option<Header<T>>` (optional).
 ///
 /// Returns `Some((inner_type, required))` on match, `None` otherwise.
+///
+/// # Limitation
+///
+/// This function matches by the last path segment identifier only (e.g. `Header`).
+/// A user-defined type also named `Header<T>` in a different module will be
+/// incorrectly detected as rapina's `Header<T>`. This surfaces as a compile
+/// error (the user's type won't implement `FromHeaderStr`), but the diagnostic
+/// will point at macro-generated code rather than the user's parameter.
+/// To avoid ambiguity, use the fully qualified form `rapina::extract::Header<T>`
+/// or rename your local type.
 fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
     let syn::Type::Path(type_path) = ty else {
         return None;
@@ -743,7 +757,7 @@ fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
 /// (they are not valid Rust attributes and must be removed before codegen).
 fn collect_header_params(
     inputs: &mut syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-) -> Vec<HeaderParamMeta> {
+) -> syn::Result<Vec<HeaderParamMeta>> {
     let mut params = Vec::new();
 
     for (arg_idx, arg) in inputs.iter_mut().enumerate() {
@@ -765,9 +779,10 @@ fn collect_header_params(
             pat_ident.ident.to_string().to_kebab_case()
         } else {
             // Destructure pattern — can't infer name, user must use #[header("name")]
-            panic!(
-                "Header<T> parameter with a destructure pattern must have a #[header(\"name\")] attribute"
-            );
+            return Err(syn::Error::new_spanned(
+                &*pat_type.pat,
+                "Header<T> parameter with a destructure pattern must have a #[header(\"name\")] attribute",
+            ));
         };
 
         params.push(HeaderParamMeta {
@@ -778,7 +793,7 @@ fn collect_header_params(
         });
     }
 
-    params
+    Ok(params)
 }
 
 /// Registers a channel handler for the relay system.
