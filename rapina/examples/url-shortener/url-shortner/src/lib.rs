@@ -50,8 +50,14 @@ pub async fn build_app() -> std::io::Result<(Rapina, String)> {
 
     let config = AppConfig::from_env().expect("Failed to load config");
     let addr = format!("{}:{}", config.host, config.port);
+    let had_auto_migrate_env = std::env::var_os("DATABASE_AUTO_MIGRATE").is_some();
     let db_config = DatabaseConfig::from_env()
         .unwrap_or_else(|_| DatabaseConfig::new("sqlite://urls.db?mode=rwc"));
+    let db_config = if had_auto_migrate_env {
+        db_config
+    } else {
+        db_config.auto_migrate(true)
+    };
 
     let app = Rapina::new()
         .with_tracing(TracingConfig::new())

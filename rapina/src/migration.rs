@@ -151,6 +151,34 @@ pub async fn run_pending<M: MigratorTrait>(
     Ok(())
 }
 
+/// Formats a Django-style warning listing pending migration names and how to apply them.
+pub fn format_pending_migrations_warning(names: &[&str]) -> String {
+    let n = names.len();
+    let list = names.join(", ");
+    format!(
+        "You have {n} unapplied migration(s). Your project may not work correctly until you apply them.\n\
+Pending migration(s): {list}.\n\
+Run `rapina migrate up` to apply them. If the migrate binary is not set up yet, run `rapina migrate init` first."
+    )
+}
+
+/// Runs pending migrations when `auto_apply` is `true`. When `false`, logs a warning if any are pending but does not apply them.
+pub async fn run_startup_migrations<M: MigratorTrait>(
+    conn: &sea_orm::DatabaseConnection,
+    auto_apply: bool,
+) -> Result<(), DbErr> {
+    if auto_apply {
+        run_pending::<M>(conn).await
+    } else {
+        let pending = M::get_pending_migrations(conn).await?;
+        if !pending.is_empty() {
+            let names: Vec<&str> = pending.iter().map(|m| m.name()).collect();
+            tracing::warn!("{}", format_pending_migrations_warning(&names));
+        }
+        Ok(())
+    }
+}
+
 /// Rolls back migrations. Defaults to 1 step if None.
 pub async fn rollback<M: MigratorTrait>(
     conn: &sea_orm::DatabaseConnection,
