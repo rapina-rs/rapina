@@ -12,6 +12,9 @@ pub(crate) struct RelationshipSpec {
 }
 
 // Construction sites live in import.rs, which is #[cfg(feature = "import")].
+// Alternatives considered: gating the types under the same cfg (breaks ungated callers in add.rs),
+// gating the `relationships` parameter (spreads cfg noise to every call site),
+// a second function without relationships (duplicated code), or replacing the enum with bool (loses context).
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RelationshipKind {

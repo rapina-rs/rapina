@@ -455,12 +455,16 @@ fn resolve_relationships(tables: &[IntrospectedTable]) -> HashMap<String, Vec<Re
             let ref_singular = codegen::singularize(&fk.referenced_table);
             let ref_pascal = codegen::to_pascal_case(&ref_singular);
 
-            let nullable = table
-                .columns
-                .iter()
-                .find(|c| &c.name == fk_column)
-                .map(|c| c.is_nullable)
-                .unwrap_or(false);
+            let Some(col) = table.columns.iter().find(|c| &c.name == fk_column) else {
+                eprintln!(
+                    "  {} table {:?}: FK column {:?} not found in column list — skipping relationship",
+                    "warn:".yellow(),
+                    table.name,
+                    fk_column
+                );
+                continue;
+            };
+            let nullable = col.is_nullable;
 
             // BelongsTo on the FK side
             relationships
@@ -630,7 +634,7 @@ fn generate_for_table(
         &rel_specs,
     )?;
     codegen::create_migration_file(plural, &pascal_plural, &fields, false)?;
-    codegen::create_feature_module(&singular, plural, &pascal, &fields, &pk_type, force)?;
+    codegen::create_feature_module(&singular, plural, &pascal, &entity_fields, &pk_type, force)?;
 
     println!(
         "  {} Imported table {:?} as {} ({} columns, {} skipped)",
