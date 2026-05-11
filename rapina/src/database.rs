@@ -212,7 +212,12 @@ fn parse_env_bool(var: &str) -> Option<bool> {
         .and_then(|v| match v.to_lowercase().as_str() {
             "1" | "true" | "yes" => Some(true),
             "0" | "false" | "no" => Some(false),
-            _ => v.parse().ok(),
+            _ => {
+                tracing::warn!(
+                    "Unrecognized value for {var}: {v:?}. Expected true/false/1/0/yes/no. Defaulting to false."
+                );
+                None
+            }
         })
 }
 
