@@ -62,6 +62,18 @@ impl<T> Header<T> {
     pub fn into_inner(self) -> T {
         self.value
     }
+
+    /// Creates a `Header` wrapper from a runtime `String` name.
+    ///
+    /// Intended for unit tests and wrapper extractors that delegate to
+    /// `Header<T>` with a dynamically constructed header name.  The
+    /// macro-generated path always uses [`Header::new`] with a `&'static str`
+    /// literal and is unaffected by this constructor.
+    #[doc(hidden)]
+    pub fn from_string(name: String, value: T) -> Self {
+        let name: &'static str = Box::leak(name.into_boxed_str());
+        Self { value, name }
+    }
 }
 
 impl<T> Deref for Header<T> {

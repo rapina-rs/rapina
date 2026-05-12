@@ -713,15 +713,11 @@ fn extract_header_attr(attrs: &mut Vec<syn::Attribute>) -> Option<String> {
 ///
 /// Returns `Some((inner_type, required))` on match, `None` otherwise.
 ///
-/// # Limitation
-///
-/// This function matches by the last path segment identifier only (e.g. `Header`).
-/// A user-defined type also named `Header<T>` in a different module will be
-/// incorrectly detected as rapina's `Header<T>`. This surfaces as a compile
-/// error (the user's type won't implement `FromHeaderStr`), but the diagnostic
-/// will point at macro-generated code rather than the user's parameter.
-/// To avoid ambiguity, use the fully qualified form `rapina::extract::Header<T>`
-/// or rename your local type.
+/// Matches `Header<T>` (bare or path-qualified as `extract::Header<T>` /
+/// `rapina::extract::Header<T>`).  Any other qualifying path (e.g.
+/// `my_crate::Header<T>`) returns `None`, so user-defined types named `Header`
+/// fall through to normal handling instead of producing a confusing compile
+/// error from macro-generated code.
 fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
     let syn::Type::Path(type_path) = ty else {
         return None;
@@ -730,9 +726,22 @@ fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
 
     // Direct Header<T>
     if last.ident == "Header" {
-        if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
-            if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                return Some((inner.clone(), true));
+        // When the type is qualified (e.g. `foo::Header`), only treat it as
+        // rapina's Header if the leading path is a known rapina prefix.
+        // Bare `Header` (imported via prelude) has no leading segments and
+        // is always accepted.
+        let segments: Vec<_> = type_path.path.segments.iter().collect();
+        let is_rapina_header = match segments.len() {
+            1 => true, // bare `Header`
+            2 => segments[0].ident == "extract", // `extract::Header`
+            3 => segments[0].ident == "rapina" && segments[1].ident == "extract", // `rapina::extract::Header`
+            _ => false,
+        };
+        if is_rapina_header {
+            if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+                if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                    return Some((inner.clone(), true));
+                }
             }
         }
     }
