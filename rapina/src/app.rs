@@ -830,17 +830,20 @@ impl Rapina {
         mut self,
         config: crate::database::DatabaseConfig,
     ) -> Result<Self, std::io::Error> {
+        let policy = crate::database::DatabaseMigrationPolicy {
+            auto_apply: config.auto_migrate,
+        };
         let conn = config
             .connect()
             .await
             .map_err(|e| std::io::Error::other(format!("Database connection failed: {}", e)))?;
-        self.state = self.state.with(conn);
+        self.state = self.state.with(conn).with(policy);
         Ok(self)
     }
 
-    /// Runs all pending database migrations at startup.
+    /// Runs database migrations according to [`DatabaseConfig::auto_migrate`](crate::database::DatabaseConfig::auto_migrate), or only warns about pending migrations when it is `false`.
     ///
-    /// Call this after `with_database()` to apply migrations before serving requests.
+    /// Call this after `with_database()` so the policy from configuration is available. If only a raw [`DatabaseConnection`] was registered (for example via [`Rapina::state`](crate::app::Rapina::state)), pending migrations are **not** applied and a warning is logged if any are pending (same as `auto_migrate: false`).
     ///
     /// # Example
     ///
@@ -848,7 +851,9 @@ impl Rapina {
     /// mod migrations;
     ///
     /// Rapina::new()
-    ///     .with_database(DatabaseConfig::from_env()?).await?
+    ///     .with_database(
+    ///         DatabaseConfig::new("sqlite://app.db?mode=rwc").auto_migrate(true),
+    ///     ).await?
     ///     .run_migrations::<migrations::Migrator>().await?
     ///     .router(router)
     ///     .listen("127.0.0.1:3000")
@@ -863,12 +868,17 @@ impl Rapina {
             .get::<sea_orm::DatabaseConnection>()
             .ok_or_else(|| {
                 std::io::Error::other(
-                    "Database not configured. Call .with_database() before
-  .run_migrations()",
+                    "Database connection not found in application state. Register it with .with_database() or .state(DatabaseConnection).",
                 )
             })?;
 
-        crate::migration::run_pending::<M>(conn)
+        let auto_apply = self
+            .state
+            .get::<crate::database::DatabaseMigrationPolicy>()
+            .map(|p| p.auto_apply)
+            .unwrap_or(false);
+
+        crate::migration::run_startup_migrations::<M>(conn, auto_apply)
             .await
             .map_err(|e| std::io::Error::other(format!("Migration failed: {}", e)))?;
 
