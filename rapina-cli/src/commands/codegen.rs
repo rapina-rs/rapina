@@ -1326,6 +1326,27 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_migration_single_i32_custom_named_pk() {
+        // Exercises the composite-vs-single branch in generate_column for an i32 field.
+        // A single-column PK named something other than "id" must still get .auto_increment().
+        let fields: Vec<FieldInfo> = vec![
+            "user_id:i32".parse().unwrap(),
+            "name:string".parse().unwrap(),
+        ];
+        let pk = vec!["user_id".to_string()];
+        let content = generate_migration("users", "Users", &fields, false, Some(&pk));
+
+        assert!(
+            content.contains(".integer().not_null().primary_key().auto_increment()"),
+            "single i32 PK (non-composite) must still emit .auto_increment()"
+        );
+        assert!(
+            content.contains(".string().not_null()"),
+            "name should be a plain string column"
+        );
+    }
+
+    #[test]
     fn test_generate_migration_default_id_pk_regression() {
         // When primary_key=None, is_primary_key from FieldInfo (set by heuristic name=="id") is used.
         let mut fields: Vec<FieldInfo> =
