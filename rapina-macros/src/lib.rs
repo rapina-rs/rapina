@@ -732,7 +732,7 @@ fn detect_header_type(ty: &syn::Type) -> Option<(syn::Type, bool)> {
         // is always accepted.
         let segments: Vec<_> = type_path.path.segments.iter().collect();
         let is_rapina_header = match segments.len() {
-            1 => true, // bare `Header`
+            1 => true,                                                            // bare `Header`
             2 => segments[0].ident == "extract", // `extract::Header`
             3 => segments[0].ident == "rapina" && segments[1].ident == "extract", // `rapina::extract::Header`
             _ => false,
