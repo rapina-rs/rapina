@@ -74,7 +74,9 @@ use rapina::middleware::RequestLogMiddleware;
 async fn main() -> std::io::Result<()> {
     load_dotenv();
 
-    let db_config = DatabaseConfig::from_env().expect("Failed to configure database");
+    let db_config = DatabaseConfig::from_env()
+        .expect("Failed to configure database")
+        .auto_migrate(true);
 
     Rapina::new()
         .with_tracing(TracingConfig::new())
@@ -82,9 +84,8 @@ async fn main() -> std::io::Result<()> {
         .with_health_check(true)
         .with_database(db_config)
         .await?
-        // NOTE: run_migrations applies pending migrations on every startup.
-        // Fine for single-node development; use `rapina migrate up` instead
-        // for controlled deployments and multi-replica environments.
+        // NOTE: With auto_migrate(true), run_migrations applies pending migrations on every startup.
+        // Default is auto_migrate(false); use `rapina migrate up` for controlled / multi-replica deploys.
         .run_migrations::<migrations::Migrator>()
         .await?
         .router(
@@ -231,6 +232,7 @@ mod tests {
         let content = generate_main_rs();
         assert!(content.contains("load_dotenv()"));
         assert!(content.contains("let db_config ="));
+        assert!(content.contains(".auto_migrate(true)"));
         assert!(content.contains(".with_database(db_config)"));
         assert!(content.contains(".await?"));
         assert!(content.contains(".run_migrations::<migrations::Migrator>()"));
