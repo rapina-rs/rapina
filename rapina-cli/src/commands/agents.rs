@@ -113,27 +113,40 @@ pub fn generate_rapina_docs(project_path: &Path, flags: &AgentsFlags) -> Result<
         ("testing.md", include_str!("agents/testing.md")),
     ];
     for (name, content) in always_on {
-        std::fs::write(docs_path.join(name), content)
-            .map_err(|e| format!("Failed to write .rapina-docs/{}: {}", name, e))?;
+        let path = docs_path.join(name);
+        let existing = std::fs::read(&path).unwrap_or_default();
+        if existing != content.as_bytes() {
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to write .rapina-docs/{}: {}", name, e))?;
+        }
     }
 
     if flags.with_db {
-        std::fs::write(
-            docs_path.join("migrations.md"),
-            include_str!("agents/migrations.md"),
-        )
-        .map_err(|e| format!("Failed to write .rapina-docs/migrations.md: {}", e))?;
+        let path = docs_path.join("migrations.md");
+        let content = include_str!("agents/migrations.md");
+        let existing = std::fs::read(&path).unwrap_or_default();
+        if existing != content.as_bytes() {
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to write .rapina-docs/migrations.md: {}", e))?;
+        }
     }
     if flags.with_websocket {
-        std::fs::write(
-            docs_path.join("websocket.md"),
-            include_str!("agents/websocket.md"),
-        )
-        .map_err(|e| format!("Failed to write .rapina-docs/websocket.md: {}", e))?;
+        let path = docs_path.join("websocket.md");
+        let content = include_str!("agents/websocket.md");
+        let existing = std::fs::read(&path).unwrap_or_default();
+        if existing != content.as_bytes() {
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to write .rapina-docs/websocket.md: {}", e))?;
+        }
     }
     if flags.with_jobs {
-        std::fs::write(docs_path.join("jobs.md"), include_str!("agents/jobs.md"))
-            .map_err(|e| format!("Failed to write .rapina-docs/jobs.md: {}", e))?;
+        let path = docs_path.join("jobs.md");
+        let content = include_str!("agents/jobs.md");
+        let existing = std::fs::read(&path).unwrap_or_default();
+        if existing != content.as_bytes() {
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to write .rapina-docs/jobs.md: {}", e))?;
+        }
     }
 
     Ok(())
@@ -725,5 +738,285 @@ rapina = "0.11""#,
         assert!(!diff.contains("+ x"));
         // exactly one removal
         assert_eq!(diff.lines().filter(|l| l.starts_with("- x")).count(), 1);
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_skips_write_when_content_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        // First call: writes all files.
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let core_path = dir.path().join(".rapina-docs/core.md");
+        let mtime_before = std::fs::metadata(&core_path).unwrap().modified().unwrap();
+
+        // Small sleep so that a write would produce a different mtime.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Second call: content identical → no write → mtime unchanged.
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&core_path).unwrap().modified().unwrap();
+
+        assert_eq!(
+            mtime_before, mtime_after,
+            "core.md mtime changed on second call — file was rewritten unnecessarily"
+        );
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_writes_when_content_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        // First call: writes all files.
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let core_path = dir.path().join(".rapina-docs/core.md");
+
+        // Tamper with the file.
+        std::fs::write(&core_path, b"tampered content").unwrap();
+
+        let mtime_tampered = std::fs::metadata(&core_path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Second call: content differs → file must be rewritten.
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&core_path).unwrap().modified().unwrap();
+
+        assert_ne!(
+            mtime_tampered, mtime_after,
+            "core.md was NOT rewritten after content changed"
+        );
+
+        // Content must now match the embedded source.
+        let written = std::fs::read_to_string(&core_path).unwrap();
+        assert_eq!(written, include_str!("agents/core.md"));
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_skips_write_for_all_always_on_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let names = ["core.md", "extractors.md", "errors.md", "testing.md"];
+        let mtimes_before: Vec<_> = names
+            .iter()
+            .map(|name| {
+                std::fs::metadata(dir.path().join(format!(".rapina-docs/{name}")))
+                    .unwrap()
+                    .modified()
+                    .unwrap()
+            })
+            .collect();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        for (name, mtime_before) in names.iter().zip(mtimes_before.iter()) {
+            let mtime_after = std::fs::metadata(dir.path().join(format!(".rapina-docs/{name}")))
+                .unwrap()
+                .modified()
+                .unwrap();
+            assert_eq!(
+                *mtime_before, mtime_after,
+                "{name} mtime changed on second call — unnecessary write"
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_db_skips_write_when_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: true,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/migrations.md");
+        let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(
+            mtime_before, mtime_after,
+            "migrations.md rewritten unnecessarily"
+        );
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_db_writes_when_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: true,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/migrations.md");
+        std::fs::write(&path, b"tampered").unwrap();
+        let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_ne!(
+            mtime_tampered, mtime_after,
+            "migrations.md not rewritten after tamper"
+        );
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, include_str!("agents/migrations.md"));
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_websocket_skips_write_when_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: true,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/websocket.md");
+        let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(
+            mtime_before, mtime_after,
+            "websocket.md rewritten unnecessarily"
+        );
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_websocket_writes_when_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: true,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/websocket.md");
+        std::fs::write(&path, b"tampered").unwrap();
+        let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_ne!(
+            mtime_tampered, mtime_after,
+            "websocket.md not rewritten after tamper"
+        );
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, include_str!("agents/websocket.md"));
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_jobs_skips_write_when_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: true,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/jobs.md");
+        let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(mtime_before, mtime_after, "jobs.md rewritten unnecessarily");
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_jobs_writes_when_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: true,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let path = dir.path().join(".rapina-docs/jobs.md");
+        std::fs::write(&path, b"tampered").unwrap();
+        let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let mtime_after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_ne!(
+            mtime_tampered, mtime_after,
+            "jobs.md not rewritten after tamper"
+        );
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, include_str!("agents/jobs.md"));
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_conditional_flags_false_does_not_create_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: false,
+            with_websocket: false,
+            with_jobs: false,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        assert!(
+            !dir.path().join(".rapina-docs/migrations.md").exists(),
+            "migrations.md must not exist when with_db=false"
+        );
+        assert!(
+            !dir.path().join(".rapina-docs/websocket.md").exists(),
+            "websocket.md must not exist when with_websocket=false"
+        );
+        assert!(
+            !dir.path().join(".rapina-docs/jobs.md").exists(),
+            "jobs.md must not exist when with_jobs=false"
+        );
     }
 }
