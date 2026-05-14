@@ -756,6 +756,10 @@ rapina = "0.11""#,
         let mtime_before = std::fs::metadata(&core_path).unwrap().modified().unwrap();
 
         // Small sleep so that a write would produce a different mtime.
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4). On 1-second
+        // resolution filesystems (HFS+, FAT32) a write within the same second would
+        // be undetectable via mtime — content comparison cannot substitute here
+        // because written bytes are identical either way.
         std::thread::sleep(std::time::Duration::from_millis(10));
 
         // Second call: content identical → no write → mtime unchanged.
@@ -827,6 +831,10 @@ rapina = "0.11""#,
             })
             .collect();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4). On 1-second
+        // resolution filesystems (HFS+, FAT32) a write within the same second would
+        // be undetectable via mtime — content comparison cannot substitute here
+        // because written bytes are identical either way.
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -856,6 +864,7 @@ rapina = "0.11""#,
         let path = dir.path().join(".rapina-docs/migrations.md");
         let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -881,6 +890,7 @@ rapina = "0.11""#,
         std::fs::write(&path, b"tampered").unwrap();
         let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -908,6 +918,7 @@ rapina = "0.11""#,
         let path = dir.path().join(".rapina-docs/websocket.md");
         let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -933,6 +944,7 @@ rapina = "0.11""#,
         std::fs::write(&path, b"tampered").unwrap();
         let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -960,6 +972,7 @@ rapina = "0.11""#,
         let path = dir.path().join(".rapina-docs/jobs.md");
         let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -982,6 +995,7 @@ rapina = "0.11""#,
         std::fs::write(&path, b"tampered").unwrap();
         let mtime_tampered = std::fs::metadata(&path).unwrap().modified().unwrap();
 
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
         std::thread::sleep(std::time::Duration::from_millis(10));
         generate_rapina_docs(dir.path(), &flags).unwrap();
 
@@ -993,6 +1007,52 @@ rapina = "0.11""#,
 
         let written = std::fs::read_to_string(&path).unwrap();
         assert_eq!(written, include_str!("agents/jobs.md"));
+    }
+
+    #[test]
+    fn test_generate_rapina_docs_all_flags_true_skips_write_when_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let flags = AgentsFlags {
+            with_db: true,
+            with_websocket: true,
+            with_jobs: true,
+        };
+
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        let names = [
+            "core.md",
+            "extractors.md",
+            "errors.md",
+            "testing.md",
+            "migrations.md",
+            "websocket.md",
+            "jobs.md",
+        ];
+        let mtimes_before: Vec<_> = names
+            .iter()
+            .map(|name| {
+                std::fs::metadata(dir.path().join(format!(".rapina-docs/{name}")))
+                    .unwrap()
+                    .modified()
+                    .unwrap()
+            })
+            .collect();
+
+        // NOTE: assumes sub-second filesystem precision (APFS, ext4).
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        generate_rapina_docs(dir.path(), &flags).unwrap();
+
+        for (name, mtime_before) in names.iter().zip(mtimes_before.iter()) {
+            let mtime_after = std::fs::metadata(dir.path().join(format!(".rapina-docs/{name}")))
+                .unwrap()
+                .modified()
+                .unwrap();
+            assert_eq!(
+                *mtime_before, mtime_after,
+                "{name} mtime changed on second call with all flags true — unnecessary write"
+            );
+        }
     }
 
     #[test]
