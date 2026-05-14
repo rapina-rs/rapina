@@ -4,6 +4,7 @@ use http::{Request, Response, StatusCode};
 use hyper::body::Incoming;
 use prometheus::{
     CounterVec, Encoder, HistogramOpts, HistogramVec, IntGauge, Opts, Registry, TextEncoder,
+    core::Collector,
 };
 
 use crate::extract::PathParams;
@@ -21,6 +22,10 @@ pub struct MetricsRegistry {
 
 impl MetricsRegistry {
     pub fn new() -> Self {
+        Self::new_with_collectors(vec![])
+    }
+
+    pub(crate) fn new_with_collectors(collectors: Vec<Box<dyn Collector>>) -> Self {
         let registry = Registry::new();
 
         let http_requests_total = CounterVec::new(
@@ -55,6 +60,12 @@ impl MetricsRegistry {
         registry
             .register(Box::new(http_requests_in_flight.clone()))
             .expect("failed to register http_requests_in_flight");
+
+        for collector in collectors {
+            registry
+                .register(collector)
+                .expect("failed to register custom metric");
+        }
 
         Self {
             registry: Arc::new(registry),
@@ -192,5 +203,87 @@ mod tests {
         // The clone wraps the same Arc<Registry>, so its encode reflects the increment
         let output = clone.encode();
         assert!(output.contains("} 1"));
+    }
+
+    #[test]
+    fn test_custom_collector_appears_in_output() {
+        use prometheus::IntCounter;
+
+        let counter = IntCounter::new("my_custom_total", "A custom counter").unwrap();
+        counter.inc();
+
+        let registry = MetricsRegistry::new_with_collectors(vec![Box::new(counter)]);
+        let output = registry.encode();
+
+        assert!(output.contains("my_custom_total"));
+        assert!(output.contains("A custom counter"));
+    }
+
+    #[test]
+    fn test_multiple_custom_collectors() {
+        use prometheus::{IntCounter, IntGauge};
+
+        let counter = IntCounter::new("custom_requests", "Custom request counter").unwrap();
+        let gauge = IntGauge::new("custom_queue_depth", "Custom queue depth").unwrap();
+        gauge.set(42);
+
+        let registry =
+            MetricsRegistry::new_with_collectors(vec![Box::new(counter), Box::new(gauge)]);
+        let output = registry.encode();
+
+        assert!(output.contains("custom_requests"));
+        assert!(output.contains("custom_queue_depth"));
+        assert!(output.contains("42"));
+    }
+
+    #[test]
+    fn test_custom_collector_with_labels() {
+        use prometheus::{IntCounterVec, Opts};
+
+        let counter =
+            IntCounterVec::new(Opts::new("orders_total", "Total orders"), &["status"]).unwrap();
+        counter.with_label_values(&["placed"]).inc();
+        counter.with_label_values(&["placed"]).inc();
+        counter.with_label_values(&["cancelled"]).inc();
+
+        let registry = MetricsRegistry::new_with_collectors(vec![Box::new(counter)]);
+        let output = registry.encode();
+
+        assert!(output.contains("orders_total"));
+        assert!(output.contains(r#"status="placed""#));
+        assert!(output.contains(r#"status="cancelled""#));
+    }
+
+    #[test]
+    fn test_empty_collectors_vec_is_same_as_new() {
+        let r1 = MetricsRegistry::new();
+        let r2 = MetricsRegistry::new_with_collectors(vec![]);
+
+        let o1 = r1.encode();
+        let o2 = r2.encode();
+        assert_eq!(o1, o2);
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    fn test_custom_collector_name_collision_with_builtin_panics() {
+        use prometheus::IntCounter;
+
+        // "http_requests_in_flight" is a built-in Rapina metric; registering
+        // a custom collector with the same name must panic.
+        let collider =
+            IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
+        MetricsRegistry::new_with_collectors(vec![Box::new(collider)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    fn test_duplicate_custom_collector_names_panic() {
+        use prometheus::IntCounter;
+
+        // Two custom collectors sharing the same metric name must also panic.
+        let c1 = IntCounter::new("duplicate_metric_total", "first").unwrap();
+        let c2 = IntCounter::new("duplicate_metric_total", "second").unwrap();
+        MetricsRegistry::new_with_collectors(vec![Box::new(c1), Box::new(c2)]);
     }
 }

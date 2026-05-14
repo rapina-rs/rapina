@@ -12,7 +12,7 @@ use hyper_util::server::conn::auto;
 use hyper_util::server::graceful::GracefulShutdown;
 use tokio::net::TcpListener;
 
-use crate::context::RequestContext;
+use crate::context::{MatchedPattern, RequestContext};
 use crate::date_cache::DateHeaderCache;
 use crate::middleware::MiddlewareStack;
 use crate::router::Router;
@@ -79,6 +79,10 @@ pub(crate) async fn serve(
 
                     let ctx = RequestContext::new();
                     req.extensions_mut().insert(ctx.clone());
+                    if let Some(pattern) = router.resolve_pattern(req.method(), req.uri().path()) {
+                        req.extensions_mut()
+                            .insert(MatchedPattern(pattern.to_string()));
+                    }
 
                     async move {
                         let mut response = middlewares.execute(req, router, state, &ctx).await;

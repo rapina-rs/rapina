@@ -51,11 +51,11 @@ Both forms are equivalent, `enable_metrics()` and `disable_metrics()` are conven
 
 ## Collected Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `http_requests_total` | Counter | `method`, `path`, `status` | Total number of HTTP requests completed |
-| `http_request_duration_seconds` | Histogram | `method`, `path` | Request duration in seconds |
-| `http_requests_in_flight` | Gauge | — | Requests currently being processed |
+| Metric                          | Type      | Labels                     | Description                             |
+| ------------------------------- | --------- | -------------------------- | --------------------------------------- |
+| `http_requests_total`           | Counter   | `method`, `path`, `status` | Total number of HTTP requests completed |
+| `http_request_duration_seconds` | Histogram | `method`, `path`           | Request duration in seconds             |
+| `http_requests_in_flight`       | Gauge     | —                          | Requests currently being processed      |
 
 Example output:
 
@@ -81,13 +81,45 @@ http_requests_in_flight 2
 
 To prevent label cardinality explosion, pure-numeric path segments are automatically replaced with `:id`:
 
-| Raw request path | Label value |
-|------------------|-------------|
-| `/users/42` | `/users/:id` |
+| Raw request path       | Label value            |
+| ---------------------- | ---------------------- |
+| `/users/42`            | `/users/:id`           |
 | `/users/123/posts/456` | `/users/:id/posts/:id` |
-| `/users/profile` | `/users/profile` |
+| `/users/profile`       | `/users/profile`       |
 
 This means `/users/1`, `/users/2`, and `/users/999` all map to the same label set and are counted together.
+
+## Custom Metrics
+
+Register your own Prometheus collectors alongside the built-in HTTP metrics using `add_metric()`:
+
+```rust
+use rapina::prelude::*;
+use rapina::prometheus::{IntCounterVec, Opts};
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let orders_total = IntCounterVec::new(
+        Opts::new("orders_total", "Total number of orders placed"),
+        &["status"],
+    )
+    .unwrap();
+
+    // Clone before passing so you can increment it from your handlers.
+    let orders_counter = orders_total.clone();
+
+    Rapina::new()
+        .enable_metrics()
+        .add_metric(orders_total)
+        .router(router)
+        .listen("127.0.0.1:3000")
+        .await
+}
+```
+
+All types that implement `prometheus::core::Collector` are accepted — `IntCounter`, `IntCounterVec`, `Gauge`, `Histogram`, `HistogramVec`, and any custom collector.
+
+> **Name collisions:** Rapina panics at startup if a custom metric name clashes with a built-in metric (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`) or with another previously registered custom collector. Use unique names to avoid this.
 
 ## Scraping with Prometheus
 

@@ -45,6 +45,7 @@
 //! DATABASE_MIN_CONNECTIONS=5    # default: 1
 //! DATABASE_CONNECT_TIMEOUT=30   # seconds, default: 30
 //! DATABASE_IDLE_TIMEOUT=600     # seconds, default: 600
+//! DATABASE_AUTO_MIGRATE=false    # default: false — see [migrations](crate::migration)
 //! ```
 
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
@@ -70,6 +71,18 @@ pub struct DatabaseConfig {
     pub idle_timeout: u64,
     /// Enable SQL query logging (default: true in debug, false in release)
     pub sqlx_logging: bool,
+    /// When `true`, [`crate::app::Rapina::run_migrations`] applies pending migrations at startup.
+    /// Default `false`: pending migrations are not applied; a warning is logged instead.
+    pub auto_migrate: bool,
+}
+
+/// Policy read by [`crate::app::Rapina::run_migrations`], registered by [`crate::app::Rapina::with_database`].
+///
+/// Not inserted into state when the database is registered manually (without `with_database`).
+#[derive(Debug, Clone, Copy)]
+pub struct DatabaseMigrationPolicy {
+    /// When `true`, run pending migrations on startup; when `false`, only warn if any are pending.
+    pub auto_apply: bool,
 }
 
 impl DatabaseConfig {
@@ -82,6 +95,7 @@ impl DatabaseConfig {
             connect_timeout: 30,
             idle_timeout: 600,
             sqlx_logging: cfg!(debug_assertions),
+            auto_migrate: false,
         }
     }
 
@@ -96,6 +110,7 @@ impl DatabaseConfig {
     /// - `DATABASE_CONNECT_TIMEOUT`: Connection timeout in seconds (default: 30)
     /// - `DATABASE_IDLE_TIMEOUT`: Idle timeout in seconds (default: 600)
     /// - `DATABASE_LOGGING`: Enable SQL logging (default: true in debug)
+    /// - `DATABASE_AUTO_MIGRATE`: Apply DB migrations on startup when `true` (default: false)
     pub fn from_env() -> Result<Self, std::io::Error> {
         let url = std::env::var("DATABASE_URL").map_err(|_| {
             std::io::Error::new(
@@ -129,6 +144,8 @@ impl DatabaseConfig {
             .and_then(|v| v.parse().ok())
             .unwrap_or(cfg!(debug_assertions));
 
+        let auto_migrate = parse_env_bool("DATABASE_AUTO_MIGRATE").unwrap_or(false);
+
         Ok(Self {
             url,
             max_connections,
@@ -136,6 +153,7 @@ impl DatabaseConfig {
             connect_timeout,
             idle_timeout,
             sqlx_logging,
+            auto_migrate,
         })
     }
 
@@ -169,6 +187,12 @@ impl DatabaseConfig {
         self
     }
 
+    /// When `true`, [`crate::app::Rapina::run_migrations`] applies pending migrations at startup.
+    pub fn auto_migrate(mut self, enabled: bool) -> Self {
+        self.auto_migrate = enabled;
+        self
+    }
+
     /// Connects to the database and returns a connection pool.
     pub async fn connect(&self) -> Result<DatabaseConnection, DbError> {
         let mut opts = ConnectOptions::new(&self.url);
@@ -180,6 +204,21 @@ impl DatabaseConfig {
 
         Database::connect(opts).await.map_err(DbError)
     }
+}
+
+fn parse_env_bool(var: &str) -> Option<bool> {
+    std::env::var(var)
+        .ok()
+        .and_then(|v| match v.to_lowercase().as_str() {
+            "1" | "true" | "yes" => Some(true),
+            "0" | "false" | "no" => Some(false),
+            _ => {
+                tracing::warn!(
+                    "Unrecognized value for {var}: {v:?}. Expected true/false/1/0/yes/no. Defaulting to false."
+                );
+                None
+            }
+        })
 }
 
 /// Wrapper around SeaORM's `DbErr` for Rapina error integration.
@@ -300,6 +339,7 @@ mod tests {
         assert_eq!(config.url, "postgres://localhost/test");
         assert_eq!(config.max_connections, 10);
         assert_eq!(config.min_connections, 1);
+        assert!(!config.auto_migrate);
     }
 
     #[test]
@@ -316,6 +356,13 @@ mod tests {
         assert_eq!(config.connect_timeout, 60);
         assert_eq!(config.idle_timeout, 300);
         assert!(!config.sqlx_logging);
+        assert!(!config.auto_migrate);
+    }
+
+    #[test]
+    fn test_database_config_auto_migrate_builder() {
+        let config = DatabaseConfig::new("postgres://localhost/test").auto_migrate(true);
+        assert!(config.auto_migrate);
     }
 
     #[test]
