@@ -366,7 +366,7 @@ async fn main() -> std::io::Result<()> {
         // Application state
         .state(config)
         // Database
-        .with_database(DatabaseConfig::from_env()?).await?
+        .with_database(DatabaseConfig::from_env()?.auto_migrate(true)).await?
         .run_migrations::<migrations::Migrator>().await?
         // Middleware
         .with_cors(CorsConfig::with_origins(vec![frontend_url]))
