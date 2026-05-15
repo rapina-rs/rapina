@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
         .state(config)
         .openapi("Todo API", "1.0.0")
         .middleware(RequestLogMiddleware::new())
-        .with_database(DatabaseConfig::new(db_url))
+        .with_database(DatabaseConfig::new(db_url).auto_migrate(true))
         .await?
         .run_migrations::<migrations::Migrator>()
         .await?

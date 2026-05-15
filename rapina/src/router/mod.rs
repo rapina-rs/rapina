@@ -468,6 +468,17 @@ impl Router {
         None
     }
 
+    /// Returns the route pattern that would match this method + path, without
+    /// executing the handler.
+    ///
+    /// Used by middleware that needs to know the abstract template (e.g.
+    /// `/users/:id`) rather than the concrete request path (e.g. `/users/42`).
+    /// Returns `None` if no route matches (the request will 404 later).
+    pub fn resolve_pattern(&self, method: &Method, path: &str) -> Option<&str> {
+        self.resolve(method, path)
+            .map(|(idx, _)| self.routes[idx].1.pattern.as_str())
+    }
+
     /// Handles an incoming request by matching it to a route.
     pub async fn handle(&self, req: Request<Incoming>, state: &Arc<AppState>) -> Response<BoxBody> {
         // Layer 1: O(1) static map — no allocation, no cloning.

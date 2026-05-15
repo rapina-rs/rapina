@@ -71,6 +71,9 @@ pub struct Rapina {
     pub(crate) metrics: bool,
     /// Whether llms.txt endpoint is enabled
     pub(crate) llms_txt: bool,
+    /// Custom Prometheus collectors to include in the metrics endpoint.
+    #[cfg(feature = "metrics")]
+    pub(crate) custom_metrics: Vec<Box<dyn prometheus::core::Collector>>,
     /// Whether OpenAPI is enabled
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
@@ -124,6 +127,8 @@ impl Rapina {
             #[cfg(feature = "metrics")]
             metrics: false,
             llms_txt: cfg!(debug_assertions),
+            #[cfg(feature = "metrics")]
+            custom_metrics: Vec::new(),
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
@@ -716,6 +721,43 @@ impl Rapina {
         self.with_metrics(false)
     }
 
+    /// Registers a custom Prometheus collector to be included in the `/metrics` endpoint.
+    ///
+    /// Use this to mix your own application metrics — counters, gauges, histograms — into
+    /// the same endpoint that Rapina uses for its built-in HTTP metrics.
+    ///
+    /// Requires the `metrics` feature and `.enable_metrics()` (or `.with_metrics(true)`)
+    /// to be called as well.
+    ///
+    /// # Panics
+    ///
+    /// Panics at startup if the collector's metric name collides with a built-in Rapina metric
+    /// (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`) or with
+    /// another previously registered custom collector. Choose unique metric names to avoid this.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    /// use prometheus::{IntCounterVec, Opts};
+    ///
+    /// let orders_total = IntCounterVec::new(
+    ///     Opts::new("orders_total", "Total number of orders placed"),
+    ///     &["status"],
+    /// )
+    /// .unwrap();
+    ///
+    /// Rapina::new()
+    ///     .enable_metrics()
+    ///     .add_metric(orders_total.clone())
+    ///     .listen("127.0.0.1:3000");
+    /// ```
+    #[cfg(feature = "metrics")]
+    pub fn add_metric(mut self, collector: impl prometheus::core::Collector + 'static) -> Self {
+        self.custom_metrics.push(Box::new(collector));
+        self
+    }
+
     /// Enables or disables openapi endpoint
     ///
     /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
@@ -788,17 +830,20 @@ impl Rapina {
         mut self,
         config: crate::database::DatabaseConfig,
     ) -> Result<Self, std::io::Error> {
+        let policy = crate::database::DatabaseMigrationPolicy {
+            auto_apply: config.auto_migrate,
+        };
         let conn = config
             .connect()
             .await
             .map_err(|e| std::io::Error::other(format!("Database connection failed: {}", e)))?;
-        self.state = self.state.with(conn);
+        self.state = self.state.with(conn).with(policy);
         Ok(self)
     }
 
-    /// Runs all pending database migrations at startup.
+    /// Runs database migrations according to [`DatabaseConfig::auto_migrate`](crate::database::DatabaseConfig::auto_migrate), or only warns about pending migrations when it is `false`.
     ///
-    /// Call this after `with_database()` to apply migrations before serving requests.
+    /// Call this after `with_database()` so the policy from configuration is available. If only a raw [`DatabaseConnection`] was registered (for example via [`Rapina::state`](crate::app::Rapina::state)), pending migrations are **not** applied and a warning is logged if any are pending (same as `auto_migrate: false`).
     ///
     /// # Example
     ///
@@ -806,7 +851,9 @@ impl Rapina {
     /// mod migrations;
     ///
     /// Rapina::new()
-    ///     .with_database(DatabaseConfig::from_env()?).await?
+    ///     .with_database(
+    ///         DatabaseConfig::new("sqlite://app.db?mode=rwc").auto_migrate(true),
+    ///     ).await?
     ///     .run_migrations::<migrations::Migrator>().await?
     ///     .router(router)
     ///     .listen("127.0.0.1:3000")
@@ -821,12 +868,17 @@ impl Rapina {
             .get::<sea_orm::DatabaseConnection>()
             .ok_or_else(|| {
                 std::io::Error::other(
-                    "Database not configured. Call .with_database() before
-  .run_migrations()",
+                    "Database connection not found in application state. Register it with .with_database() or .state(DatabaseConnection).",
                 )
             })?;
 
-        crate::migration::run_pending::<M>(conn)
+        let auto_apply = self
+            .state
+            .get::<crate::database::DatabaseMigrationPolicy>()
+            .map(|p| p.auto_apply)
+            .unwrap_or(false);
+
+        crate::migration::run_startup_migrations::<M>(conn, auto_apply)
             .await
             .map_err(|e| std::io::Error::other(format!("Migration failed: {}", e)))?;
 
@@ -944,7 +996,8 @@ impl Rapina {
 
         #[cfg(feature = "metrics")]
         if self.metrics {
-            let registry = MetricsRegistry::new();
+            let registry =
+                MetricsRegistry::new_with_collectors(std::mem::take(&mut self.custom_metrics));
             self.state = self.state.with(registry.clone());
             self.middlewares.add(MetricsMiddleware::new(registry));
             self.router = self
@@ -1260,6 +1313,86 @@ mod tests {
     fn test_rapina_with_metrics_disabled() {
         let app = Rapina::new().with_metrics(false);
         assert!(!app.metrics);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_add_metric_stores_collector() {
+        use prometheus::IntCounter;
+
+        let counter = IntCounter::new("my_app_total", "My app counter").unwrap();
+        let app = Rapina::new().enable_metrics().add_metric(counter);
+
+        assert_eq!(app.custom_metrics.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_add_multiple_metrics() {
+        use prometheus::{IntCounter, IntGauge};
+
+        let c1 = IntCounter::new("metric_one", "first").unwrap();
+        let c2 = IntCounter::new("metric_two", "second").unwrap();
+        let g1 = IntGauge::new("metric_three", "third").unwrap();
+
+        let app = Rapina::new()
+            .enable_metrics()
+            .add_metric(c1)
+            .add_metric(c2)
+            .add_metric(g1);
+
+        assert_eq!(app.custom_metrics.len(), 3);
+    }
+
+    #[test]
+    #[cfg(feature = "metrics")]
+    fn test_rapina_custom_metrics_appear_in_output() {
+        use crate::metrics::MetricsRegistry;
+        use prometheus::IntCounter;
+
+        let counter = IntCounter::new("orders_placed_total", "Orders placed").unwrap();
+        counter.inc();
+        counter.inc();
+
+        let registry = MetricsRegistry::new_with_collectors(vec![Box::new(counter)]);
+        let output = registry.encode();
+
+        assert!(output.contains("orders_placed_total"));
+        assert!(output.contains("Orders placed"));
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    #[cfg(feature = "metrics")]
+    fn test_add_metric_collision_with_builtin_panics() {
+        use prometheus::IntCounter;
+
+        // "http_requests_in_flight" is registered by Rapina internally;
+        // a custom collector with the same name must panic during prepare().
+        let collider =
+            IntCounter::new("http_requests_in_flight", "collides with built-in").unwrap();
+
+        Rapina::new()
+            .enable_metrics()
+            .add_metric(collider)
+            .prepare();
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to register custom metric")]
+    #[cfg(feature = "metrics")]
+    fn test_add_metric_duplicate_custom_names_panics() {
+        use prometheus::IntCounter;
+
+        // Two user-supplied collectors sharing the same name must panic during prepare().
+        let c1 = IntCounter::new("my_custom_events_total", "first").unwrap();
+        let c2 = IntCounter::new("my_custom_events_total", "second").unwrap();
+
+        Rapina::new()
+            .enable_metrics()
+            .add_metric(c1)
+            .add_metric(c2)
+            .prepare();
     }
 
     #[test]
