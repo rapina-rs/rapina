@@ -231,9 +231,20 @@ pub fn build_openapi_spec(
 
     spec.components = Some(Components { schemas });
 
+    let mut seen_operation_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
     for route in routes {
         if route.is_internal() {
             continue;
+        }
+
+        if !seen_operation_ids.insert(route.handler_name.clone()) {
+            panic!(
+                "Duplicate operationId '{}' in OpenAPI spec. Each handler must have a unique name. \
+                 Found duplicate on {} {}.",
+                route.handler_name, route.method, route.path
+            );
         }
         // Extract path parameters (e.g., :id -> id)
         let params: Vec<Parameter> = route
@@ -626,5 +637,139 @@ mod tests {
         let request_body = patch_op.request_body.as_ref().unwrap();
         assert!(!request_body.required);
         assert!(request_body.content.contains_key("application/json"));
+    }
+
+    #[test]
+    fn test_unique_operation_ids_pass() {
+        let routes = vec![
+            RouteInfo::new(
+                "GET",
+                "/users",
+                "list_users",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "POST",
+                "/users",
+                "create_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "GET",
+                "/users/:id",
+                "get_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+        ];
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+
+        let get_op = spec.paths.get("/users").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_op.operation_id.as_deref(), Some("list_users"));
+
+        let post_op = spec.paths.get("/users").unwrap().post.as_ref().unwrap();
+        assert_eq!(post_op.operation_id.as_deref(), Some("create_user"));
+
+        let get_by_id = spec.paths.get("/users/{id}").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_by_id.operation_id.as_deref(), Some("get_user"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Duplicate operationId 'get_user'")]
+    fn test_duplicate_operation_id_panics() {
+        let routes = vec![
+            RouteInfo::new(
+                "GET",
+                "/users/:id",
+                "get_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "GET",
+                "/posts/:id",
+                "get_user",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+        ];
+        build_openapi_spec("Test API", "1.0.0", &routes);
+    }
+
+    #[test]
+    #[should_panic(expected = "Duplicate operationId 'list'")]
+    fn test_duplicate_operation_id_same_name_different_paths_panics() {
+        let routes = vec![
+            RouteInfo::new(
+                "GET",
+                "/users",
+                "list",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "GET",
+                "/posts",
+                "list",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+        ];
+        build_openapi_spec("Test API", "1.0.0", &routes);
+    }
+
+    #[test]
+    fn test_duplicate_operation_id_skips_internal_routes() {
+        // Internal routes are skipped before the uniqueness check,
+        // so duplicating an internal handler name with a public one is fine.
+        let routes = vec![
+            RouteInfo::new(
+                "GET",
+                "/__rapina/routes",
+                "list",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+            RouteInfo::new(
+                "GET",
+                "/posts",
+                "list",
+                None,
+                None,
+                None::<String>,
+                None,
+                Vec::new(),
+            ),
+        ];
+        // Should not panic — internal route is excluded from uniqueness tracking
+        let spec = build_openapi_spec("Test API", "1.0.0", &routes);
+        assert!(spec.paths.contains_key("/posts"));
+        assert!(!spec.paths.contains_key("/__rapina/routes"));
     }
 }
