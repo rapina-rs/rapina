@@ -13,6 +13,7 @@ use std::sync::Arc;
 use http::{Method, Request, Response, StatusCode};
 use hyper::body::Incoming;
 
+use crate::discovery::HeaderParamInfo;
 use crate::error::ErrorVariant;
 use crate::extract::PathParams;
 use crate::handler::Handler;
@@ -38,6 +39,8 @@ pub struct RouteConfig {
     pub request_body_required: Option<bool>,
     /// Error responses this handler may return.
     pub error_responses: Vec<ErrorVariant>,
+    /// Typed header parameters declared on this handler.
+    pub header_parameters: Vec<HeaderParamInfo>,
 }
 
 impl Default for RouteConfig {
@@ -49,6 +52,7 @@ impl Default for RouteConfig {
             request_content_type: None,
             request_body_required: None,
             error_responses: Vec::new(),
+            header_parameters: Vec::new(),
         }
     }
 }
@@ -61,6 +65,7 @@ pub(crate) struct Route {
     pub(crate) request_content_type: Option<&'static str>,
     pub(crate) request_body_required: Option<bool>,
     pub(crate) error_responses: Vec<ErrorVariant>,
+    pub(crate) header_parameters: Vec<HeaderParamInfo>,
     handler: HandlerFn,
 }
 
@@ -140,6 +145,7 @@ impl Router {
             request_content_type: config.request_content_type,
             request_body_required: config.request_body_required,
             error_responses: config.error_responses,
+            header_parameters: config.header_parameters,
             handler,
         };
 
@@ -208,6 +214,7 @@ impl Router {
                 request_content_type: H::request_content_type(),
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
+                header_parameters: H::header_parameters(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -228,6 +235,7 @@ impl Router {
                 request_content_type: H::request_content_type(),
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
+                header_parameters: H::header_parameters(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -266,6 +274,7 @@ impl Router {
                 request_content_type: H::request_content_type(),
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
+                header_parameters: H::header_parameters(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -304,6 +313,7 @@ impl Router {
                 request_content_type: H::request_content_type(),
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
+                header_parameters: H::header_parameters(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -342,6 +352,7 @@ impl Router {
                 request_content_type: H::request_content_type(),
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
+                header_parameters: H::header_parameters(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -383,6 +394,7 @@ impl Router {
                     route.request_content_type,
                     route.request_body_required,
                     route.error_responses.clone(),
+                    route.header_parameters.clone(),
                 )
             })
             .collect()
@@ -454,6 +466,17 @@ impl Router {
             }
         }
         None
+    }
+
+    /// Returns the route pattern that would match this method + path, without
+    /// executing the handler.
+    ///
+    /// Used by middleware that needs to know the abstract template (e.g.
+    /// `/users/:id`) rather than the concrete request path (e.g. `/users/42`).
+    /// Returns `None` if no route matches (the request will 404 later).
+    pub fn resolve_pattern(&self, method: &Method, path: &str) -> Option<&str> {
+        self.resolve(method, path)
+            .map(|(idx, _)| self.routes[idx].1.pattern.as_str())
     }
 
     /// Handles an incoming request by matching it to a route.

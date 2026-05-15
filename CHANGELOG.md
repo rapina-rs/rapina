@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Tower compatibility layer**: `tower` feature flag with `TowerLayerMiddleware` (tower Layer → rapina Middleware adapter), `RapinaService` (rapina stack → tower Service adapter), and `.layer()` builder method
 - **NextService Clone support**: Tower layers requiring `Clone` on the inner service (e.g. tower-resilience, retry, circuit breaker) now work out of the box
+- `DatabaseConfig::auto_migrate` and `DATABASE_AUTO_MIGRATE` (default `false`). When `run_migrations` runs with auto-migrate off, pending migrations are not applied; Rapina logs a warning listing pending migration names and points to `rapina migrate up` / `rapina migrate init`.
+
+### Changed
+- **Breaking:** `DatabaseConfig::new` and `from_env` default `auto_migrate` to `false`. Opt in with `.auto_migrate(true)` or `DATABASE_AUTO_MIGRATE=true` to apply migrations at startup.
 
 ## [0.10.0] - 2026-03-16
 

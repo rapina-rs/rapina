@@ -580,7 +580,13 @@ fn generate_for_table(
         .unwrap_or(NormalizedType::I32);
 
     codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
-    codegen::create_migration_file(plural, &pascal_plural, &fields, false)?;
+    codegen::create_migration_file(
+        plural,
+        &pascal_plural,
+        &fields,
+        false,
+        primary_key.as_deref(),
+    )?;
     codegen::create_feature_module(&singular, plural, &pascal, &fields, &pk_type, force)?;
 
     println!(
