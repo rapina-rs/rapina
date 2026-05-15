@@ -12,6 +12,8 @@ tags = ["axum", "comparison", "framework-design"]
 author = "Antonio Souza"
 +++
 
+> Maintained as Rapina evolves. Newer posts about features that landed after 0.11 will be linked here.
+
 I maintain Rapina. I also shipped on Axum. This post is the comparison I'd write for a friend asking which one to pick.
 
 Axum is the right call for a lot of teams. Rapina is the right call for a different set of teams.
@@ -121,7 +123,22 @@ Rapina derives OpenAPI from your handler signatures and the `JsonSchema` derive 
 
 Keeping an OpenAPI spec in sync with handler code by hand is a known source of drift, and the moment you have one client team consuming a spec from one server team, drift becomes a bug source.
 
-There's also `rapina routes`, which prints the registered routes table from the CLI without starting the server. Useful for code review, useful for `rapina doctor` checks, useful for AI tools that want a structural view of an API.
+## Tooling and project scaffolding
+
+Axum doesn't ship a CLI. New projects start from a `cargo new` and a tutorial. Existing projects depend on convention enforced by the team.
+
+Rapina ships `rapina-cli` with the framework. The commands that matter day-to-day:
+
+- `rapina new <name>`. Scaffolds a project with an opinionated layout: feature-first modules, typed errors, OpenAPI wired. Also drops `AGENTS.md`, `CLAUDE.md`, and a `.rapina-docs/` folder into the project root so AI coding tools (Cursor, Claude Code, Copilot) have framework-specific context without you wiring anything.
+- `rapina routes`. Prints the registered routes table without starting the server. Useful in code review and CI sanity checks.
+- `rapina doctor`. Static checks against the project: missing migrations, common misconfigurations, stale generated files. `--fix-agents` refreshes the AGENTS.md block after Rapina upgrades.
+- `rapina migrate up / down / status / new`. Applies and tracks SeaORM migrations from the CLI.
+- `rapina test`. Runs the project's tests with framework-aware defaults.
+- `rapina dev`. Hot-reload dev server.
+
+The CLI isn't a differentiator on its own. The differentiator is the convention it enforces. `rapina new` projects look the same shape, which means LLMs make fewer mistakes when editing them, which means a code review on a Rapina codebase is faster than a code review on a green-field Axum codebase where every team picked a different layout.
+
+If you've used FastAPI's `fastapi` CLI or Rails' `bin/rails`, the mental model is the same.
 
 ## Middleware: tower vs Rapina-native
 
@@ -204,6 +221,48 @@ async fn me(user: CurrentUser) -> Json<serde_json::Value> {
 }
 ```
 
+### JWKS, when you're integrating with an external IdP
+
+If your auth is JWT signed with HS256 and a shared secret, both frameworks make that easy. The harder case is RS256 or EC keys served from an external identity provider (Auth0, Okta, Cognito, Keycloak, an internal IdP) where you need to fetch the JWKS, cache it, and refresh on a schedule.
+
+Rapina ships this as a first-class client backed by a typed extractor:
+
+```rust
+use rapina::jwt::{self, JsonWebToken, JwksClient};
+
+let jwks_client = JwksClient::oidc(
+    "https://idp.example.com/.well-known/openid-configuration".to_string(),
+    "0 */5 * * * *".to_string(), // refresh every 5 minutes
+);
+
+let mut validation = jwt::default_validation();
+validation.set_audience(&["your-api-audience"]);
+validation.set_issuer(&["https://idp.example.com"]);
+
+Rapina::new()
+    .state(jwks_client)
+    .state(validation)
+    .router(router)
+    .listen("0.0.0.0:3000")
+    .await
+```
+
+Handlers pull validated claims through a typed `JsonWebToken<T>` extractor, so the rest of the handler can just work with the parsed payload:
+
+```rust
+#[derive(Deserialize)]
+struct Claims { sub: String, email: String }
+
+#[get("/me")]
+async fn me(token: JsonWebToken<Claims>) -> Json<String> {
+    Json(token.claims.email)
+}
+```
+
+`JwksClient::direct(jwks_url, schedule)` skips OIDC discovery if you already know the JWKS URL. Both variants enforce HTTPS, cache the key set, and refresh on the cron schedule you pass in.
+
+On the Axum side there are two or three community crates for JWKS, but as of mid-2026 none have meaningful traction or recent maintenance. Most of them assume a browser flow that redirects to a login page on missing or invalid tokens, which is the wrong default for a backend API where you want a clean 401 the client can handle.
+
 The cost of this default is you have to remember `#[public]` for endpoints that should be open. The benefit is you can't accidentally ship an unauthenticated `/admin` route because you forgot to attach the auth middleware.
 
 For Axum, the same posture is achievable, but it's something you have to assemble. If you forget the layer on a sub-router, that sub-router is open. The framework can't tell you about it.
@@ -238,7 +297,7 @@ You want auth secure by default. Forgetting to mark a route open gets you a 401 
 
 You're coming from FastAPI, NestJS, or Rails and the ergonomics gap to Axum feels too wide. Rapina narrows it considerably.
 
-You're using AI-assisted coding heavily (Cursor, Claude Code, Copilot). In my own work I've noticed LLMs make fewer mistakes when the framework has strong conventions. Fewer valid paths means fewer chances to invent a wrong one.
+You're using AI-assisted coding heavily (Cursor, Claude Code, Copilot). LLMs make fewer mistakes when the framework has strong conventions, and Rapina ships `AGENTS.md` plus per-feature usage rules in `.rapina-docs/` that those tools pick up automatically. Fewer valid paths means fewer chances to invent a wrong one, and the framework tells the agent what those paths are.
 
 You want OpenAPI generation that just works without a separate macro on every handler.
 
