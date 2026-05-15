@@ -331,6 +331,21 @@ fn parse_field_type(input: ParseStream) -> Result<RawFieldType> {
             return Ok(RawFieldType::Vec { inner });
         }
 
+        if ScalarType::is_unsupported_unsigned(&ident_str) {
+            return Err(syn::Error::new(
+                ident.span(),
+                format!(
+                    "unsigned integer type '{}' is not supported in schema fields. \
+                     Most SQL databases lack a native unsigned integer type and \
+                     silently widening to a signed column truncates values above \
+                     the signed maximum. Use a signed type ('i32' or 'i64') and \
+                     validate the upper bound at the application layer, or model \
+                     the column as 'Decimal' if the unsigned range is required.",
+                    ident_str
+                ),
+            ));
+        }
+
         // Try to parse as scalar
         if let Some(scalar) = ScalarType::from_ident(&ident_str) {
             return Ok(RawFieldType::Scalar {
@@ -370,6 +385,21 @@ fn parse_inner_type(input: ParseStream) -> Result<InnerType> {
 
         // We don't support Option<Vec<Entity>> yet, but if we did it would be handled here
         return Ok(InnerType::Ident(ident));
+    }
+
+    if ScalarType::is_unsupported_unsigned(&ident_str) {
+        return Err(syn::Error::new(
+            ident.span(),
+            format!(
+                "unsigned integer type '{}' is not supported in schema fields. \
+                 Most SQL databases lack a native unsigned integer type and \
+                 silently widening to a signed column truncates values above \
+                 the signed maximum. Use a signed type ('i32' or 'i64') and \
+                 validate the upper bound at the application layer, or model \
+                 the column as 'Decimal' if the unsigned range is required.",
+                ident_str
+            ),
+        ));
     }
 
     if let Some(scalar) = ScalarType::from_ident(&ident_str) {
@@ -460,6 +490,43 @@ mod tests {
         let result = parse_schema(input);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("reserved"));
+    }
+
+    #[test]
+    fn test_unsigned_integer_field_rejected() {
+        for ty in ["u8", "u16", "u32", "u64"] {
+            let input: TokenStream = format!("Entity {{ count: {ty}, }}").parse().unwrap();
+
+            let result = parse_schema(input);
+            assert!(
+                result.is_err(),
+                "expected '{ty}' to be rejected by parse_schema"
+            );
+            let msg = result.unwrap_err().to_string();
+            assert!(
+                msg.contains("unsigned integer type"),
+                "expected error message for '{ty}' to mention 'unsigned integer type', got: {msg}"
+            );
+            assert!(
+                msg.contains(ty),
+                "expected error message for '{ty}' to name the offending type, got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unsigned_integer_field_inside_option_rejected() {
+        let input = quote! {
+            Entity {
+                count: Option<u64>,
+            }
+        };
+
+        let result = parse_schema(input);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("unsigned integer type"));
+        assert!(msg.contains("u64"));
     }
 
     #[test]

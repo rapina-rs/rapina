@@ -10,7 +10,7 @@ mod tests {
 
     async fn db() -> Rapina {
         Rapina::new()
-            .with_database(DatabaseConfig::new("sqlite::memory:"))
+            .with_database(DatabaseConfig::new("sqlite::memory:").auto_migrate(true))
             .await
             .unwrap()
             .run_migrations::<migrations::Migrator>()
@@ -180,7 +180,7 @@ mod tests {
     async fn test_rate_limit() {
         let app = Rapina::new()
             .with_rate_limit(RateLimitConfig::per_minute(5))
-            .with_database(DatabaseConfig::new("sqlite::memory:"))
+            .with_database(DatabaseConfig::new("sqlite::memory:").auto_migrate(true))
             .await
             .unwrap()
             .run_migrations::<migrations::Migrator>()
@@ -203,7 +203,7 @@ mod tests {
             .with_cache(CacheConfig::in_memory(100))
             .await
             .unwrap()
-            .with_database(DatabaseConfig::new("sqlite::memory:"))
+            .with_database(DatabaseConfig::new("sqlite::memory:").auto_migrate(true))
             .await
             .unwrap()
             .run_migrations::<migrations::Migrator>()

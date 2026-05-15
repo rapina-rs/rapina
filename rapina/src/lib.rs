@@ -141,7 +141,9 @@ pub mod prelude {
     };
     pub use crate::context::RequestContext;
     pub use crate::error::{DocumentedError, Error, ErrorVariant, IntoApiError, Result};
-    pub use crate::extract::{Context, Cookie, Form, Headers, Json, Path, Query, State, Validated};
+    pub use crate::extract::{
+        Context, Cookie, Form, Header, Headers, Json, Path, Query, State, Validated,
+    };
     #[cfg(feature = "multipart")]
     pub use crate::extract::{Field, Multipart};
     pub use crate::introspection::RouteInfo;
@@ -179,6 +181,8 @@ pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, rela
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;
 pub use hyper;
+#[cfg(feature = "metrics")]
+pub use prometheus;
 pub use rust_decimal;
 pub use schemars;
 pub use serde_json;

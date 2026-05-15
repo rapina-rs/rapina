@@ -1,6 +1,29 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
+/// The matched route pattern for the current request (e.g. `/users/:id`).
+///
+/// Inserted into request extensions by the server before the middleware chain
+/// runs, so all middleware and handlers can read the abstract route template
+/// rather than the concrete request path.
+///
+/// ```ignore
+/// fn handle<'a>(&'a self, req: Request<Incoming>, ...) -> BoxFuture<...> {
+///     let pattern = req.extensions()
+///         .get::<MatchedPattern>()
+///         .map(|m| m.as_str());
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct MatchedPattern(pub(crate) String);
+
+impl MatchedPattern {
+    /// Returns the route pattern string (e.g. `/users/:id`).
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Per-request context passed through the middleware stack and into handlers.
 ///
 /// Created automatically for each incoming connection. Available via

@@ -30,7 +30,7 @@ use http_body_util::BodyExt;
 use hyper::Request;
 use hyper::body::{Body, Incoming};
 
-use crate::context::RequestContext;
+use crate::context::{MatchedPattern, RequestContext};
 use crate::middleware::{BoxFuture, Middleware, Next};
 use crate::response::{BoxBody, empty, full};
 
@@ -242,6 +242,10 @@ impl Middleware for CacheMiddleware {
             let method = req.method().clone();
             let path = req.uri().path().to_string();
             let query = req.uri().query().unwrap_or("").to_string();
+            let matched_pattern = req
+                .extensions()
+                .get::<MatchedPattern>()
+                .map(|m| m.0.clone());
 
             // Only cache GET requests
             if method == http::Method::GET {
@@ -317,8 +321,12 @@ impl Middleware for CacheMiddleware {
 
             // Auto-invalidate on successful mutations
             if is_mutation(&method) && response.status().is_success() {
-                let prefix = build_invalidation_prefix(&path);
-                self.backend.invalidate_prefix(&prefix).await;
+                let prefixes = build_invalidation_prefixes(&path, matched_pattern.as_deref());
+                let backend = &self.backend;
+                futures_util::future::join_all(
+                    prefixes.iter().map(|p| backend.invalidate_prefix(p)),
+                )
+                .await;
             }
 
             response
@@ -337,15 +345,66 @@ fn build_cache_key(path: &str, query: &str) -> String {
     }
 }
 
-fn build_invalidation_prefix(path: &str) -> String {
-    // /users/123 -> invalidate GET:/users
-    // /users -> invalidate GET:/users
-    let base = path
-        .rfind('/')
-        .filter(|&i| i > 0)
-        .map(|i| &path[..i])
-        .unwrap_or(path);
-    format!("GET:{}", base)
+/// Collect cache-key prefixes to invalidate after a mutation.
+///
+/// When the matched route `pattern` is available (e.g. `/users/:id/posts`),
+/// we use it instead of path heuristics: every pattern segment that is a
+/// static collection name becomes a prefix, while `:param` segments tell us
+/// to substitute the corresponding concrete path segment and then also emit
+/// the prefix up to (but not including) that param. This gives precise
+/// invalidation without false positives.
+///
+/// Falls back to the heuristic path walk only when `pattern` is `None` (e.g.
+/// during tests that bypass the server layer).
+fn build_invalidation_prefixes(path: &str, pattern: Option<&str>) -> Vec<String> {
+    if let Some(pattern) = pattern {
+        return build_invalidation_prefixes_from_pattern(path, pattern);
+    }
+    // Fallback: treat every segment as a potential collection name.
+    let mut prefixes = Vec::new();
+    let mut current = String::new();
+    for segment in path.split('/').filter(|s| !s.is_empty()) {
+        current.push('/');
+        current.push_str(segment);
+        prefixes.push(format!("GET:{}", current));
+    }
+    prefixes
+}
+
+/// Pattern-aware invalidation prefix builder.
+///
+/// Walks the route pattern and concrete path in lockstep:
+/// - Static segment  → this prefix is a collection name; emit it.
+/// - `:param` segment → this is an ID slot; emit the parent collection prefix
+///   (everything up to but not including this segment) if not already emitted.
+///
+/// Example: pattern `/users/:id/posts`, path `/users/42/posts`
+///   - `users`  → static, emit `GET:/users`
+///   - `:id`    → param, parent `GET:/users` already emitted — no-op
+///   - `posts`  → static, emit `GET:/users/42/posts`
+///
+/// Example: pattern `/users/:id`, path `/users/42`
+///   - `users`  → static, emit `GET:/users`
+///   - `:id`    → param, parent `GET:/users` already emitted — no-op
+fn build_invalidation_prefixes_from_pattern(path: &str, pattern: &str) -> Vec<String> {
+    let path_segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let pat_segs: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
+
+    let mut prefixes: Vec<String> = Vec::new();
+    let mut current_path = String::new();
+
+    for (pat_seg, path_seg) in pat_segs.iter().zip(path_segs.iter()) {
+        current_path.push('/');
+        current_path.push_str(path_seg);
+
+        if !pat_seg.starts_with(':') {
+            // Static segment — this is a collection name
+            prefixes.push(format!("GET:{}", current_path));
+        }
+        // param segment — no prefix emitted; parent was already emitted
+    }
+
+    prefixes
 }
 
 fn is_mutation(method: &http::Method) -> bool {
@@ -530,10 +589,66 @@ mod tests {
     }
 
     #[test]
-    fn test_build_invalidation_prefix() {
-        assert_eq!(build_invalidation_prefix("/users/123"), "GET:/users");
-        assert_eq!(build_invalidation_prefix("/users"), "GET:/users");
-        assert_eq!(build_invalidation_prefix("/"), "GET:/");
+    fn test_build_invalidation_prefixes_simple() {
+        // Fallback (no pattern): all segments emitted
+        let p = build_invalidation_prefixes("/users/123", None);
+        assert!(p.contains(&"GET:/users".to_string()));
+        assert!(p.contains(&"GET:/users/123".to_string()));
+
+        let p = build_invalidation_prefixes("/users", None);
+        assert!(p.contains(&"GET:/users".to_string()));
+    }
+
+    #[test]
+    fn test_build_invalidation_prefixes_nested() {
+        // Fallback (no pattern): all segments emitted
+        let prefixes = build_invalidation_prefixes("/users/123/posts", None);
+        assert!(prefixes.contains(&"GET:/users/123/posts".to_string()));
+        assert!(prefixes.contains(&"GET:/users".to_string()));
+        assert!(prefixes.contains(&"GET:/users/123".to_string()));
+    }
+
+    #[test]
+    fn test_build_invalidation_prefixes_with_pattern() {
+        // Pattern-aware: only static segments emitted
+        let prefixes = build_invalidation_prefixes("/users/123/posts", Some("/users/:id/posts"));
+        assert!(prefixes.contains(&"GET:/users".to_string()));
+        assert!(prefixes.contains(&"GET:/users/123/posts".to_string()));
+        assert!(!prefixes.contains(&"GET:/users/123".to_string())); // ID segment excluded
+
+        // /users/:id — only collection emitted
+        let prefixes = build_invalidation_prefixes("/users/42", Some("/users/:id"));
+        assert_eq!(prefixes, vec!["GET:/users".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_nested_mutation_invalidates_parent_collection() {
+        let cache = InMemoryCache::new(100);
+        let response = CachedResponse {
+            status: 200,
+            headers: vec![],
+            body: Bytes::from("data"),
+        };
+
+        cache
+            .set("GET:/users", response.clone(), Duration::from_secs(60))
+            .await;
+        cache
+            .set(
+                "GET:/users/123/posts",
+                response.clone(),
+                Duration::from_secs(60),
+            )
+            .await;
+
+        // Simulate POST /users/123/posts — should invalidate both
+        let prefixes = build_invalidation_prefixes("/users/123/posts", Some("/users/:id/posts"));
+        for prefix in &prefixes {
+            cache.invalidate_prefix(prefix).await;
+        }
+
+        assert!(cache.get("GET:/users/123/posts").await.is_none());
+        assert!(cache.get("GET:/users").await.is_none());
     }
 
     #[test]
