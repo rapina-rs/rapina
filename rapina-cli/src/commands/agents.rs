@@ -743,11 +743,9 @@ rapina = { version = "0.11", features = ["postgres"] }
 
         let member_dir = workspace.path().join("api");
         std::fs::create_dir_all(&member_dir).unwrap();
-        // Member adds `websocket` on top of the inherited `postgres`. Cargo
-        // doesn't actually allow this exact shape (you can't both set
-        // `workspace = true` and inline-add features), but the resolver here
-        // is intentionally permissive about the source layout — the only
-        // promise is "every feature mentioned anywhere makes it into flags".
+        // Cargo allows a member to add features on top of the workspace-inherited
+        // set: `{ workspace = true, features = ["extra"] }`. The merge test
+        // verifies that both layers of features contribute to the final flags.
         let member_cargo: toml::Value = toml::from_str(
             r#"[package]
 name = "api"
@@ -762,6 +760,33 @@ rapina = { workspace = true, features = ["websocket"] }
         let flags = detect_flags_with_workspace(&member_cargo, &member_dir);
         assert!(flags.with_db);
         assert!(flags.with_websocket);
+        assert!(!flags.with_jobs);
+    }
+
+    /// When the member package is also the workspace root, the workspace walk
+    /// must inspect `member_dir` itself so root-owned workspace dependencies
+    /// are inherited.
+    #[test]
+    fn test_detect_flags_with_workspace_when_member_is_workspace_root() {
+        let workspace = tempfile::tempdir().unwrap();
+        let cargo_toml = r#"[package]
+name = "api"
+version = "0.1.0"
+
+[workspace]
+
+[dependencies]
+rapina = { workspace = true }
+
+[workspace.dependencies]
+rapina = { version = "0.11", features = ["postgres"] }
+"#;
+        std::fs::write(workspace.path().join("Cargo.toml"), cargo_toml).unwrap();
+        let cargo_value: toml::Value = toml::from_str(cargo_toml).unwrap();
+
+        let flags = detect_flags_with_workspace(&cargo_value, workspace.path());
+        assert!(flags.with_db);
+        assert!(!flags.with_websocket);
         assert!(!flags.with_jobs);
     }
 
