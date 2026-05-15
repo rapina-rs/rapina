@@ -25,12 +25,19 @@ pub enum ScalarType {
 
 impl ScalarType {
     /// Parse a type identifier into a scalar type.
+    ///
+    /// Unsigned integer types (`u8`, `u16`, `u32`, `u64`) are intentionally
+    /// rejected here so callers can emit a focused compile-time error.
+    /// Most SQL backends (including Postgres) lack a native unsigned
+    /// integer type, and silently widening to a signed column truncates
+    /// values above the signed maximum. Use [`Self::is_unsupported_unsigned`]
+    /// to detect them in the parser.
     pub fn from_ident(ident: &str) -> Option<Self> {
         match ident {
             "String" => Some(ScalarType::String),
             "Text" => Some(ScalarType::Text),
-            "i32" | "i16" | "i8" | "u16" | "u8" | "integer" | "int" => Some(ScalarType::I32),
-            "i64" | "u64" | "u32" | "bigint" => Some(ScalarType::I64),
+            "i32" | "i16" | "i8" | "integer" | "int" => Some(ScalarType::I32),
+            "i64" | "bigint" => Some(ScalarType::I64),
             "f32" | "float" => Some(ScalarType::F32),
             "f64" | "double" => Some(ScalarType::F64),
             "bool" | "boolean" => Some(ScalarType::Bool),
@@ -44,6 +51,16 @@ impl ScalarType {
             "Bytes" | "Blob" | "binary" | "bytea" | "varbinary" => Some(ScalarType::Bytes),
             _ => None,
         }
+    }
+
+    /// Returns true for Rust unsigned integer types that would silently
+    /// be coerced to a signed column type if accepted as a scalar.
+    ///
+    /// The parser uses this to surface a clear compile-time error rather
+    /// than generating an `i32`/`i64` field that overflows above the
+    /// signed maximum (issue #549).
+    pub fn is_unsupported_unsigned(ident: &str) -> bool {
+        matches!(ident, "u8" | "u16" | "u32" | "u64")
     }
 
     /// Generate the Rust type for this scalar.
