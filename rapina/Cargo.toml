@@ -55,7 +55,7 @@ dotenvy = "0.15.7"
 schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"] }
 
 # JWT Authentication
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 
 # JWKS (optional)
 hyper-rustls = { version = "0.27.9", optional = true, features = ["http1", "http2"] }
