@@ -1,6 +1,6 @@
 [package]
 name = "rapina"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
@@ -55,7 +55,7 @@ dotenvy = "0.15.7"
 schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"] }
 
 # JWT Authentication
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 
 # JWKS (optional)
 hyper-rustls = { version = "0.27.9", optional = true, features = ["http1", "http2"] }
@@ -73,7 +73,7 @@ flate2 = { version = "1.1", optional = true }
 multer = { version = "3.0", optional = true }
 
 # Our macros
-rapina-macros = { version = "0.11.0", path = "../rapina-macros/" }
+rapina-macros = { version = "0.12.0", path = "../rapina-macros/" }
 
 # Auto-discovery
 inventory = "0.3"

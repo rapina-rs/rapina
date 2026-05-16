@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use crate::discovery::HeaderParamInfo;
 use crate::error::ErrorVariant;
 
 /// Metadata about a registered route.
@@ -14,7 +15,7 @@ use crate::error::ErrorVariant;
 /// ```
 /// use rapina::introspection::RouteInfo;
 ///
-/// let info = RouteInfo::new("GET", "/users/:id", "get_user", None, None, None::<String>, None, Vec::new());
+/// let info = RouteInfo::new("GET", "/users/:id", "get_user", None, None, None::<String>, None, Vec::new(), Vec::new());
 /// assert_eq!(info.method, "GET");
 /// assert_eq!(info.path, "/users/:id");
 /// ```
@@ -41,6 +42,9 @@ pub struct RouteInfo {
     /// Error variants for OpenAPI documentation.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub error_responses: Vec<ErrorVariant>,
+    /// Typed header parameters declared on this handler.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub header_parameters: Vec<HeaderParamInfo>,
 }
 
 impl RouteInfo {
@@ -62,6 +66,7 @@ impl RouteInfo {
         request_content_type: Option<impl Into<String>>,
         request_body_required: Option<bool>,
         error_responses: Vec<ErrorVariant>,
+        header_parameters: Vec<HeaderParamInfo>,
     ) -> Self {
         Self {
             method: method.into(),
@@ -72,6 +77,7 @@ impl RouteInfo {
             request_content_type: request_content_type.map(|s| s.into()),
             request_body_required,
             error_responses,
+            header_parameters,
         }
     }
 }
@@ -91,6 +97,7 @@ mod tests {
             None::<String>,
             None,
             Vec::new(),
+            Vec::new(),
         );
         assert_eq!(info.method, "GET");
         assert_eq!(info.path, "/users");
@@ -108,6 +115,7 @@ mod tests {
             None::<String>,
             None,
             Vec::new(),
+            Vec::new(),
         );
         assert_eq!(info.path, "/users/:id");
     }
@@ -122,6 +130,7 @@ mod tests {
             None,
             None::<String>,
             None,
+            Vec::new(),
             Vec::new(),
         );
         let cloned = info.clone();
@@ -138,6 +147,7 @@ mod tests {
             None,
             None::<String>,
             None,
+            Vec::new(),
             Vec::new(),
         );
         let json = serde_json::to_string(&info).unwrap();
@@ -156,6 +166,7 @@ mod tests {
             None,
             None::<String>,
             None,
+            Vec::new(),
             Vec::new(),
         );
         let debug = format!("{:?}", info);
@@ -179,6 +190,7 @@ mod tests {
             None::<String>,
             None,
             errors,
+            Vec::new(),
         );
         assert_eq!(info.error_responses.len(), 1);
         assert_eq!(info.error_responses[0].status, 404);

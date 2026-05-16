@@ -90,6 +90,7 @@ mod tests {
                 code: "CONFLICT",
                 description: "email already registered",
             }],
+            vec![],
         )
     }
 
@@ -110,6 +111,7 @@ mod tests {
             None,
             None::<String>,
             None,
+            vec![],
             vec![],
         );
         let routes = vec![make_route(), internal];
