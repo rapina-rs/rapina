@@ -201,7 +201,11 @@ pub fn wrap_with_markers(content: &str) -> String {
 pub fn sha256_hex(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
 }
 
 /// Write individual fragment files into `.rapina-docs/` at the given project root.
