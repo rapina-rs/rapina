@@ -80,6 +80,9 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+        /// Output routes as llms.txt Markdown instead of a table
+        #[arg(long)]
+        llms: bool,
     },
     /// Database seeding tools
     Seed {
@@ -442,8 +445,8 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Some(Commands::Routes { host, port }) => {
-            let config = commands::routes::RoutesConfig { host, port };
+        Some(Commands::Routes { host, port, llms }) => {
+            let config = commands::routes::RoutesConfig { host, port, llms };
             if let Err(e) = commands::routes::execute(config) {
                 eprintln!("{} {}", "Error:".red().bold(), e);
                 std::process::exit(1);
