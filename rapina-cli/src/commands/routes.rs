@@ -147,6 +147,26 @@ fn to_llms_txt(title: &str, routes: &[RouteInfo]) -> String {
     out
 }
 
+/// Fetch routes from running application.
+fn fetch_routes(url: &str) -> Result<Vec<RouteInfo>, String> {
+    let output = Command::new("curl")
+        .args(["-s", "-f", url])
+        .output()
+        .map_err(|e| format!("Failed to run curl: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to fetch routes. Is the server running on {}?",
+            url
+        ));
+    }
+
+    let body =
+        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
+
+    serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,24 +327,4 @@ mod tests {
         assert_eq!(routes[0].error_responses[0].status, 409);
         assert!(routes[0].request_schema.is_some());
     }
-}
-
-/// Fetch routes from running application.
-fn fetch_routes(url: &str) -> Result<Vec<RouteInfo>, String> {
-    let output = Command::new("curl")
-        .args(["-s", "-f", url])
-        .output()
-        .map_err(|e| format!("Failed to run curl: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to fetch routes. Is the server running on {}?",
-            url
-        ));
-    }
-
-    let body =
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
 }
