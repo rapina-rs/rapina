@@ -7,13 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-15
+
 ### Added
-- **Tower compatibility layer**: `tower` feature flag with `TowerLayerMiddleware` (tower Layer → rapina Middleware adapter), `RapinaService` (rapina stack → tower Service adapter), and `.layer()` builder method
-- **NextService Clone support**: Tower layers requiring `Clone` on the inner service (e.g. tower-resilience, retry, circuit breaker) now work out of the box
-- `DatabaseConfig::auto_migrate` and `DATABASE_AUTO_MIGRATE` (default `false`). When `run_migrations` runs with auto-migrate off, pending migrations are not applied; Rapina logs a warning listing pending migration names and points to `rapina migrate up` / `rapina migrate init`.
+- **Cursor-based pagination**: `CursorPaginate<V>` extractor and `CursorPaginated<T>` response for stable feeds and infinite scroll, alongside existing offset pagination (#540).
+- **Streaming and SSE responses**: First-class streaming response types and Server-Sent Events support (#536).
+- **`llms.txt` endpoint and CLI export**: `/llms.txt` route plus `rapina llms` command for AI-tool discovery (#528).
+- **`Header<T>` typed extractor**: Strongly-typed header extraction with structured 400 errors (#542).
+- **Custom Prometheus collectors**: `MetricsBuilder::add_metric()` for registering app-defined collectors (#538).
+- **Opt-in auto-migrations**: `DatabaseConfig::auto_migrate(true)` and `DATABASE_AUTO_MIGRATE=true` apply pending migrations at startup (#547). Off by default; when off, `run_migrations` logs pending migration names and points to `rapina migrate up`.
+- **Bundled docs and `AGENTS.md`**: `rapina new` drops `AGENTS.md`, `CLAUDE.md`, and `.rapina-docs/` into new projects so AI coding tools have framework-specific context. `rapina doctor --fix-agents` refreshes after upgrades (#535).
 
 ### Changed
 - **Breaking:** `DatabaseConfig::new` and `from_env` default `auto_migrate` to `false`. Opt in with `.auto_migrate(true)` or `DATABASE_AUTO_MIGRATE=true` to apply migrations at startup.
+- **Unified type system**: Consolidated type representation across codegen, schema, and OpenAPI layers (#519).
+- **Cache invalidation: ancestor collection prefixes**: Mutations now invalidate every ancestor collection prefix, not just the exact route (#537).
+- **Codegen: consolidated PK source of truth**: Single primary-key inference path across `import` and `add` (#546).
+- **Skip rewrite of unchanged `generate_rapina_docs` output**: Avoids touch-time churn in source control (#564).
+- **`tokio-tungstenite` 0.28 → 0.29, `hyper-tungstenite` 0.19 → 0.20** (#560).
+
+### Fixed
+- **`schema!` rejected unsigned integer types**: Now emits a clear compile-time error pointing at the offending column (#557).
+
+## [0.11.0] - 2026-04-01
+
+### Added
+- **Tower compatibility layer**: `tower` feature flag with `TowerLayerMiddleware` (tower Layer → rapina Middleware adapter), `RapinaService` (rapina stack → tower Service adapter), and `.layer()` builder method.
+- **NextService Clone support**: Tower layers requiring `Clone` on the inner service (e.g. tower-resilience, retry, circuit breaker) now work out of the box.
 
 ## [0.10.0] - 2026-03-16
 
@@ -100,7 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized error handling with `trace_id`
 - CLI (`rapina new`, `rapina dev`)
 
-[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/rapina-rs/rapina/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/rapina-rs/rapina/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/rapina-rs/rapina/compare/v0.9.0...v0.10.0
 [0.6.0]: https://github.com/rapina-rs/rapina/compare/v0.5.0...v0.6.0
 [0.2.0]: https://github.com/rapina-rs/rapina/compare/v0.1.0-alpha.3...v0.2.0

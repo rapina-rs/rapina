@@ -25,6 +25,7 @@ pub mod llms;
 pub mod migrate;
 pub mod new;
 pub mod openapi;
+pub(crate) mod relationships;
 pub mod routes;
 #[cfg(feature = "seed")]
 pub mod seed;
@@ -137,6 +138,10 @@ pub(crate) struct FieldInfo {
     pub nullable: bool,
     /// Whether this field is part of the primary key in generated artifacts.
     pub is_primary_key: bool,
+    /// True when this field belongs to a composite (multi-column) primary key.
+    /// When set, `.auto_increment()` is suppressed — composite PK columns must
+    /// not be auto-increment (invalid SQL on all major databases).
+    pub is_composite_pk_member: bool,
 }
 
 /// Parses `name:type` CLI field arguments into a validated [`FieldInfo`].
@@ -161,6 +166,7 @@ impl std::str::FromStr for FieldInfo {
             normalized_type,
             nullable,
             is_primary_key,
+            is_composite_pk_member: false,
         })
     }
 }
@@ -181,6 +187,7 @@ impl FieldInfo {
             normalized_type,
             nullable,
             is_primary_key,
+            is_composite_pk_member: false,
         })
     }
 
@@ -213,10 +220,12 @@ impl FieldInfo {
 
         if self.is_primary_key {
             method.push_str(".primary_key()");
-            if matches!(
-                self.normalized_type,
-                NormalizedType::I32 | NormalizedType::I64
-            ) {
+            if !self.is_composite_pk_member
+                && matches!(
+                    self.normalized_type,
+                    NormalizedType::I32 | NormalizedType::I64
+                )
+            {
                 method.push_str(".auto_increment()");
             }
         }

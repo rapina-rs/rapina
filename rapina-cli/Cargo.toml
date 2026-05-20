@@ -1,6 +1,6 @@
 [package]
 name = "rapina-cli"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 rust-version = "1.85"
 description = "CLI tool for Rapina web framework - create and run Rapina projects"
@@ -36,7 +36,7 @@ sea-schema = { version = "0.16", optional = true, default-features = false }
 sqlx = { version = "0.8", optional = true }
 openapiv3 = { version = "2", optional = true }
 serde_yaml_ng = { version = "0.10", optional = true }
-sha2 = "0.10"
+sha2 = "0.11"
 
 [features]
 default = []

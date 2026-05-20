@@ -425,17 +425,21 @@ fn filter_and_validate_tables(
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct RelationshipInfo {
     field_name: String,
     related_pascal: String,
-    kind: RelationKind,
+    kind: codegen::RelationshipKind,
+    fk_col: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-enum RelationKind {
-    BelongsTo,
-    HasMany,
+impl From<&RelationshipInfo> for codegen::RelationshipSpec {
+    fn from(r: &RelationshipInfo) -> Self {
+        codegen::RelationshipSpec {
+            field_name: r.field_name.clone(),
+            related_pascal: r.related_pascal.clone(),
+            kind: r.kind,
+        }
+    }
 }
 
 fn resolve_relationships(tables: &[IntrospectedTable]) -> HashMap<String, Vec<RelationshipInfo>> {
@@ -460,6 +464,15 @@ fn resolve_relationships(tables: &[IntrospectedTable]) -> HashMap<String, Vec<Re
             let ref_singular = codegen::singularize(&fk.referenced_table);
             let ref_pascal = codegen::to_pascal_case(&ref_singular);
 
+            let Some(col) = table.columns.iter().find(|c| &c.name == fk_column) else {
+                eprintln!(
+                    "  {} table {:?}: FK column {:?} not found in column list — skipping relationship",
+                    "warn:".yellow(),
+                    table.name,
+                    fk_column
+                );
+                continue;
+            };
             // BelongsTo on the FK side
             relationships
                 .entry(table.name.clone())
@@ -467,20 +480,29 @@ fn resolve_relationships(tables: &[IntrospectedTable]) -> HashMap<String, Vec<Re
                 .push(RelationshipInfo {
                     field_name: field_name.to_string(),
                     related_pascal: ref_pascal.clone(),
-                    kind: RelationKind::BelongsTo,
+                    kind: codegen::RelationshipKind::BelongsTo {
+                        nullable: col.is_nullable,
+                    },
+                    fk_col: Some(fk_column.to_string()),
                 });
 
-            // HasMany on the referenced side
-            let owner_singular = codegen::singularize(&table.name);
-            let owner_pascal = codegen::to_pascal_case(&owner_singular);
-            relationships
+            // HasMany on the referenced side — deduplicated so that multiple FKs
+            // from the same table to the same target don't produce repeated entries.
+            // O(n²) over FKs per table, but this is a one-shot CLI path, not a hot loop.
+            let owner_pascal = codegen::to_pascal_case(&codegen::singularize(&table.name));
+            let ref_rels = relationships
                 .entry(fk.referenced_table.clone())
-                .or_default()
-                .push(RelationshipInfo {
+                .or_default();
+            if !ref_rels.iter().any(|r| {
+                matches!(r.kind, codegen::RelationshipKind::HasMany) && r.field_name == table.name
+            }) {
+                ref_rels.push(RelationshipInfo {
                     field_name: table.name.clone(),
                     related_pascal: owner_pascal,
-                    kind: RelationKind::HasMany,
+                    kind: codegen::RelationshipKind::HasMany,
+                    fk_col: None,
                 });
+            }
         }
     }
 
@@ -509,7 +531,7 @@ fn detect_timestamps(table: &IntrospectedTable) -> Option<&'static str> {
 
 fn generate_for_table(
     table: &IntrospectedTable,
-    _relationships: &HashMap<String, Vec<RelationshipInfo>>,
+    relationships: &HashMap<String, Vec<RelationshipInfo>>,
     force: bool,
 ) -> Result<(), String> {
     let singular = codegen::singularize(&table.name);
@@ -579,9 +601,46 @@ fn generate_for_table(
         .cloned()
         .unwrap_or(NormalizedType::I32);
 
-    codegen::update_entity_file(&pascal, &fields, timestamps, primary_key.as_deref(), force)?;
-    codegen::create_migration_file(plural, &pascal_plural, &fields, false)?;
-    codegen::create_feature_module(&singular, plural, &pascal, &fields, &pk_type, force)?;
+    // Resolve relationships for this table and build codegen specs.
+    let table_rels = relationships
+        .get(&table.name)
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+
+    // FK columns covered by a BelongsTo are emitted as relationship fields in
+    // schema!, so exclude them from the plain field list to avoid duplicates.
+    let fk_cols_to_skip: std::collections::HashSet<&str> = table_rels
+        .iter()
+        .filter_map(|r| match r.kind {
+            codegen::RelationshipKind::BelongsTo { .. } => r.fk_col.as_deref(),
+            codegen::RelationshipKind::HasMany => None,
+        })
+        .collect();
+
+    let entity_fields: Vec<FieldInfo> = fields
+        .iter()
+        .filter(|f| !fk_cols_to_skip.contains(f.name.as_str()))
+        .cloned()
+        .collect();
+
+    let rel_specs: Vec<codegen::RelationshipSpec> = table_rels.iter().map(Into::into).collect();
+
+    codegen::update_entity_file(
+        &pascal,
+        &entity_fields,
+        timestamps,
+        primary_key.as_deref(),
+        force,
+        &rel_specs,
+    )?;
+    codegen::create_migration_file(
+        plural,
+        &pascal_plural,
+        &fields,
+        false,
+        primary_key.as_deref(),
+    )?;
+    codegen::create_feature_module(&singular, plural, &pascal, &entity_fields, &pk_type, force)?;
 
     println!(
         "  {} Imported table {:?} as {} ({} columns, {} skipped)",
@@ -1067,14 +1126,131 @@ mod tests {
         assert_eq!(post_rels.len(), 1);
         assert_eq!(post_rels[0].field_name, "user");
         assert_eq!(post_rels[0].related_pascal, "User");
-        assert!(matches!(post_rels[0].kind, RelationKind::BelongsTo));
+        assert!(matches!(
+            post_rels[0].kind,
+            codegen::RelationshipKind::BelongsTo { nullable: false }
+        ));
+        assert_eq!(post_rels[0].fk_col, Some("user_id".to_string()));
 
         // users should have a HasMany Post
         let user_rels = rels.get("users").unwrap();
         assert_eq!(user_rels.len(), 1);
         assert_eq!(user_rels[0].field_name, "posts");
         assert_eq!(user_rels[0].related_pascal, "Post");
-        assert!(matches!(user_rels[0].kind, RelationKind::HasMany));
+        assert!(matches!(
+            user_rels[0].kind,
+            codegen::RelationshipKind::HasMany
+        ));
+        assert_eq!(user_rels[0].fk_col, None);
+    }
+
+    #[test]
+    fn test_resolve_relationships_nullable_fk() {
+        let tables = vec![
+            IntrospectedTable {
+                name: "users".into(),
+                columns: vec![IntrospectedColumn {
+                    name: "id".into(),
+                    col_type: ImportType::Standard(NormalizedType::I32),
+                    is_nullable: false,
+                }],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![],
+            },
+            IntrospectedTable {
+                name: "comments".into(),
+                columns: vec![
+                    IntrospectedColumn {
+                        name: "id".into(),
+                        col_type: ImportType::Standard(NormalizedType::I32),
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "author_id".into(),
+                        col_type: ImportType::Standard(NormalizedType::I32),
+                        is_nullable: true,
+                    },
+                ],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![IntrospectedForeignKey {
+                    columns: vec!["author_id".into()],
+                    referenced_table: "users".into(),
+                    referenced_columns: vec!["id".into()],
+                }],
+            },
+        ];
+
+        let rels = resolve_relationships(&tables);
+
+        let comment_rels = rels.get("comments").unwrap();
+        assert_eq!(comment_rels[0].field_name, "author");
+        assert!(matches!(
+            comment_rels[0].kind,
+            codegen::RelationshipKind::BelongsTo { nullable: true }
+        ));
+        assert_eq!(comment_rels[0].fk_col, Some("author_id".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_relationships_deduplicates_has_many() {
+        // comments has two FKs to users (author_id and reviewer_id);
+        // users should still get only one HasMany entry for comments.
+        let tables = vec![
+            IntrospectedTable {
+                name: "users".into(),
+                columns: vec![IntrospectedColumn {
+                    name: "id".into(),
+                    col_type: ImportType::Standard(NormalizedType::I32),
+                    is_nullable: false,
+                }],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![],
+            },
+            IntrospectedTable {
+                name: "comments".into(),
+                columns: vec![
+                    IntrospectedColumn {
+                        name: "id".into(),
+                        col_type: ImportType::Standard(NormalizedType::I32),
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "author_id".into(),
+                        col_type: ImportType::Standard(NormalizedType::I32),
+                        is_nullable: false,
+                    },
+                    IntrospectedColumn {
+                        name: "reviewer_id".into(),
+                        col_type: ImportType::Standard(NormalizedType::I32),
+                        is_nullable: true,
+                    },
+                ],
+                primary_key_columns: vec!["id".into()],
+                foreign_keys: vec![
+                    IntrospectedForeignKey {
+                        columns: vec!["author_id".into()],
+                        referenced_table: "users".into(),
+                        referenced_columns: vec!["id".into()],
+                    },
+                    IntrospectedForeignKey {
+                        columns: vec!["reviewer_id".into()],
+                        referenced_table: "users".into(),
+                        referenced_columns: vec!["id".into()],
+                    },
+                ],
+            },
+        ];
+
+        let rels = resolve_relationships(&tables);
+
+        // comments gets two BelongsTo entries (one per FK)
+        let comment_rels = rels.get("comments").unwrap();
+        assert_eq!(comment_rels.len(), 2);
+
+        // users gets exactly one HasMany entry for comments, not two
+        let user_rels = rels.get("users").unwrap();
+        assert_eq!(user_rels.len(), 1);
+        assert_eq!(user_rels[0].field_name, "comments");
     }
 
     #[cfg(feature = "import-postgres")]
