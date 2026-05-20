@@ -37,6 +37,7 @@ sqlx = { version = "0.8", optional = true }
 openapiv3 = { version = "2", optional = true }
 serde_yaml_ng = { version = "0.10", optional = true }
 sha2 = "0.11"
+ureq = "3.3.0"
 
 [features]
 default = []

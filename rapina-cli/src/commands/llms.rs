@@ -2,11 +2,11 @@
 
 use colored::Colorize;
 use std::fs;
-use std::process::Command;
 
 /// Export llms.txt to stdout or file.
 pub fn export(output: Option<String>, host: &str, port: u16) -> Result<(), String> {
-    let content = fetch_llms_txt(host, port)?;
+    let agent = ureq::Agent::new_with_defaults();
+    let content = fetch_llms_txt(&agent, host, port)?;
 
     match output {
         Some(path) => {
@@ -22,19 +22,54 @@ pub fn export(output: Option<String>, host: &str, port: u16) -> Result<(), Strin
 }
 
 /// Fetch llms.txt from the running application.
-fn fetch_llms_txt(host: &str, port: u16) -> Result<String, String> {
+fn fetch_llms_txt(agent: &ureq::Agent, host: &str, port: u16) -> Result<String, String> {
     let url = crate::common::urls::build_llms_url(host, port);
-    let output = Command::new("curl")
-        .args(["-s", "-f", &url])
-        .output()
-        .map_err(|e| format!("Failed to run curl: {}", e))?;
+    let mut response = agent.get(&url).call().map_err(|e| {
+        format!(
+            "Failed to fetch llms.txt. Is the server running on {}? ({})",
+            url, e
+        )
+    })?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
 
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to fetch llms.txt. Is the server running on {}?",
-            url
-        ));
+    Ok(body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_llms_txt_success() {
+        let body = "User-agent: *\nDisallow: /admin";
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0; 4096];
+            use std::io::Read;
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            use std::io::Write;
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let agent = ureq::Agent::new_with_defaults();
+        let result = fetch_llms_txt(&agent, "127.0.0.1", port);
+        handle.join().unwrap();
+        assert_eq!(result.unwrap(), body);
     }
 
-    String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))
+    #[test]
+    fn test_fetch_llms_txt_connection_refused() {
+        let agent = ureq::Agent::new_with_defaults();
+        let result = fetch_llms_txt(&agent, "127.0.0.1", 1);
+        assert!(result.is_err());
+    }
 }

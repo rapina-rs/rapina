@@ -4,7 +4,6 @@ use crate::commands::agents::{DriftStatus, check_drift, fix_agents, simple_diff}
 use crate::common::urls;
 use colored::Colorize;
 use serde_json::Value;
-use std::process::Command;
 
 struct DiagnosticResult {
     warnings: Vec<String>,
@@ -35,8 +34,9 @@ pub fn execute(config: DoctorConfig) -> Result<(), String> {
     );
     println!();
 
-    let routes = fetch_json(&urls::build_routes_url(&config.host, config.port))?;
-    let openapi = fetch_json(&urls::build_openapi_url(&config.host, config.port));
+    let agent = ureq::Agent::new_with_defaults();
+    let routes = fetch_json(&agent, &urls::build_routes_url(&config.host, config.port))?;
+    let openapi = fetch_json(&agent, &urls::build_openapi_url(&config.host, config.port));
 
     let mut result = DiagnosticResult {
         warnings: Vec::new(),
@@ -356,21 +356,17 @@ fn print_results(result: &DiagnosticResult) {
 }
 
 /// Fetch JSON from URL.
-fn fetch_json(url: &str) -> Result<Value, String> {
-    let output = Command::new("curl")
-        .args(["-s", "-f", url])
-        .output()
-        .map_err(|e| format!("Failed to run curl: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to fetch data. Is the server running? ({})",
-            url
-        ));
-    }
-
-    let body =
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
+fn fetch_json(agent: &ureq::Agent, url: &str) -> Result<Value, String> {
+    let mut response = agent.get(url).call().map_err(|e| {
+        format!(
+            "Failed to fetch data. Is the server running? ({}) ({})",
+            url, e
+        )
+    })?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
 
     serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
 }
@@ -604,5 +600,36 @@ mod tests {
         check_openapi_metadata(&openapi, &mut result);
         assert!(result.warnings.is_empty());
         assert_eq!(result.passed.len(), 1);
+    }
+
+    #[test]
+    fn test_fetch_json_success() {
+        let json = r#"{"status":"ok"}"#;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0; 4096];
+            use std::io::Read;
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            use std::io::Write;
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let agent = ureq::Agent::new_with_defaults();
+        let result = fetch_json(&agent, &format!("http://127.0.0.1:{}", port));
+        handle.join().unwrap();
+        assert_eq!(result.unwrap(), serde_json::json!({"status": "ok"}));
+    }
+
+    #[test]
+    fn test_fetch_json_connection_refused() {
+        let agent = ureq::Agent::new_with_defaults();
+        let result = fetch_json(&agent, "http://127.0.0.1:1");
+        assert!(result.is_err());
     }
 }
