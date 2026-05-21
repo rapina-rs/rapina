@@ -4,6 +4,8 @@ use super::{Colorize, FieldInfo, NormalizedType};
 use std::fs;
 use std::path::Path;
 
+pub(crate) use super::relationships::{RelationshipKind, RelationshipSpec};
+
 pub(crate) fn to_pascal_case(s: &str) -> String {
     s.split('_')
         .map(|part| {
@@ -450,8 +452,9 @@ pub(crate) fn generate_schema_block(
     fields: &[FieldInfo],
     timestamps: Option<&str>,
     primary_key: Option<&[String]>,
+    relationships: &[RelationshipSpec],
 ) -> String {
-    let schema_fields: Vec<String> = fields
+    let mut all_field_lines: Vec<String> = fields
         .iter()
         .map(|f| {
             format!(
@@ -461,6 +464,21 @@ pub(crate) fn generate_schema_block(
             )
         })
         .collect();
+
+    for r in relationships {
+        let line = match r.kind {
+            RelationshipKind::BelongsTo { nullable: true } => {
+                format!("        {}: Option<{}>,", r.field_name, r.related_pascal)
+            }
+            RelationshipKind::BelongsTo { nullable: false } => {
+                format!("        {}: {},", r.field_name, r.related_pascal)
+            }
+            RelationshipKind::HasMany => {
+                format!("        {}: Vec<{}>,", r.field_name, r.related_pascal)
+            }
+        };
+        all_field_lines.push(line);
+    }
 
     let mut attrs = String::new();
 
@@ -483,7 +501,7 @@ schema! {{
 "#,
         pascal = pascal,
         attrs = attrs,
-        fields = schema_fields.join("\n"),
+        fields = all_field_lines.join("\n"),
     )
 }
 
@@ -615,6 +633,7 @@ pub(crate) fn update_entity_file(
     timestamps: Option<&str>,
     primary_key: Option<&[String]>,
     force: bool,
+    relationships: &[RelationshipSpec],
 ) -> Result<(), String> {
     update_entity_file_in(
         pascal,
@@ -622,6 +641,7 @@ pub(crate) fn update_entity_file(
         timestamps,
         primary_key,
         force,
+        relationships,
         Path::new("src/entity.rs"),
     )
 }
@@ -632,9 +652,11 @@ fn update_entity_file_in(
     timestamps: Option<&str>,
     primary_key: Option<&[String]>,
     force: bool,
+    relationships: &[RelationshipSpec],
     entity_path: &Path,
 ) -> Result<(), String> {
-    let schema_block = generate_schema_block(pascal, fields, timestamps, primary_key);
+    let schema_block =
+        generate_schema_block(pascal, fields, timestamps, primary_key, relationships);
 
     if entity_path.exists() {
         let mut content = fs::read_to_string(entity_path)
@@ -1262,7 +1284,7 @@ mod tests {
             "title:string".parse().unwrap(),
             "done:bool".parse().unwrap(),
         ];
-        let content = generate_schema_block("Todo", &fields, None, None);
+        let content = generate_schema_block("Todo", &fields, None, None, &[]);
 
         assert!(content.contains("title: String,"));
         assert!(content.contains("done: bool,"));
@@ -1365,16 +1387,16 @@ mod tests {
     fn test_generate_schema_block_with_timestamps() {
         let fields = vec!["title:string".parse().unwrap()];
 
-        let block = generate_schema_block("Post", &fields, None, None);
+        let block = generate_schema_block("Post", &fields, None, None, &[]);
         assert!(block.contains("schema! {"));
         assert!(block.contains("Post {"));
         assert!(block.contains("title: String,"));
         assert!(!block.contains("#[timestamps"));
 
-        let block = generate_schema_block("Post", &fields, Some("none"), None);
+        let block = generate_schema_block("Post", &fields, Some("none"), None, &[]);
         assert!(block.contains("#[timestamps(none)]"));
 
-        let block = generate_schema_block("Post", &fields, Some("created_at"), None);
+        let block = generate_schema_block("Post", &fields, Some("created_at"), None, &[]);
         assert!(block.contains("#[timestamps(created_at)]"));
     }
 
@@ -1386,11 +1408,42 @@ mod tests {
         ];
 
         let pk = vec!["user_id".to_string(), "role_id".to_string()];
-        let block = generate_schema_block("UsersRole", &fields, Some("none"), Some(&pk));
+        let block = generate_schema_block("UsersRole", &fields, Some("none"), Some(&pk), &[]);
         assert!(block.contains("#[primary_key(user_id, role_id)]"));
         assert!(block.contains("#[timestamps(none)]"));
         assert!(block.contains("user_id: i32,"));
         assert!(block.contains("role_id: i32,"));
+    }
+
+    #[test]
+    fn test_generate_schema_block_with_relationships() {
+        let fields = vec!["title:string".parse().unwrap()];
+
+        let rels = vec![
+            RelationshipSpec {
+                field_name: "user".to_string(),
+                related_pascal: "User".to_string(),
+                kind: RelationshipKind::BelongsTo { nullable: false },
+            },
+            RelationshipSpec {
+                field_name: "comments".to_string(),
+                related_pascal: "Comment".to_string(),
+                kind: RelationshipKind::HasMany,
+            },
+        ];
+
+        let block = generate_schema_block("Post", &fields, None, None, &rels);
+        assert!(block.contains("title: String,"));
+        assert!(block.contains("user: User,"));
+        assert!(block.contains("comments: Vec<Comment>,"));
+
+        let nullable_rels = vec![RelationshipSpec {
+            field_name: "author".to_string(),
+            related_pascal: "User".to_string(),
+            kind: RelationshipKind::BelongsTo { nullable: true },
+        }];
+        let block = generate_schema_block("Comment", &fields, None, None, &nullable_rels);
+        assert!(block.contains("author: Option<User>,"));
     }
 
     #[test]
@@ -1493,7 +1546,7 @@ schema! {
 
         let fields = vec!["title:string".parse().unwrap()];
 
-        update_entity_file_in("Post", &fields, None, None, true, &entity_path).unwrap();
+        update_entity_file_in("Post", &fields, None, None, true, &[], &entity_path).unwrap();
         let content = fs::read_to_string(&entity_path).unwrap();
         // Should have exactly one schema! block for Post, not two
         assert_eq!(content.matches("Post {").count(), 1);
@@ -1519,7 +1572,7 @@ schema! {
 
         let fields = vec!["title:string".parse().unwrap()];
 
-        update_entity_file_in("Post", &fields, None, None, false, &entity_path).unwrap();
+        update_entity_file_in("Post", &fields, None, None, false, &[], &entity_path).unwrap();
         let content = fs::read_to_string(&entity_path).unwrap();
         // Without force, should have two schema! blocks (duplicate)
         assert_eq!(content.matches("Post {").count(), 2);

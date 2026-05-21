@@ -25,6 +25,7 @@ pub mod llms;
 pub mod migrate;
 pub mod new;
 pub mod openapi;
+pub(crate) mod relationships;
 pub mod routes;
 #[cfg(feature = "seed")]
 pub mod seed;

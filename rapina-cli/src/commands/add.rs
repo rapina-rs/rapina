@@ -48,7 +48,7 @@ pub fn resource(name: String, fields: Vec<FieldInfo>, with_timestamps: bool) -> 
     let timestamps_attr = if with_timestamps { None } else { Some("none") };
 
     codegen::create_feature_module(&name, plural, pascal, &fields, &pk_type, false)?;
-    codegen::update_entity_file(pascal, &fields, timestamps_attr, None, false)?;
+    codegen::update_entity_file(pascal, &fields, timestamps_attr, None, false, &[])?;
     codegen::create_migration_file(plural, pascal_plural, &fields, with_timestamps, None)?;
 
     if let Err(e) = codegen::wire_main_rs(&[plural.as_str()], Path::new(".")) {
@@ -220,7 +220,7 @@ mod tests {
             "title:string".parse().unwrap(),
             "done:bool".parse().unwrap(),
         ];
-        let content = codegen::generate_schema_block("Todo", &fields, None, None);
+        let content = codegen::generate_schema_block("Todo", &fields, None, None, &[]);
 
         assert!(content.contains("schema! {"));
         assert!(content.contains("Todo {"));
