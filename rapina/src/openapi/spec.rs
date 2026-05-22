@@ -231,15 +231,14 @@ pub fn build_openapi_spec(
 
     spec.components = Some(Components { schemas });
 
-    let mut seen_operation_ids: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut seen_operation_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
     for route in routes {
         if route.is_internal() {
             continue;
         }
 
-        if !seen_operation_ids.insert(route.handler_name.clone()) {
+        if !seen_operation_ids.insert(&route.handler_name) {
             panic!(
                 "Duplicate operationId '{}' in OpenAPI spec. Each handler must have a unique name. \
                  Found duplicate on {} {}.",
