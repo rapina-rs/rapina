@@ -669,6 +669,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "POST",
@@ -679,6 +680,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "GET",
@@ -688,6 +690,7 @@ mod tests {
                 None,
                 None::<String>,
                 None,
+                Vec::new(),
                 Vec::new(),
             ),
         ];
@@ -716,6 +719,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "GET",
@@ -725,6 +729,7 @@ mod tests {
                 None,
                 None::<String>,
                 None,
+                Vec::new(),
                 Vec::new(),
             ),
         ];
@@ -744,6 +749,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "GET",
@@ -753,6 +759,7 @@ mod tests {
                 None,
                 None::<String>,
                 None,
+                Vec::new(),
                 Vec::new(),
             ),
         ];
@@ -773,6 +780,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "GET",
@@ -782,6 +790,7 @@ mod tests {
                 None,
                 None::<String>,
                 None,
+                Vec::new(),
                 Vec::new(),
             ),
         ];
