@@ -61,7 +61,7 @@ jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 hyper-rustls = { version = "0.27.9", optional = true, features = ["http1", "http2"] }
 
 # Concurrent map (used by cache + rate-limit)
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 
 # SmallVec for stack-allocated path params
 smallvec = "1"
