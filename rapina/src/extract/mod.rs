@@ -15,6 +15,12 @@ use std::ops::Deref;
 use std::sync::Arc;
 use validator::Validate;
 
+pub mod header;
+pub use header::{
+    __extract_header, __extract_optional_header, FromHeaderStr, Header, extract_header,
+    extract_optional_header,
+};
+
 #[cfg(feature = "multipart")]
 pub mod multipart;
 #[cfg(feature = "multipart")]
@@ -131,9 +137,18 @@ pub struct Query<T>(pub T);
 #[derive(Debug)]
 pub struct Form<T>(pub T);
 
-/// Provides access to request headers.
+/// Provides access to all request headers as a raw [`http::HeaderMap`].
 ///
-/// Extracts all HTTP headers from the request.
+/// Extracts the entire header map from the request. Use this when you need to
+/// iterate over all headers or access multiple headers dynamically.
+///
+/// # Distinction from `Header<T>`
+///
+/// - `Headers` — gives you the full [`http::HeaderMap`]; access headers by
+///   name at runtime. No parsing is performed automatically.
+/// - [`Header<T>`](crate::extract::Header) — extracts and parses a single,
+///   named header into a typed value `T` at compile time via the proc-macro.
+///   Prefer `Header<T>` when you know the header name upfront.
 ///
 /// # Examples
 ///

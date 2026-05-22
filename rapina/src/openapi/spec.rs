@@ -246,7 +246,7 @@ pub fn build_openapi_spec(
             );
         }
         // Extract path parameters (e.g., :id -> id)
-        let params: Vec<Parameter> = route
+        let mut params: Vec<Parameter> = route
             .path
             .split('/')
             .filter(|s| s.starts_with(':'))
@@ -258,6 +258,17 @@ pub fn build_openapi_spec(
                 schema: None,
             })
             .collect();
+
+        // Append typed header parameters
+        for h in &route.header_parameters {
+            params.push(Parameter {
+                name: h.name.clone(),
+                location: ParameterLocation::Header,
+                description: None,
+                required: h.required,
+                schema: Some(Schema::Inline(serde_json::json!({"type": "string"}))),
+            });
+        }
 
         // Convert :param to {param} for OpenAPI format
         let openapi_path = route
@@ -383,6 +394,7 @@ mod tests {
             None::<String>,
             None,
             Vec::new(),
+            Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
@@ -414,6 +426,7 @@ mod tests {
             None::<String>,
             None,
             errors,
+            Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
@@ -492,6 +505,7 @@ mod tests {
             None::<String>,
             None,
             Vec::new(),
+            Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
 
@@ -521,6 +535,7 @@ mod tests {
                 None::<String>,
                 None,
                 Vec::new(),
+                Vec::new(),
             ),
             RouteInfo::new(
                 "GET",
@@ -530,6 +545,7 @@ mod tests {
                 None,
                 None::<String>,
                 None,
+                Vec::new(),
                 Vec::new(),
             ),
         ];
@@ -557,6 +573,7 @@ mod tests {
             Some(request_schema),
             Some("application/json"),
             Some(true),
+            Vec::new(),
             Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -589,6 +606,7 @@ mod tests {
             Some(request_schema),
             Some("application/x-www-form-urlencoded"),
             Some(true),
+            Vec::new(),
             Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -624,6 +642,7 @@ mod tests {
             Some(request_schema),
             Some("application/json"),
             Some(false), // optional request body
+            Vec::new(),
             Vec::new(),
         )];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);

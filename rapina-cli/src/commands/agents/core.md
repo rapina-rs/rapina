@@ -65,6 +65,7 @@ Rapina::new()
 ## CLI
 
 - `rapina dev` — run with auto-reload
+- When `rapina dev` is running, fetch `/__rapina/llms.txt` at session start to inspect generated route context.
 - `rapina doctor` — diagnose project issues
 - `rapina routes` — list all registered routes
 - `rapina add resource <name>` — scaffold a new CRUD resource
