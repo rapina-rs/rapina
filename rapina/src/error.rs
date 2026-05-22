@@ -25,7 +25,7 @@
 //! }
 //! ```
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 use crate::response::{APPLICATION_JSON, APPLICATION_PROBLEM_JSON, BoxBody, IntoResponse};
@@ -363,6 +363,23 @@ pub struct ErrorVariant {
     pub code: &'static str,
     /// Human-readable description for documentation.
     pub description: &'static str,
+}
+
+impl<'de> Deserialize<'de> for ErrorVariant {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Owned {
+            status: u16,
+            code: String,
+            description: String,
+        }
+        let o = Owned::deserialize(deserializer)?;
+        Ok(ErrorVariant {
+            status: o.status,
+            code: Box::leak(o.code.into_boxed_str()),
+            description: Box::leak(o.description.into_boxed_str()),
+        })
+    }
 }
 
 /// Trait for documenting domain errors in OpenAPI.

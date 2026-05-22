@@ -16,13 +16,13 @@
 //! The `#[public]` attribute emits a [`PublicMarker`] so the discovery loop
 //! can mark routes as public without manual `.public_route()` calls.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ErrorVariant;
 use crate::router::Router;
 
 /// Metadata about a typed header parameter declared on a route handler.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HeaderParamInfo {
     /// The HTTP header name (e.g. "X-Request-Id").
     pub name: String,

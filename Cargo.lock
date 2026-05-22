@@ -2796,6 +2796,7 @@ dependencies = [
  "notify 8.2.0",
  "notify-debouncer-mini",
  "openapiv3",
+ "rapina",
  "sea-orm",
  "sea-schema",
  "serde",

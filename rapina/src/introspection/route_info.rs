@@ -1,6 +1,6 @@
 //! Route metadata for introspection.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::discovery::HeaderParamInfo;
 use crate::error::ErrorVariant;
@@ -19,7 +19,7 @@ use crate::error::ErrorVariant;
 /// assert_eq!(info.method, "GET");
 /// assert_eq!(info.path, "/users/:id");
 /// ```
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RouteInfo {
     /// The HTTP method (GET, POST, PUT, DELETE, etc.).
     pub method: String,
@@ -28,22 +28,22 @@ pub struct RouteInfo {
     /// The name of the handler function.
     pub handler_name: String,
     /// JSON Schema for the success response.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<serde_json::Value>,
     /// JSON Schema for the request body.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_schema: Option<serde_json::Value>,
     /// Content type for the request body (e.g., "application/json").
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_content_type: Option<String>,
     /// Whether the request body is required (true) or optional (false).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_body_required: Option<bool>,
     /// Error variants for OpenAPI documentation.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub error_responses: Vec<ErrorVariant>,
     /// Typed header parameters declared on this handler.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub header_parameters: Vec<HeaderParamInfo>,
 }
 
