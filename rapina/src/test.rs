@@ -4,8 +4,12 @@
 
 use bytes::Bytes;
 use http::Request;
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use std::sync::Arc;
+use tokio::sync::oneshot;
 
 use crate::context::RequestContext;
 use crate::extract::PathParams;
@@ -133,6 +137,60 @@ impl TestRequest {
     /// Get the body bytes
     pub fn get_body(&self) -> &Bytes {
         &self.body
+    }
+
+    /// Build a `Request<Incoming>` suitable for `FromRequest` extractors.
+    ///
+    /// Uses an in-memory duplex I/O pair and a real hyper HTTP/1.1 handshake
+    /// so the resulting request carries a genuine `Incoming` body stream.
+    pub async fn into_incoming_request(self) -> Request<Incoming> {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+
+        let uri = self.uri.clone();
+        let method = self.method.clone();
+        let headers = self.headers.clone();
+        let body_bytes = self.body.clone();
+
+        let (req_tx, req_rx) = oneshot::channel::<Request<Incoming>>();
+
+        // Server side: accept one request and send it through the channel
+        tokio::spawn(async move {
+            let tx = std::sync::Mutex::new(Some(req_tx));
+            let service = hyper::service::service_fn(move |req: Request<Incoming>| {
+                let captured = tx.lock().unwrap().take();
+                async move {
+                    if let Some(tx) = captured {
+                        let _ = tx.send(req);
+                    }
+                    Ok::<_, std::convert::Infallible>(http::Response::new(http_body_util::Empty::<
+                        Bytes,
+                    >::new(
+                    )))
+                }
+            });
+            let _ = hyper::server::conn::http1::Builder::new()
+                .serve_connection(TokioIo::new(server_io), service)
+                .await;
+        });
+
+        // Client side: send one HTTP/1.1 request
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(client_io))
+            .await
+            .expect("http1 handshake failed");
+
+        tokio::spawn(conn);
+
+        let mut req_builder = Request::builder().method(method).uri(uri);
+        for (key, value) in headers.iter() {
+            req_builder = req_builder.header(key, value);
+        }
+        let request = req_builder
+            .body(Full::new(body_bytes))
+            .expect("request build failed");
+
+        let _ = sender.send_request(request).await;
+
+        req_rx.await.expect("server did not capture the request")
     }
 }
 
