@@ -342,6 +342,7 @@ mod tests {
         assert!(content.contains("TestClient"));
         assert!(content.contains("State<T>"));
         assert!(content.contains("rapina add resource"));
+        assert!(content.contains("/__rapina/llms.txt"));
         assert!(content.contains("Don't"));
         assert!(content.contains("BEGIN:rapina-agent-rules"));
         assert!(content.contains("END:rapina-agent-rules"));
