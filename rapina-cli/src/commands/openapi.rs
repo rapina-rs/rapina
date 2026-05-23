@@ -7,8 +7,7 @@ use std::process::Command;
 
 /// Export OpenAPI spec to stdout or file.
 pub fn export(output: Option<String>, host: &str, port: u16) -> Result<(), String> {
-    let agent = ureq::Agent::new_with_defaults();
-    let spec = fetch_openapi_spec(&agent, host, port)?;
+    let spec = fetch_openapi_spec(host, port)?;
     let canonical = canonicalize_json(&spec)?;
 
     match output {
@@ -35,10 +34,8 @@ pub fn check(file: &str, host: &str, port: u16) -> Result<(), String> {
     let committed_json: Value =
         serde_json::from_str(&committed).map_err(|e| format!("Failed to parse {}: {}", file, e))?;
 
-    let agent = ureq::Agent::new_with_defaults();
-
     // Fetch current spec
-    let current = fetch_openapi_spec(&agent, host, port)?;
+    let current = fetch_openapi_spec(host, port)?;
 
     // Compare canonical versions
     let committed_canonical = canonicalize_json(&committed_json)?;
@@ -70,10 +67,8 @@ pub fn diff(base: &str, file: &str, host: &str, port: u16) -> Result<(), String>
     // Get spec from base branch using git
     let base_spec = get_spec_from_branch(base, file)?;
 
-    let agent = ureq::Agent::new_with_defaults();
-
     // Fetch current spec
-    let current_spec = fetch_openapi_spec(&agent, host, port)?;
+    let current_spec = fetch_openapi_spec(host, port)?;
 
     // Detect breaking changes
     let changes = detect_breaking_changes(&base_spec, &current_spec);
@@ -112,9 +107,9 @@ pub fn diff(base: &str, file: &str, host: &str, port: u16) -> Result<(), String>
 }
 
 /// Fetch OpenAPI spec from running application.
-fn fetch_openapi_spec(agent: &ureq::Agent, host: &str, port: u16) -> Result<Value, String> {
+fn fetch_openapi_spec(host: &str, port: u16) -> Result<Value, String> {
     let url = crate::common::urls::build_openapi_url(host, port);
-    let mut response = agent.get(&url).call().map_err(|e| {
+    let mut response = crate::common::AGENT.get(&url).call().map_err(|e| {
         format!(
             "Failed to fetch OpenAPI spec. Is the server running on {}? ({})",
             url, e
@@ -390,15 +385,14 @@ mod tests {
             use std::io::Read;
             let _ = stream.read(&mut buf);
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                 json.len(),
                 json
             );
             use std::io::Write;
             stream.write_all(response.as_bytes()).unwrap();
         });
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_openapi_spec(&agent, "127.0.0.1", port);
+        let result = fetch_openapi_spec("127.0.0.1", port);
         handle.join().unwrap();
         let value = result.unwrap();
         assert_eq!(value["info"]["title"], "Test");
@@ -406,8 +400,7 @@ mod tests {
 
     #[test]
     fn test_fetch_openapi_spec_connection_refused() {
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_openapi_spec(&agent, "127.0.0.1", 1);
+        let result = fetch_openapi_spec("127.0.0.1", 1);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Failed to fetch"));
     }

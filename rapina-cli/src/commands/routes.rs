@@ -25,8 +25,7 @@ pub fn execute(config: RoutesConfig) -> Result<(), String> {
         config.host,
         config.port
     );
-    let agent = ureq::Agent::new_with_defaults();
-    let routes = fetch_routes(&agent, &urls::build_routes_url(&config.host, config.port))?;
+    let routes = fetch_routes(&urls::build_routes_url(&config.host, config.port))?;
 
     if routes.is_empty() {
         println!("  {} No routes registered", "⚠".yellow());
@@ -66,8 +65,8 @@ pub fn execute(config: RoutesConfig) -> Result<(), String> {
 }
 
 /// Fetch routes from running application.
-fn fetch_routes(agent: &ureq::Agent, url: &str) -> Result<Vec<RouteInfo>, String> {
-    let mut response = agent.get(url).call().map_err(|e| {
+fn fetch_routes(url: &str) -> Result<Vec<RouteInfo>, String> {
+    let mut response = crate::common::AGENT.get(url).call().map_err(|e| {
         format!(
             "Failed to fetch routes. Is the server running on {}? ({})",
             url, e
@@ -96,26 +95,25 @@ mod tests {
             use std::io::Read;
             let _ = stream.read(&mut buf);
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                 json.len(),
                 json
             );
             use std::io::Write;
             stream.write_all(response.as_bytes()).unwrap();
         });
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_routes(&agent, &format!("http://127.0.0.1:{}", port));
+        let result = fetch_routes(&format!("http://127.0.0.1:{}", port));
         handle.join().unwrap();
         let routes = result.unwrap();
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].method, "GET");
         assert_eq!(routes[0].path, "/users");
+        assert_eq!(routes[0].handler_name, "list_users");
     }
 
     #[test]
     fn test_fetch_routes_connection_refused() {
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_routes(&agent, "http://127.0.0.1:1");
+        let result = fetch_routes("http://127.0.0.1:1");
         assert!(result.is_err());
     }
 }

@@ -34,9 +34,8 @@ pub fn execute(config: DoctorConfig) -> Result<(), String> {
     );
     println!();
 
-    let agent = ureq::Agent::new_with_defaults();
-    let routes = fetch_json(&agent, &urls::build_routes_url(&config.host, config.port))?;
-    let openapi = fetch_json(&agent, &urls::build_openapi_url(&config.host, config.port));
+    let routes = fetch_json(&urls::build_routes_url(&config.host, config.port))?;
+    let openapi = fetch_json(&urls::build_openapi_url(&config.host, config.port));
 
     let mut result = DiagnosticResult {
         warnings: Vec::new(),
@@ -356,8 +355,8 @@ fn print_results(result: &DiagnosticResult) {
 }
 
 /// Fetch JSON from URL.
-fn fetch_json(agent: &ureq::Agent, url: &str) -> Result<Value, String> {
-    let mut response = agent.get(url).call().map_err(|e| {
+fn fetch_json(url: &str) -> Result<Value, String> {
+    let mut response = crate::common::AGENT.get(url).call().map_err(|e| {
         format!(
             "Failed to fetch data. Is the server running? ({}) ({})",
             url, e
@@ -613,23 +612,21 @@ mod tests {
             use std::io::Read;
             let _ = stream.read(&mut buf);
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                 json.len(),
                 json
             );
             use std::io::Write;
             stream.write_all(response.as_bytes()).unwrap();
         });
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_json(&agent, &format!("http://127.0.0.1:{}", port));
+        let result = fetch_json(&format!("http://127.0.0.1:{}", port));
         handle.join().unwrap();
         assert_eq!(result.unwrap(), serde_json::json!({"status": "ok"}));
     }
 
     #[test]
     fn test_fetch_json_connection_refused() {
-        let agent = ureq::Agent::new_with_defaults();
-        let result = fetch_json(&agent, "http://127.0.0.1:1");
+        let result = fetch_json("http://127.0.0.1:1");
         assert!(result.is_err());
     }
 }
