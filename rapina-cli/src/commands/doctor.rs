@@ -37,6 +37,7 @@ pub fn execute(config: DoctorConfig) -> Result<(), String> {
 
     let routes = fetch_json(&urls::build_routes_url(&config.host, config.port))?;
     let openapi = fetch_json(&urls::build_openapi_url(&config.host, config.port));
+    let llms_txt = fetch_text(&urls::build_llms_url(&config.host, config.port));
 
     let mut result = DiagnosticResult {
         warnings: Vec::new(),
@@ -48,6 +49,7 @@ pub fn execute(config: DoctorConfig) -> Result<(), String> {
     check_error_documentation(&routes, &mut result);
     check_openapi_metadata(&openapi, &mut result);
     check_duplicate_routes(&routes, &mut result);
+    check_llms_txt(&llms_txt, &mut result);
 
     print_results(&result);
 
@@ -318,6 +320,39 @@ fn check_openapi_metadata(openapi: &Result<Value, String>, result: &mut Diagnost
     }
 }
 
+/// Check the `/__rapina/llms.txt` endpoint.
+///
+/// `llms_txt` defaults to `cfg!(debug_assertions)` in `rapina/src/app.rs`, so the
+/// endpoint is on under `rapina dev` but off in release builds. When users
+/// promote from dev to release, the endpoint silently returns 404 and any
+/// agent/tool that fetches from it breaks without explanation. Warn in that
+/// case and tell the user to call `enable_llms_txt()`.
+fn check_llms_txt(llms_txt: &Result<String, String>, result: &mut DiagnosticResult) {
+    match llms_txt {
+        Ok(body) if !body.trim().is_empty() => {
+            result
+                .passed
+                .push("/__rapina/llms.txt endpoint is enabled".to_string());
+        }
+        Ok(_) => {
+            // Reachable but empty — surface it so the user notices.
+            result
+                .warnings
+                .push("/__rapina/llms.txt: endpoint returned an empty body".to_string());
+        }
+        Err(_) => {
+            // Endpoint unreachable (404 in release builds, or server isn't
+            // running with llms_txt enabled).
+            result.warnings.push(
+                "/__rapina/llms.txt: endpoint is disabled or unreachable. \
+                 Defaults to debug-only — call .enable_llms_txt() on your \
+                 App to turn it on in release builds."
+                    .to_string(),
+            );
+        }
+    }
+}
+
 /// Print diagnostic results.
 fn print_results(result: &DiagnosticResult) {
     // Print passed checks
@@ -357,6 +392,13 @@ fn print_results(result: &DiagnosticResult) {
 
 /// Fetch JSON from URL.
 fn fetch_json(url: &str) -> Result<Value, String> {
+    let body = fetch_text(url)?;
+    serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
+}
+
+/// Fetch a plain-text body from URL. Used by checks where the response isn't
+/// JSON (e.g. `/__rapina/llms.txt`).
+fn fetch_text(url: &str) -> Result<String, String> {
     let output = Command::new("curl")
         .args(["-s", "-f", url])
         .output()
@@ -369,10 +411,7 @@ fn fetch_json(url: &str) -> Result<Value, String> {
         ));
     }
 
-    let body =
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
+    String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))
 }
 
 #[cfg(test)]
@@ -604,5 +643,48 @@ mod tests {
         check_openapi_metadata(&openapi, &mut result);
         assert!(result.warnings.is_empty());
         assert_eq!(result.passed.len(), 1);
+    }
+
+    #[test]
+    fn check_llms_txt_passes_when_endpoint_returns_content() {
+        let llms_txt: Result<String, String> = Ok("# rapina-app\n\nSome content".to_string());
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_llms_txt(&llms_txt, &mut result);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.passed.len(), 1);
+        assert!(result.passed[0].contains("/__rapina/llms.txt"));
+    }
+
+    #[test]
+    fn check_llms_txt_warns_when_endpoint_returns_empty_body() {
+        let llms_txt: Result<String, String> = Ok("   \n".to_string());
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_llms_txt(&llms_txt, &mut result);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("empty body"));
+        assert!(result.passed.is_empty());
+    }
+
+    #[test]
+    fn check_llms_txt_warns_when_endpoint_unreachable() {
+        let llms_txt: Result<String, String> = Err("404 Not Found".to_string());
+        let mut result = DiagnosticResult {
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            passed: Vec::new(),
+        };
+        check_llms_txt(&llms_txt, &mut result);
+        assert_eq!(result.warnings.len(), 1);
+        let warning = &result.warnings[0];
+        assert!(warning.contains("disabled or unreachable"));
+        assert!(warning.contains("enable_llms_txt"));
     }
 }
