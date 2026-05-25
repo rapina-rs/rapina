@@ -525,8 +525,12 @@ impl<T: DeserializeOwned + Validate + Send> FromRequest for Validated<Json<T>> {
     ) -> Result<Self, Error> {
         let json = Json::<T>::from_request(req, params, state).await?;
         json.0.validate().map_err(|e| {
-            Error::validation("validation failed")
-                .with_details(serde_json::to_value(e).unwrap_or_default())
+            Error::validation("validation failed").with_details(
+                serde_json::to_value(&e).unwrap_or_else(|err| {
+                    tracing::warn!("Failed to serialize validation error details: {err}");
+                    serde_json::Value::default()
+                }),
+            )
         })?;
         Ok(Validated(json))
     }
@@ -540,8 +544,12 @@ impl<T: DeserializeOwned + Validate + Send> FromRequest for Validated<Form<T>> {
     ) -> Result<Self, Error> {
         let form = Form::<T>::from_request(req, params, state).await?;
         form.0.validate().map_err(|e| {
-            Error::validation("validation failed")
-                .with_details(serde_json::to_value(e).unwrap_or_default())
+            Error::validation("validation failed").with_details(
+                serde_json::to_value(&e).unwrap_or_else(|err| {
+                    tracing::warn!("Failed to serialize validation error details: {err}");
+                    serde_json::Value::default()
+                }),
+            )
         })?;
         Ok(Validated(form))
     }
@@ -1722,5 +1730,182 @@ mod tests {
             crate::jobs::Jobs::from_request_parts(&parts, &empty_params(), &empty_state()).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().status(), 500);
+    }
+
+    // Validated<Json<T>> extractor tests
+
+    #[tokio::test]
+    async fn test_validated_json_valid_input() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(length(min = 1))]
+            name: String,
+        }
+
+        let req = TestRequest::post("/")
+            .json(&serde_json::json!({ "name": "Alice" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Json<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().into_inner().0.name, "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_validated_json_invalid_input_returns_422() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(length(min = 3))]
+            name: String,
+        }
+
+        let req = TestRequest::post("/")
+            .json(&serde_json::json!({ "name": "Al" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Json<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.status(), 422);
+    }
+
+    #[tokio::test]
+    async fn test_validated_json_invalid_input_details_not_empty() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(email)]
+            email: String,
+        }
+
+        let req = TestRequest::post("/")
+            .json(&serde_json::json!({ "email": "not-an-email" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Json<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        let err = result.unwrap_err();
+        // details should be a non-null object with field errors, not an empty {}
+        let details = err.details();
+        assert!(details.is_some());
+        let details = details.unwrap();
+        assert!(details.is_object());
+        assert!(!details.as_object().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_validated_json_bad_json_returns_400() {
+        let req = TestRequest::post("/")
+            .header("content-type", "application/json")
+            .body(b"{not valid json".as_ref())
+            .into_incoming_request()
+            .await;
+
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        #[allow(dead_code)]
+        struct Payload {
+            name: String,
+        }
+
+        let result =
+            Validated::<Json<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
+    }
+
+    // Validated<Form<T>> extractor tests
+
+    #[tokio::test]
+    async fn test_validated_form_valid_input() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(length(min = 1))]
+            name: String,
+        }
+
+        let req = TestRequest::post("/")
+            .form(&serde_json::json!({ "name": "Bob" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Form<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().into_inner().0.name, "Bob");
+    }
+
+    #[tokio::test]
+    async fn test_validated_form_invalid_input_returns_422() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(length(min = 5))]
+            name: String,
+        }
+
+        let req = TestRequest::post("/")
+            .form(&serde_json::json!({ "name": "Bo" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Form<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.status(), 422);
+    }
+
+    #[tokio::test]
+    async fn test_validated_form_invalid_input_details_not_empty() {
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        struct Payload {
+            #[validate(email)]
+            email: String,
+        }
+
+        let req = TestRequest::post("/")
+            .form(&serde_json::json!({ "email": "bad" }))
+            .into_incoming_request()
+            .await;
+
+        let result =
+            Validated::<Form<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        let err = result.unwrap_err();
+        let details = err.details();
+        assert!(details.is_some());
+        let details = details.unwrap();
+        assert!(details.is_object());
+        assert!(!details.as_object().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_validated_form_bad_content_type_returns_400() {
+        let req = TestRequest::post("/")
+            .header("content-type", "text/plain")
+            .body(b"name=Bob".as_ref())
+            .into_incoming_request()
+            .await;
+
+        #[derive(serde::Deserialize, validator::Validate, Debug)]
+        #[allow(dead_code)]
+        struct Payload {
+            name: String,
+        }
+
+        let result =
+            Validated::<Form<Payload>>::from_request(req, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 400);
     }
 }
