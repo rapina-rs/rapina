@@ -678,6 +678,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "POST",
@@ -689,6 +690,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "GET",
@@ -700,6 +702,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
@@ -728,6 +731,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "GET",
@@ -739,6 +743,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         build_openapi_spec("Test API", "1.0.0", &routes);
@@ -758,6 +763,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "GET",
@@ -769,6 +775,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         build_openapi_spec("Test API", "1.0.0", &routes);
@@ -789,6 +796,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "GET",
@@ -800,6 +808,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         // Should not panic — internal route is excluded from uniqueness tracking
