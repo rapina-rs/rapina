@@ -1,5 +1,6 @@
 ---
 source: rapina/src/introspection/llms.rs
+assertion_line: 134
 expression: output
 ---
 # My API
@@ -9,6 +10,8 @@ Built with [Rapina](https://rapina.rs) v0.12.0.
 ## Routes
 
 ### POST /v1/users
+
+Create user
 
 Request (application/json):
 ```json

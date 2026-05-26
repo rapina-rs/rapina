@@ -54,6 +54,8 @@ pub struct RouteDescriptor {
     pub error_responses: fn() -> Vec<ErrorVariant>,
     /// Returns typed header parameters declared on this handler
     pub header_parameters: fn() -> Vec<HeaderParamInfo>,
+    /// Returns a human-readable description of this handler, if any
+    pub description: fn() -> Option<&'static str>,
     /// Registers this route on the given Router and returns it
     pub register: fn(Router) -> Router,
 }

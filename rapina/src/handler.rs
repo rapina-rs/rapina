@@ -54,6 +54,11 @@ pub trait Handler: Clone + Send + Sync + 'static {
         Vec::new()
     }
 
+    /// Human-readable description of what this handler does.
+    fn description() -> Option<&'static str> {
+        None
+    }
+
     /// Handle the request.
     fn call(&self, req: Request<Incoming>, params: PathParams, state: Arc<AppState>) -> BoxFuture;
 }
