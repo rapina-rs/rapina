@@ -7,22 +7,37 @@ date = 2025-02-13
 
 Extractors automatically parse request data and inject it into your handlers. If parsing fails, they return appropriate error responses.
 
+## Handler Attributes
+
+The route macros (`#[get]`, `#[post]`, etc.) accept optional attributes alongside the path:
+
+| Attribute     | Type   | Description                                              |
+| ------------- | ------ | -------------------------------------------------------- |
+| `description` | `&str` | Human-readable description included in `llms.txt` output |
+
+```rust
+#[get("/users", description = "List all users")]
+async fn list_users() -> Json<Vec<User>> { ... }
+```
+
+See [llms.txt](/docs/core-concepts/llms-txt/#handler-descriptions) for the full description resolution order.
+
 ## Available Extractors
 
-| Extractor | Description |
-|-----------|-------------|
-| [`Path<T>`](#path-parameters) | URL path parameters |
-| [`Query<T>`](#query-parameters) | Query string parameters |
-| [`Json<T>`](#json-body) | JSON request body |
-| [`Form<T>`](#form-data) | URL-encoded form data |
-| [`Headers`](#headers) | Request headers |
-| [`State<T>`](#application-state) | Application state |
-| [`Context`](#request-context) | Request context (trace_id) |
-| [`Cookie<T>`](#cookies) | Typed cookie access |
-| [`CurrentUser`](#currentuser) | Authenticated user (JWT) |
-| [`Validated<T>`](#validation) | Validated extractor |
-| [`Paginate`](#paginate) | Pagination params (requires feature) |
-| [`Db`](#db) | Database connection (requires feature) |
+| Extractor                        | Description                            |
+| -------------------------------- | -------------------------------------- |
+| [`Path<T>`](#path-parameters)    | URL path parameters                    |
+| [`Query<T>`](#query-parameters)  | Query string parameters                |
+| [`Json<T>`](#json-body)          | JSON request body                      |
+| [`Form<T>`](#form-data)          | URL-encoded form data                  |
+| [`Headers`](#headers)            | Request headers                        |
+| [`State<T>`](#application-state) | Application state                      |
+| [`Context`](#request-context)    | Request context (trace_id)             |
+| [`Cookie<T>`](#cookies)          | Typed cookie access                    |
+| [`CurrentUser`](#currentuser)    | Authenticated user (JWT)               |
+| [`Validated<T>`](#validation)    | Validated extractor                    |
+| [`Paginate`](#paginate)          | Pagination params (requires feature)   |
+| [`Db`](#db)                      | Database connection (requires feature) |
 
 ## Accessing Extractor Values
 
@@ -46,7 +61,7 @@ async fn create_user(body: Json<CreateUser>) -> String {
 
 - **Direct field access** — `body.name`, `config.app_name`, `query.page`. Works anywhere you need `&T` thanks to auto-deref. This is the common case.
 - **Explicit deref (`*`)** — `*id`, `*count`. Needed for primitives in format strings or when passing a `Copy` value where the compiler needs the concrete type.
-- **`into_inner()`** — when you need to *own* the value. Moving it into a struct, passing it to a function that takes `T` (not `&T`), or consuming it in a builder chain.
+- **`into_inner()`** — when you need to _own_ the value. Moving it into a struct, passing it to a function that takes `T` (not `&T`), or consuming it in a builder chain.
 
 Avoid using `.0` to access extractor contents — it's an implementation detail. Deref or `into_inner()` are always clearer.
 
@@ -204,6 +219,7 @@ async fn me(user: CurrentUser) -> Json<UserResponse> {
 ```
 
 The `CurrentUser` extractor provides:
+
 - `user.id` - The user ID from the JWT `sub` claim
 - `user.claims` - The full JWT claims
 
@@ -263,12 +279,13 @@ async fn list_users(db: Db, page: Paginate) -> Result<Paginated<user::Model>> {
 
 The `Paginate` extractor reads `?page=1&per_page=20` from the query string:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `page` | 1 | Page number (1-indexed) |
-| `per_page` | 20 | Items per page |
+| Parameter  | Default | Description             |
+| ---------- | ------- | ----------------------- |
+| `page`     | 1       | Page number (1-indexed) |
+| `per_page` | 20      | Items per page          |
 
 Returns 422 Validation Error when:
+
 - `page` < 1
 - `per_page` < 1
 - `per_page` exceeds the configured maximum (default: 100)
@@ -310,6 +327,7 @@ async fn create_post(body: Json<CreatePost>, db: Db) -> Result<Json<PostResponse
 ```
 
 The `Db` extractor provides:
+
 - `db.conn()` - A reference to the SeaORM database connection
 
 > **Note:** This extractor requires the database feature. See [Database](database.md) for setup and entity definitions.

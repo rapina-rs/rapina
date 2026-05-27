@@ -274,6 +274,6 @@ mod tests {
             None::<String>,
         );
         let json = serde_json::to_string(&info).unwrap();
-        assert!(!json.contains("description"));
+        assert!(!json.contains("\"description\""));
     }
 }
