@@ -7,21 +7,6 @@ date = 2025-02-13
 
 Extractors automatically parse request data and inject it into your handlers. If parsing fails, they return appropriate error responses.
 
-## Handler Attributes
-
-The route macros (`#[get]`, `#[post]`, etc.) accept optional attributes alongside the path:
-
-| Attribute     | Type   | Description                                              |
-| ------------- | ------ | -------------------------------------------------------- |
-| `description` | `&str` | Human-readable description included in `llms.txt` output |
-
-```rust
-#[get("/users", description = "List all users")]
-async fn list_users() -> Json<Vec<User>> { ... }
-```
-
-See [llms.txt](/docs/core-concepts/llms-txt/#handler-descriptions) for the full description resolution order.
-
 ## Available Extractors
 
 | Extractor                        | Description                            |
