@@ -18,6 +18,17 @@ async fn llms_create_user() -> &'static str {
     "created"
 }
 
+#[get("/llms-described", description = "Fetch the described resource")]
+async fn llms_explicit_description() -> &'static str {
+    "described"
+}
+
+/// Return a summary of health status
+#[get("/llms-health")]
+async fn llms_rustdoc_description() -> &'static str {
+    "ok"
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -103,6 +114,60 @@ async fn test_llms_txt_returns_404_when_disabled() {
     let resp = client.get("/__rapina/llms.txt").send().await;
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_llms_txt_shows_explicit_description() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_llms_txt()
+        .discover();
+
+    let client = TestClient::new(app).await;
+    let resp = client.get("/__rapina/llms.txt").send().await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.text();
+    assert!(
+        body.contains("Fetch the described resource"),
+        "Expected explicit description in llms.txt, got:\n{body}"
+    );
+}
+
+#[tokio::test]
+async fn test_llms_txt_shows_rustdoc_description() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_llms_txt()
+        .discover();
+
+    let client = TestClient::new(app).await;
+    let resp = client.get("/__rapina/llms.txt").send().await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.text();
+    assert!(
+        body.contains("Return a summary of health status"),
+        "Expected rustdoc description in llms.txt, got:\n{body}"
+    );
+}
+
+#[tokio::test]
+async fn test_llms_txt_humanizes_handler_name_when_no_description() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .enable_llms_txt()
+        .discover();
+
+    let client = TestClient::new(app).await;
+    let resp = client.get("/__rapina/llms.txt").send().await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.text();
+    assert!(
+        body.contains("Llms list users") || body.contains("Llms create user"),
+        "Expected humanized handler name in llms.txt, got:\n{body}"
+    );
 }
 
 #[tokio::test]
