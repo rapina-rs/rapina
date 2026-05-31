@@ -115,5 +115,6 @@ mod tests {
     fn test_fetch_routes_connection_refused() {
         let result = fetch_routes("http://127.0.0.1:1");
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to fetch"));
     }
 }
