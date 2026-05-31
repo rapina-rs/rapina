@@ -4,7 +4,7 @@ use crate::common::urls;
 use colored::Colorize;
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct RouteInfo {
     method: String,
     path: String,
