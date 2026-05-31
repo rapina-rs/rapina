@@ -73,6 +73,8 @@ Built with [Rapina](https://rapina.rs) v0.11.0.
 
 ### POST /v1/users
 
+Create user
+
 Request (application/json):
 {
 "type": "object",
@@ -98,6 +100,29 @@ Errors:
 ```
 
 Request and response schemas are rendered verbatim from the same JSON Schema that powers the OpenAPI spec. Handlers that don't return `Json<T>` or don't accept a typed request body produce no schema block for that section.
+
+---
+
+## Handler Descriptions
+
+Each route entry in `llms.txt` includes a human-readable description between the route heading and the request block. Rapina resolves it in priority order:
+
+1. **Explicit `description` attribute** on the handler macro — highest priority:
+
+```rust
+#[post("/users", description = "Create a new user account")]
+async fn create_user(body: Json<CreateUser>) -> Json<User> { ... }
+```
+
+2. **First `///` doc comment** above the handler — zero extra syntax for already-documented handlers:
+
+```rust
+/// Create a new user account
+#[post("/users")]
+async fn create_user(body: Json<CreateUser>) -> Json<User> { ... }
+```
+
+3. **Humanized fallback** from the handler name — `create_user` → `"Create user"`. Every route always has a description even without any annotation.
 
 ---
 

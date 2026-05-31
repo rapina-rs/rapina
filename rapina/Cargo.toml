@@ -16,7 +16,7 @@ categories = ["web-programming::http-server", "asynchronous"]
 tokio = { version = "1.52.3", features = ["full"] }
 
 # HTTP server
-hyper = { version = "1.9.0", features = ["server", "http1", "http2"] }
+hyper = { version = "1.10.0", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1.19", features = [
   "tokio",
   "client-legacy",
@@ -32,7 +32,7 @@ pin-project-lite = "0.2"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 serde_urlencoded = "0.7"
 
 # Validation
@@ -61,7 +61,7 @@ jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 hyper-rustls = { version = "0.27.9", optional = true, features = ["http1", "http2"] }
 
 # Concurrent map (used by cache + rate-limit)
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 
 # SmallVec for stack-allocated path params
 smallvec = "1"

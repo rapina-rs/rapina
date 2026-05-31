@@ -9,6 +9,30 @@ use std::fmt::Write as _;
 
 use crate::introspection::RouteInfo;
 
+/// Convert a snake_case handler name to a human-readable description.
+///
+/// Examples: `create_user` → `"Create user"`, `list_all_posts` → `"List all posts"`.
+pub(crate) fn humanize_handler_name(name: &str) -> String {
+    let words: Vec<&str> = name.split('_').filter(|w| !w.is_empty()).collect();
+    if words.is_empty() {
+        return name.to_string();
+    }
+    let mut result = String::new();
+    for (i, word) in words.iter().enumerate() {
+        if i == 0 {
+            let mut chars = word.chars();
+            if let Some(first) = chars.next() {
+                result.extend(first.to_uppercase());
+                result.push_str(chars.as_str());
+            }
+        } else {
+            result.push(' ');
+            result.push_str(word);
+        }
+    }
+    result
+}
+
 macro_rules! w {
     ($dst:expr) => { writeln!($dst).unwrap() };
     ($dst:expr, $($t:tt)*) => { writeln!($dst, $($t)*).unwrap() };
@@ -33,6 +57,14 @@ pub fn to_llms_txt(title: &str, routes: &[RouteInfo]) -> String {
     for route in &user_routes {
         w!(out);
         w!(out, "### {} {}", route.method, route.path);
+
+        let desc = route
+            .description
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| humanize_handler_name(&route.handler_name));
+        w!(out);
+        w!(out, "{desc}");
 
         if let Some(ct) = &route.request_content_type {
             if let Some(schema) = &route.request_schema {
@@ -91,6 +123,7 @@ mod tests {
                 description: "email already registered",
             }],
             vec![],
+            None::<String>,
         )
     }
 
@@ -113,6 +146,7 @@ mod tests {
             None,
             vec![],
             vec![],
+            None::<String>,
         );
         let routes = vec![make_route(), internal];
         let output = to_llms_txt("My API", &routes);
@@ -132,5 +166,63 @@ mod tests {
     fn test_to_llms_txt_title_used_as_heading() {
         let output = to_llms_txt("Custom Title", &[]);
         assert!(output.starts_with("# Custom Title\n"));
+    }
+
+    #[test]
+    fn test_humanize_handler_name_single_word() {
+        assert_eq!(humanize_handler_name("create"), "Create");
+    }
+
+    #[test]
+    fn test_humanize_handler_name_multi_word() {
+        assert_eq!(humanize_handler_name("create_user"), "Create user");
+        assert_eq!(humanize_handler_name("list_all_posts"), "List all posts");
+    }
+
+    #[test]
+    fn test_humanize_handler_name_empty() {
+        assert_eq!(humanize_handler_name(""), "");
+    }
+
+    #[test]
+    fn test_humanize_handler_name_leading_underscores() {
+        assert_eq!(humanize_handler_name("_get_user"), "Get user");
+    }
+
+    #[test]
+    fn test_to_llms_txt_uses_explicit_description() {
+        let route = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            vec![],
+            vec![],
+            Some("Returns all users in the system"),
+        );
+        let output = to_llms_txt("My API", &[route]);
+        assert!(output.contains("Returns all users in the system"));
+        assert!(!output.contains("List users"));
+    }
+
+    #[test]
+    fn test_to_llms_txt_falls_back_to_humanized_name() {
+        let route = RouteInfo::new(
+            "DELETE",
+            "/users/:id",
+            "delete_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            vec![],
+            vec![],
+            None::<String>,
+        );
+        let output = to_llms_txt("My API", &[route]);
+        assert!(output.contains("Delete user"));
     }
 }
