@@ -93,6 +93,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "POST",
@@ -104,6 +105,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         let registry = RouteRegistry::with_routes(routes);
@@ -122,6 +124,7 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
+            None::<String>,
         )];
         let registry = RouteRegistry::with_routes(routes);
         let cloned = registry.clone();
@@ -141,6 +144,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
             RouteInfo::new(
                 "POST",
@@ -152,6 +156,7 @@ mod tests {
                 None,
                 Vec::new(),
                 Vec::new(),
+                None::<String>,
             ),
         ];
         let registry = RouteRegistry::with_routes(routes);

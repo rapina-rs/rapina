@@ -41,6 +41,8 @@ pub struct RouteConfig {
     pub error_responses: Vec<ErrorVariant>,
     /// Typed header parameters declared on this handler.
     pub header_parameters: Vec<HeaderParamInfo>,
+    /// Human-readable description of what this handler does.
+    pub description: Option<&'static str>,
 }
 
 impl Default for RouteConfig {
@@ -53,6 +55,7 @@ impl Default for RouteConfig {
             request_body_required: None,
             error_responses: Vec::new(),
             header_parameters: Vec::new(),
+            description: None,
         }
     }
 }
@@ -66,6 +69,7 @@ pub(crate) struct Route {
     pub(crate) request_body_required: Option<bool>,
     pub(crate) error_responses: Vec<ErrorVariant>,
     pub(crate) header_parameters: Vec<HeaderParamInfo>,
+    pub(crate) description: Option<&'static str>,
     handler: HandlerFn,
 }
 
@@ -146,6 +150,7 @@ impl Router {
             request_body_required: config.request_body_required,
             error_responses: config.error_responses,
             header_parameters: config.header_parameters,
+            description: config.description,
             handler,
         };
 
@@ -215,6 +220,7 @@ impl Router {
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
+                description: H::description(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -236,6 +242,7 @@ impl Router {
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
+                description: H::description(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -275,6 +282,7 @@ impl Router {
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
+                description: H::description(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -314,6 +322,7 @@ impl Router {
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
+                description: H::description(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -353,6 +362,7 @@ impl Router {
                 request_body_required: H::request_body_required(),
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
+                description: H::description(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -395,6 +405,7 @@ impl Router {
                     route.request_body_required,
                     route.error_responses.clone(),
                     route.header_parameters.clone(),
+                    route.description,
                 )
             })
             .collect()

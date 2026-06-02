@@ -27,14 +27,14 @@ let router = Router::new()
 
 Rapina provides convenience methods for common HTTP verbs:
 
-| Method | Description |
-|--------|-------------|
-| `.get(pattern, handler)` | GET requests (read) |
-| `.post(pattern, handler)` | POST requests (create) |
-| `.put(pattern, handler)` | PUT requests (full update) |
-| `.patch(pattern, handler)` | PATCH requests (partial update) |
-| `.delete(pattern, handler)` | DELETE requests (remove) |
-| `.route(Method, pattern, handler)` | Any HTTP method |
+| Method                             | Description                     |
+| ---------------------------------- | ------------------------------- |
+| `.get(pattern, handler)`           | GET requests (read)             |
+| `.post(pattern, handler)`          | POST requests (create)          |
+| `.put(pattern, handler)`           | PUT requests (full update)      |
+| `.patch(pattern, handler)`         | PATCH requests (partial update) |
+| `.delete(pattern, handler)`        | DELETE requests (remove)        |
+| `.route(Method, pattern, handler)` | Any HTTP method                 |
 
 ### Using Macros
 
@@ -169,6 +169,31 @@ async fn health() -> &'static str {
 }
 // Public route at /api/health
 ```
+
+### Handler Descriptions
+
+The route macros accept a `description` attribute that adds a human-readable label to each route in `llms.txt` output:
+
+| Attribute     | Type   | Description                                              |
+| ------------- | ------ | -------------------------------------------------------- |
+| `description` | `&str` | Human-readable description included in `llms.txt` output |
+
+```rust
+#[get("/users", description = "List all users")]
+async fn list_users() -> Json<Vec<User>> { ... }
+```
+
+`description` composes with `group` and `#[public]`:
+
+```rust
+#[public]
+#[get("/health", group = "/api", description = "Health check")]
+async fn health() -> &'static str {
+    "ok"
+}
+```
+
+See [llms.txt](/docs/core-concepts/llms-txt/#handler-descriptions) for the full description resolution order.
 
 ## Path Parameters
 

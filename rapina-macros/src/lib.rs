@@ -4,31 +4,49 @@ use quote::quote;
 use syn::spanned::Spanned;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
-/// Parsed route macro attribute: `"/path"` or `"/path", group = "/prefix"`.
+/// Parsed route macro attribute: `"/path"`, `"/path", group = "/prefix"`,
+/// `"/path", description = "..."`, or any combination thereof.
 struct RouteAttr {
     path: LitStr,
     group: Option<LitStr>,
+    description: Option<LitStr>,
 }
 
 impl syn::parse::Parse for RouteAttr {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let path: LitStr = input.parse()?;
-        let group = if input.peek(syn::Token![,]) {
+        let mut group: Option<LitStr> = None;
+        let mut description: Option<LitStr> = None;
+
+        while input.peek(syn::Token![,]) {
             input.parse::<syn::Token![,]>()?;
-            let ident: syn::Ident = input.parse()?;
-            if ident != "group" {
-                return Err(syn::Error::new(ident.span(), "expected `group`"));
+            if input.is_empty() {
+                break;
             }
+            let ident: syn::Ident = input.parse()?;
             input.parse::<syn::Token![=]>()?;
-            let value: LitStr = input.parse()?;
-            Some(value)
-        } else {
-            None
-        };
+            if ident == "group" {
+                let value: LitStr = input.parse()?;
+                group = Some(value);
+            } else if ident == "description" {
+                let value: LitStr = input.parse()?;
+                description = Some(value);
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "expected `group` or `description`",
+                ));
+            }
+        }
+
         if !input.is_empty() {
             return Err(input.error("unexpected tokens after route attribute"));
         }
-        Ok(RouteAttr { path, group })
+        Ok(RouteAttr {
+            path,
+            group,
+            description,
+        })
     }
 }
 
@@ -184,6 +202,13 @@ fn route_macro_core(
     // Extract #[public] attribute if present (when #[public] is below the route macro)
     let is_public = extract_public_attr(&mut func.attrs);
 
+    // Resolve description: explicit attr wins, then first rustdoc line, then None
+    let description_value: Option<String> = route_attr
+        .description
+        .as_ref()
+        .map(|l| l.value())
+        .or_else(|| extract_doc_description(&func.attrs));
+
     // Extract #[errors(ErrorType)] attribute if present
     let error_type = extract_errors_attr(&mut func.attrs);
 
@@ -276,6 +301,17 @@ fn route_macro_core(
                 vec![#(#entries),*]
             }
         }
+    };
+
+    // Build description() impl for the Handler trait
+    let description_impl = if let Some(ref desc) = description_value {
+        quote! {
+            fn description() -> Option<&'static str> {
+                Some(#desc)
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let args: Vec<_> = func.sig.inputs.iter().collect();
@@ -483,6 +519,7 @@ fn route_macro_core(
             #request_body_required_impl
             #error_responses_impl
             #header_parameters_impl
+            #description_impl
 
             fn call(
                 &self,
@@ -513,6 +550,7 @@ fn route_macro_core(
                 request_body_required: <#func_name as rapina::handler::Handler>::request_body_required,
                 error_responses: <#func_name as rapina::handler::Handler>::error_responses,
                 header_parameters: <#func_name as rapina::handler::Handler>::header_parameters,
+                description: <#func_name as rapina::handler::Handler>::description,
                 register: #register_fn_name,
             }
         }
@@ -608,6 +646,29 @@ fn extract_body_inner_type(ty: &syn::Type) -> Option<RequestBodyMeta> {
             if let Some(mut meta) = extract_body_inner_type(inner_extractor) {
                 meta.required = false;
                 return Some(meta);
+            }
+        }
+    }
+    None
+}
+
+/// Extract the first non-empty line from `///` doc comments on a function.
+fn extract_doc_description(attrs: &[syn::Attribute]) -> Option<String> {
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        if let syn::Meta::NameValue(nv) = &attr.meta {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(s),
+                ..
+            }) = &nv.value
+            {
+                let line = s.value();
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
             }
         }
     }
