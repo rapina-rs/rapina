@@ -3,9 +3,8 @@
 use crate::common::urls;
 use colored::Colorize;
 use serde::Deserialize;
-use std::process::Command;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct RouteInfo {
     method: String,
     path: String,
@@ -67,20 +66,55 @@ pub fn execute(config: RoutesConfig) -> Result<(), String> {
 
 /// Fetch routes from running application.
 fn fetch_routes(url: &str) -> Result<Vec<RouteInfo>, String> {
-    let output = Command::new("curl")
-        .args(["-s", "-f", url])
-        .output()
-        .map_err(|e| format!("Failed to run curl: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to fetch routes. Is the server running on {}?",
-            url
-        ));
-    }
-
-    let body =
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
+    let mut response = crate::common::AGENT.get(url).call().map_err(|e| {
+        format!(
+            "Failed to fetch routes. Is the server running on {}? ({})",
+            url, e
+        )
+    })?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
 
     serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_routes_success() {
+        let json = r#"[{"method":"GET","path":"/users","handler_name":"list_users"}]"#;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0; 4096];
+            use std::io::Read;
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            use std::io::Write;
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let result = fetch_routes(&format!("http://127.0.0.1:{}", port));
+        handle.join().unwrap();
+        let routes = result.unwrap();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].method, "GET");
+        assert_eq!(routes[0].path, "/users");
+        assert_eq!(routes[0].handler_name, "list_users");
+    }
+
+    #[test]
+    fn test_fetch_routes_connection_refused() {
+        let result = fetch_routes("http://127.0.0.1:1");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to fetch"));
+    }
 }

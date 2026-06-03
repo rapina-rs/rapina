@@ -109,20 +109,16 @@ pub fn diff(base: &str, file: &str, host: &str, port: u16) -> Result<(), String>
 /// Fetch OpenAPI spec from running application.
 fn fetch_openapi_spec(host: &str, port: u16) -> Result<Value, String> {
     let url = crate::common::urls::build_openapi_url(host, port);
-    let output = Command::new("curl")
-        .args(["-s", "-f", &url])
-        .output()
-        .map_err(|e| format!("Failed to run curl: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to fetch OpenAPI spec. Is the server running on {}?",
-            url
-        ));
-    }
-
-    let body =
-        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 response: {}", e))?;
+    let mut response = crate::common::AGENT.get(&url).call().map_err(|e| {
+        format!(
+            "Failed to fetch OpenAPI spec. Is the server running on {}? ({})",
+            url, e
+        )
+    })?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
 
     serde_json::from_str(&body).map_err(|e| format!("Invalid JSON response: {}", e))
 }
@@ -376,5 +372,36 @@ mod tests {
         let report = detect_breaking_changes(&spec, &spec);
         assert!(report.breaking.is_empty());
         assert!(report.non_breaking.is_empty());
+    }
+
+    #[test]
+    fn test_fetch_openapi_spec_success() {
+        let json = r#"{"openapi":"3.0.0","info":{"title":"Test","version":"1.0"}}"#;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0; 4096];
+            use std::io::Read;
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                json.len(),
+                json
+            );
+            use std::io::Write;
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let result = fetch_openapi_spec("127.0.0.1", port);
+        handle.join().unwrap();
+        let value = result.unwrap();
+        assert_eq!(value["info"]["title"], "Test");
+    }
+
+    #[test]
+    fn test_fetch_openapi_spec_connection_refused() {
+        let result = fetch_openapi_spec("127.0.0.1", 1);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to fetch"));
     }
 }
