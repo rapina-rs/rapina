@@ -78,9 +78,12 @@ where
 
         let validation = if let Some(validation) = validation {
             if validation.validate_aud && validation.aud.is_none() {
-                return Err(Error::internal(
-                    "JWT misconfiguration: validate_aud is enabled but set_audience() was never called",
-                ));
+                tracing::error!(
+                    "JWT misconfiguration: validate_aud is enabled but set_audience() was never called. All requests will fail until this is fixed."
+                );
+                panic!(
+                    "JWT misconfiguration: validate_aud is enabled but set_audience() was never called"
+                );
             }
 
             let mut v = validation.clone();
@@ -351,26 +354,21 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(
+        expected = "JWT misconfiguration: validate_aud is enabled but set_audience() was never called"
+    )]
     fn test_jsonwebtoken_new_aud_misconfiguration() {
         let jwks: JwkSet = serde_json::from_str(AUTH0_SAMPLE_JWKS).unwrap();
 
-        // validate_aud=true but no audience set via set_audience() — silent bypass without this fix
+        // validate_aud=true but no audience set via set_audience() — panics to fail fast
         let misconfigured_validation = jwt::default_validation();
         assert!(misconfigured_validation.validate_aud);
         assert!(misconfigured_validation.aud.is_none());
 
-        let result: Result<JsonWebToken<DefaultClaims>, Error> = JsonWebToken::new(
+        let _: Result<JsonWebToken<DefaultClaims>, Error> = JsonWebToken::new(
             jwks,
             Some(&misconfigured_validation),
             TEST_TOKEN.to_string(),
-        );
-
-        let error = result.expect_err("Expected misconfiguration to fail");
-        assert_eq!(error.status(), 500);
-        assert!(
-            error
-                .message()
-                .contains("validate_aud is enabled but set_audience() was never called")
         );
     }
 }

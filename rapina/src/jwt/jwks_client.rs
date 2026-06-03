@@ -131,6 +131,9 @@ pub fn default_validation() -> Validation {
     validation.validate_exp = true;
     validation.validate_nbf = true;
 
+    // require aud to be present in every token — aligns with jsonwebtoken crate recommendation
+    validation.required_spec_claims.insert("aud".to_string());
+
     validation
 }
 
