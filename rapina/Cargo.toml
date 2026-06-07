@@ -24,7 +24,7 @@ hyper-util = { version = "0.1.19", features = [
   "server-auto",
   "server-graceful",
 ] }
-http = "1.4.0"
+http = "1.4.1"
 http-body-util = "0.1.3"
 bytes = "1.11.1"
 futures-core = { version = "0.3", default-features = false, features = ["std"] }
