@@ -122,17 +122,36 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
             }
         }
 
-        // Validate PK columns are scalar types (not relationships)
+        // Validate PK columns are database columns. A (required) belongs_to field
+        // is allowed because it generates a non-null FK column using the target
+        // entity's PK type. A has_many field has no column, and an optional
+        // belongs_to would produce a nullable column, neither of which can be a
+        // primary key.
         for field in &analyzed_fields {
             let fname = field.name.to_string();
-            if pk_cols.contains(&fname) && !matches!(field.ty, FieldType::Scalar { .. }) {
-                return Err(syn::Error::new(
-                    field.name.span(),
-                    format!(
-                        "primary_key column '{}' must be a scalar type, not a relationship",
-                        fname
-                    ),
-                ));
+            if !pk_cols.contains(&fname) {
+                continue;
+            }
+            match &field.ty {
+                FieldType::HasMany { .. } => {
+                    return Err(syn::Error::new(
+                        field.name.span(),
+                        format!(
+                            "primary_key column '{}' cannot be a has_many relationship",
+                            fname
+                        ),
+                    ));
+                }
+                FieldType::BelongsTo { optional: true, .. } => {
+                    return Err(syn::Error::new(
+                        field.name.span(),
+                        format!(
+                            "primary_key column '{}' cannot be an optional relationship; a primary key cannot be nullable",
+                            fname
+                        ),
+                    ));
+                }
+                _ => {}
             }
         }
     }
@@ -437,24 +456,82 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_primary_key_must_be_scalar() {
+    fn test_analyze_primary_key_allows_belongs_to_fields() {
         let input = quote! {
-            User {
-                email: String,
+            #[table_name = "transactions"]
+            Tx {
+                name: String,
             }
 
-            #[primary_key(author)]
+            #[table_name = "labels"]
+            Label {
+                #[unique]
+                name: String,
+            }
+
+            #[table_name = "transaction_labels"]
             #[timestamps(none)]
+            #[primary_key(tx_id, label_id)]
+            TxLabel {
+                tx_id: Tx,
+                label_id: Label,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let tx_label = &analyzed.entities[2];
+        assert_eq!(
+            tx_label.attrs.primary_key,
+            Some(vec!["tx_id".to_string(), "label_id".to_string()])
+        );
+        assert!(matches!(tx_label.fields[0].ty, FieldType::BelongsTo { .. }));
+        assert!(matches!(tx_label.fields[1].ty, FieldType::BelongsTo { .. }));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_has_many_fields() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+            }
+
             Post {
-                author: User,
                 title: String,
+            }
+
+            #[primary_key(posts)]
+            #[timestamps(none)]
+            UserPosts {
+                posts: Vec<Post>,
             }
         };
 
         let parsed = parse_schema(input).unwrap();
         let result = analyze_schema(parsed);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("scalar type"));
+        assert!(result.unwrap_err().to_string().contains("has_many"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_optional_belongs_to() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            #[primary_key(user_id)]
+            #[timestamps(none)]
+            Membership {
+                user_id: Option<User>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("optional"));
     }
 
     #[test]
