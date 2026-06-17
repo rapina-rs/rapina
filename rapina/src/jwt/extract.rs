@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DefaultClaims {}
 
 /// Extracts a JSON Web Token (JWT) from the `Authorization` request header. The header value can optionally be prefixed with `Bearer `.
@@ -30,7 +30,7 @@ pub struct DefaultClaims {}
 ///     StatusCode::Ok
 /// }
 /// ```
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JsonWebToken<T = DefaultClaims> {
     /// Subject
     pub sub: String,

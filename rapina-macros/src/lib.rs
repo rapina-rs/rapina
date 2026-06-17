@@ -1,4 +1,75 @@
 use proc_macro::TokenStream;
+use proc_macro2::Ident;
+use quote::{ToTokens, quote};
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{
+    Attribute, Error, FnArg, ItemFn, LitStr, Pat, PatIdent, PatType, Token, Type, parenthesized,
+};
+
+/// Parsed route macro attribute: `"/path"`, `"/path", group = "/prefix"`,
+/// `"/path", description = "..."`, or any combination thereof.
+struct RouteAttr {
+    path: LitStr,
+    group: Option<LitStr>,
+    description: Option<LitStr>,
+}
+
+impl syn::parse::Parse for RouteAttr {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let path: LitStr = input.parse()?;
+        let mut group: Option<LitStr> = None;
+        let mut description: Option<LitStr> = None;
+
+        while input.peek(syn::Token![,]) {
+            input.parse::<syn::Token![,]>()?;
+            if input.is_empty() {
+                break;
+            }
+            let ident: syn::Ident = input.parse()?;
+            input.parse::<syn::Token![=]>()?;
+            if ident == "group" {
+                let value: LitStr = input.parse()?;
+                group = Some(value);
+            } else if ident == "description" {
+                let value: LitStr = input.parse()?;
+                description = Some(value);
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "expected `group` or `description`",
+                ));
+            }
+        }
+
+        if !input.is_empty() {
+            return Err(input.error("unexpected tokens after route attribute"));
+        }
+        Ok(RouteAttr {
+            path,
+            group,
+            description,
+        })
+    }
+}
+
+/// Join a group prefix with a route path at compile time.
+fn join_paths(prefix: &str, path: &str) -> String {
+    let prefix = prefix.trim_end_matches('/');
+    if path.is_empty() || path == "/" {
+        if prefix.is_empty() {
+            return "/".to_string();
+        }
+        return prefix.to_string();
+    }
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    format!("{prefix}{path}")
+}
 use quote::quote;
 use syn::ItemFn;
 
@@ -9,6 +80,187 @@ mod route;
 mod schema;
 
 use route::route_macro;
+
+/// TODO add docs
+struct AuthorizeArgs {
+    auth_fn: syn::Path,
+    deps: Vec<Type>,
+}
+
+/// TODO add docs
+impl Parse for AuthorizeArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let auth_fn: syn::Path = input.parse()?;
+
+        if input.is_empty() {
+            return Ok(Self {
+                auth_fn,
+                deps: Vec::new(),
+            });
+        }
+
+        let deps = if input.peek(syn::token::Paren) {
+            let content;
+            parenthesized!(content in input);
+            let parsed: Punctuated<Type, Token![,]> =
+                content.parse_terminated(Type::parse, Token![,])?;
+            parsed.into_iter().collect()
+        } else {
+            input.parse::<Token![,]>()?;
+            let parsed: Punctuated<Type, Token![,]> =
+                input.parse_terminated(Type::parse, Token![,])?;
+            parsed.into_iter().collect()
+        };
+
+        Ok(Self { auth_fn, deps })
+    }
+}
+
+/// TODO add docs
+fn authorize_needs_parts(func: &ItemFn, contains_authorize: &Option<Attribute>) -> bool {
+    if let Some(attr) = &contains_authorize {
+        let auth_args = attr
+            .parse_args::<AuthorizeArgs>()
+            .expect("#[authorize] args must be parseable");
+        authorize_needs_request_parts(&func.sig.inputs, &auth_args.deps)
+            .expect("Failed to resolve authorize dependencies")
+    } else {
+        false
+    }
+}
+
+/// TODO add docs
+fn authorize_needs_request_parts(
+    inputs: &Punctuated<FnArg, Token![,]>,
+    deps: &[Type],
+) -> syn::Result<bool> {
+    for dep in deps {
+        let dep_norm = normalize_type(dep);
+        let mut found = false;
+
+        for input in inputs {
+            let FnArg::Typed(PatType { ty, .. }) = input else {
+                continue;
+            };
+
+            if normalize_type(ty) == dep_norm {
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// TODO add docs
+fn build_authorize_prelude(
+    inputs: &Punctuated<FnArg, Token![,]>,
+    auth: &AuthorizeArgs,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let auth_fn = &auth.auth_fn;
+
+    let mut auth_extracts = Vec::new();
+    let mut auth_args = Vec::with_capacity(auth.deps.len());
+
+    for (i, dep_ty) in auth.deps.iter().enumerate() {
+        let dep_norm = normalize_type(dep_ty);
+        let mut found = None;
+
+        for input in inputs {
+            let FnArg::Typed(PatType { pat, ty, .. }) = input else {
+                continue;
+            };
+
+            if normalize_type(ty) == dep_norm {
+                let ident = extract_ident(pat)?;
+                found = Some(quote!(&#ident));
+                break;
+            }
+        }
+
+        match found {
+            Some(expr) => auth_args.push(expr),
+            None => {
+                let tmp = syn::Ident::new(
+                    &format!("__rapina_auth_dep_{}", i),
+                    proc_macro2::Span::call_site(),
+                );
+
+                auth_extracts.push(quote! {
+                    let #tmp = match <#dep_ty as rapina::extract::FromRequestParts>::from_request_parts(
+                        &__rapina_parts,
+                        &__rapina_params,
+                        &__rapina_state,
+                    ).await {
+                        Ok(v) => v,
+                        Err(e) => return rapina::response::IntoResponse::into_response(e),
+                    };
+                });
+
+                auth_args.push(quote!(#tmp));
+            }
+        }
+    }
+
+    Ok(quote! {
+        #(#auth_extracts)*
+        match #auth_fn(#(#auth_args),*).await {
+            Ok(()) => {}
+            Err(e) => return rapina::response::IntoResponse::into_response(e),
+        };
+    })
+}
+
+/// TODO add docs
+fn extract_ident(pat: &Pat) -> syn::Result<Ident> {
+    match pat {
+        Pat::Ident(PatIdent { ident, .. }) => Ok(ident.clone()),
+        _ => Err(Error::new(
+            pat.span(),
+            "#[authorize] only supports simple identifier parameters, e.g. `state: State<AppConfig>`, `token: JsonWebToken<T>`",
+        )),
+    }
+}
+
+fn normalize_type(ty: &Type) -> String {
+    ty.to_token_stream().to_string().replace(' ', "")
+}
+
+/// TODO add docs (in docs/ folder too)
+/// TODO add tests
+#[proc_macro_attribute]
+pub fn authorize(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let func: ItemFn =
+        syn::parse2(item.clone().into()).expect("#[authorize] must be applied to a function");
+
+    if let Some(attr) = func
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("public"))
+    {
+        return syn::Error::new(
+            attr.span(),
+            "#[authorize] contradicts #[public]. A public handler must not include authorization.",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    item
+}
+
+/// Extract #[authorize] attribute from function attributes, removing it if found.
+fn extract_authorize_attr(attrs: &mut Vec<syn::Attribute>) -> Option<Attribute> {
+    attrs
+        .iter()
+        .position(|attr| attr.path().is_ident("authorize"))
+        .map(|idx| attrs.remove(idx))
+}
 
 /// Registers a GET route handler.
 ///
