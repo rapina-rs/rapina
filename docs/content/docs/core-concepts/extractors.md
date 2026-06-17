@@ -16,6 +16,7 @@ Extractors automatically parse request data and inject it into your handlers. If
 | [`Json<T>`](#json-body)          | JSON request body                      |
 | [`Form<T>`](#form-data)          | URL-encoded form data                  |
 | [`Headers`](#headers)            | Request headers                        |
+| [`Header<T>`](#typed-headers)    | A single typed request header          |
 | [`State<T>`](#application-state) | Application state                      |
 | [`Context`](#request-context)    | Request context (trace_id)             |
 | [`Cookie<T>`](#cookies)          | Typed cookie access                    |
@@ -152,6 +153,45 @@ async fn debug(headers: Headers) -> String {
         .unwrap_or("unknown");
 
     format!("User-Agent: {}", user_agent)
+}
+```
+
+Use `Headers` when you need to inspect several headers dynamically or iterate
+over the full header map.
+
+## Typed Headers
+
+Use `Header<T>` when you know the header name upfront and only need one value.
+Rapina extracts the header and parses it into `T`.
+
+By default, the parameter name is converted from snake_case to kebab-case, so
+`x_request_id` reads the `x-request-id` header:
+
+```rust
+#[get("/trace")]
+async fn trace(x_request_id: Header<String>) -> String {
+    format!("Request ID: {}", *x_request_id)
+}
+```
+
+Use `#[header("name")]` when the Rust parameter name should differ from the
+HTTP header name:
+
+```rust
+#[get("/agent")]
+async fn agent(#[header("user-agent")] user_agent: Header<String>) -> String {
+    format!("User-Agent: {}", *user_agent)
+}
+```
+
+Optional headers use `Option<Header<T>>`:
+
+```rust
+#[get("/forwarded-for")]
+async fn forwarded_for(x_forwarded_for: Option<Header<String>>) -> String {
+    x_forwarded_for
+        .map(|header| header.into_inner())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 ```
 

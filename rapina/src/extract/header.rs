@@ -5,14 +5,28 @@
 //! Rust identifier (snake_case → kebab-case) or can be overridden with the
 //! `#[header("explicit-name")]` attribute on the handler parameter.
 //!
+//! Prefer `Header<T>` over [`Headers`](crate::extract::Headers) when you know
+//! the header name upfront and only need one typed value.
+//!
 //! # Examples
 //!
 //! ```ignore
 //! use rapina::prelude::*;
 //!
-//! #[get("/hello")]
+//! #[get("/trace")]
 //! async fn handler(x_request_id: Header<String>) -> String {
-//!     format!("trace: {}", *x_request_id)
+//!     format!("Request ID: {}", *x_request_id)
+//! }
+//! ```
+//!
+//! Override the inferred header name with `#[header("name")]`:
+//!
+//! ```ignore
+//! use rapina::prelude::*;
+//!
+//! #[get("/agent")]
+//! async fn handler(#[header("user-agent")] user_agent: Header<String>) -> String {
+//!     format!("User-Agent: {}", *user_agent)
 //! }
 //! ```
 //!
