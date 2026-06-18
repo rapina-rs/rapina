@@ -26,7 +26,7 @@ async fn get_email(token: JsonWebToken<GoogleClaims>, _unused: Headers) -> Resul
     Ok(Json(token.claims.email))
 }
 
-// Example handler that takes two parameters and is authorized by an authorization handler within another module
+// Example handler that takes two parameters and is authorized by an authorization handler within the same module
 #[get("/example1")]
 #[authorize(authorization_handler(JsonWebToken<GoogleClaims>))]
 async fn ping(_unused: JsonWebToken) -> Result<Json<String>> {
