@@ -315,9 +315,83 @@ mod tests {
     }
 
     #[test]
-    fn insert_job_generates_new_uuid() {
-        // Uuid::new_v4() should produce a non-nil UUID.
-        let id = Uuid::new_v4();
-        assert_ne!(id, Uuid::nil());
+    fn postgres_insert_stmt_uses_dollar_params() {
+        let req = sample_req();
+        let stmt = backend::Postgres::build_insert_stmt(req, None, Uuid::new_v4());
+        assert!(stmt.sql.contains("$1::uuid"), "Postgres uses $N params");
+        assert_eq!(stmt.db_backend, DbBackend::Postgres);
+    }
+
+    #[test]
+    fn postgres_insert_stmt_uses_string_uuid() {
+        let req = sample_req();
+        let stmt = backend::Postgres::build_insert_stmt(req, Some("trace-1"), Uuid::new_v4());
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[0], sea_orm::Value::String(Some(_))));
+    }
+
+    #[test]
+    fn mysql_insert_stmt_has_current_timestamp() {
+        let req = sample_req();
+        let stmt = backend::Mysql::build_insert_stmt(req, None, Uuid::new_v4());
+        assert!(stmt.sql.contains("CURRENT_TIMESTAMP"));
+        assert_eq!(stmt.db_backend, DbBackend::MySql);
+    }
+
+    #[test]
+    fn mysql_insert_stmt_uses_uuid_value() {
+        let req = sample_req();
+        let stmt = backend::Mysql::build_insert_stmt(req, None, Uuid::new_v4());
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[0], sea_orm::Value::Uuid(Some(_))));
+    }
+
+    #[test]
+    fn sqlite_insert_stmt_uses_datetime_now() {
+        let req = sample_req();
+        let stmt = backend::Sqlite::build_insert_stmt(req, None, Uuid::new_v4());
+        assert!(stmt.sql.contains("datetime('now')"));
+        assert_eq!(stmt.db_backend, DbBackend::Sqlite);
+    }
+
+    #[test]
+    fn sqlite_insert_stmt_uses_string_uuid() {
+        let req = sample_req();
+        let stmt = backend::Sqlite::build_insert_stmt(req, None, Uuid::new_v4());
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[0], sea_orm::Value::String(Some(_))));
+    }
+
+    #[test]
+    fn mysql_retry_stmt_uses_microsecond() {
+        let stmt = backend::Mysql::build_retry_stmt(Uuid::new_v4(), "err", 1.7);
+        assert!(
+            stmt.sql.contains("MICROSECOND"),
+            "MySQL retry stmt should use MICROSECOND: {}",
+            stmt.sql
+        );
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[1], sea_orm::Value::BigInt(Some(_))));
+    }
+
+    #[test]
+    fn mysql_build_retry_stmt_uses_uuid_value() {
+        let stmt = backend::Mysql::build_retry_stmt(Uuid::new_v4(), "err", 0.5);
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[2], sea_orm::Value::Uuid(Some(_))));
+    }
+
+    #[test]
+    fn sqlite_build_retry_stmt_uses_string_uuid() {
+        let stmt = backend::Sqlite::build_retry_stmt(Uuid::new_v4(), "err", 0.5);
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[2], sea_orm::Value::String(Some(_))));
+    }
+
+    #[test]
+    fn postgres_build_retry_stmt_uses_string_uuid() {
+        let stmt = backend::Postgres::build_retry_stmt(Uuid::new_v4(), "err", 0.5);
+        let vals = stmt.values.as_ref().unwrap();
+        assert!(matches!(&vals.0[2], sea_orm::Value::String(Some(_))));
     }
 }

@@ -267,9 +267,10 @@ impl Mysql {
         let st = RapinaJobs::status();
         let q = RapinaJobs::queue();
         let r = RapinaJobs::run_at();
+        let id = RapinaJobs::id();
 
         let sql = format!(
-            r#"SELECT * FROM {t}
+            r#"SELECT {id} FROM {t}
                WHERE  {st}  = 'pending'
                  AND  {q}   IN ({placeholders})
                  AND  {r} <= CURRENT_TIMESTAMP
@@ -301,11 +302,13 @@ impl Mysql {
             r#"UPDATE {t}
                SET {st}   = 'running',
                    {sa}   = CURRENT_TIMESTAMP,
-                   {lu} = CURRENT_TIMESTAMP + INTERVAL ? SECOND
+                   {lu} = CURRENT_TIMESTAMP + INTERVAL ? MICROSECOND
                WHERE {id} IN ({id_placeholders})"#
         );
 
-        let mut values: Vec<Value> = vec![Value::Int(Some(config.job_timeout.as_secs() as i32))];
+        let mut values: Vec<Value> = vec![Value::BigInt(Some(
+            (config.job_timeout.as_secs_f64() * 1_000_000.0) as i64,
+        ))];
         values.extend(ids.iter().map(|id| Value::Uuid(Some(Box::new(*id)))));
 
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
@@ -342,7 +345,7 @@ impl Mysql {
                SET {att} = {att} + 1,
                    {le} = ?,
                    {st} = 'pending',
-                   {r}  = CURRENT_TIMESTAMP + INTERVAL ? SECOND,
+                   {r}  = CURRENT_TIMESTAMP + INTERVAL ? MICROSECOND,
                    {lu} = NULL,
                    {sa} = NULL
                WHERE {id} = ?"#
@@ -353,7 +356,7 @@ impl Mysql {
             &sql,
             [
                 Value::String(Some(Box::new(error.to_owned()))),
-                Value::Int(Some(delay_secs as i32)),
+                Value::BigInt(Some((delay_secs * 1_000_000.0) as i64)),
                 Value::Uuid(Some(Box::new(job_id))),
             ],
         )
