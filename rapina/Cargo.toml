@@ -143,6 +143,10 @@ required-features = ["multipart"]
 name = "telemetry"
 required-features = ["otel"]
 
+[[example]]
+name = "pagination"
+required-features = ["database"]
+
 [features]
 default = ["compression", "rate-limit"]
 rate-limit = []
