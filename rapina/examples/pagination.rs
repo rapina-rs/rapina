@@ -32,6 +32,21 @@ fn articles() -> Vec<Article> {
             title: "How to make your own framework in Rust".to_string(),
             author: "JoJo".to_string(),
         },
+        Article {
+            id: 4,
+            title: "Why compilation errors are actually a love language".to_string(),
+            author: "Star Platinum".to_string(),
+        },
+        Article {
+            id: 5,
+            title: "Overcoming the urge to rewrite everything in Zig".to_string(),
+            author: "Gold Experience".to_string(),
+        },
+        Article {
+            id: 6,
+            title: "How I accidentally deleted production using a smart pointer".to_string(),
+            author: "The Hand".to_string(),
+        },
     ]
 }
 
