@@ -39,7 +39,7 @@ fn articles() -> Vec<Article> {
         },
         Article {
             id: 5,
-            title: "Overcoming the urge to rewrite everything in Zig".to_string(),
+            title: "Overcoming the urge to rewrite everything in Rust.".to_string(),
             author: "Gold Experience".to_string(),
         },
         Article {
