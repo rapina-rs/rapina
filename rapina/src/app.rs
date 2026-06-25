@@ -91,6 +91,9 @@ pub struct Rapina {
     /// Relay configuration (if enabled)
     #[cfg(feature = "websocket")]
     pub(crate) relay_config: Option<crate::relay::RelayConfig>,
+    /// Redis relay backend override (if enabled)
+    #[cfg(feature = "relay-redis")]
+    pub(crate) relay_redis_backend: Option<Box<dyn crate::relay::RelayBackend>>,
     /// Whether to use RFC 7807 Problem Details for error responses (default: false)
     pub(crate) rfc7807_errors: bool,
     /// Custom base URI for RFC 7807 `type` field (default: "about:blank")
@@ -150,6 +153,8 @@ impl Rapina {
             shutdown_hooks: Vec::new(),
             #[cfg(feature = "websocket")]
             relay_config: None,
+            #[cfg(feature = "relay-redis")]
+            relay_redis_backend: None,
             rfc7807_errors: false,
             rfc7807_base_uri: "about:blank".to_string(),
             #[cfg(feature = "database")]
@@ -373,6 +378,28 @@ impl Rapina {
     pub fn with_relay(mut self, config: crate::relay::RelayConfig) -> Self {
         self.relay_config = Some(config);
         self
+    }
+
+    /// Enables the Relay system with a Redis-backed cross-node backend.
+    ///
+    /// Relay messages are delivered through Redis pub/sub, so nodes connected
+    /// to the same Redis instance can publish to each other's WebSocket
+    /// subscribers. Presence remains per-node: the relay `PresenceMap` is not
+    /// shared across nodes by this implementation.
+    #[cfg(feature = "relay-redis")]
+    pub async fn with_relay_redis(
+        mut self,
+        config: crate::relay::RelayConfig,
+        redis_url: &str,
+    ) -> Result<Self, crate::error::Error> {
+        let backend = crate::relay::RedisRelayBackend::connect(redis_url)
+            .await
+            .map_err(|e| {
+                crate::error::Error::internal(format!("relay redis connect error: {e}"))
+            })?;
+        self.relay_config = Some(config);
+        self.relay_redis_backend = Some(Box::new(backend));
+        Ok(self)
     }
 
     /// Enables JWT authentication with the given configuration.
@@ -968,7 +995,16 @@ impl Rapina {
         #[cfg(feature = "websocket")]
         if let Some(config) = self.relay_config.take() {
             let path = config.path.clone();
-            let backend = Box::new(crate::relay::InMemoryBackend::new(config.topic_capacity));
+            #[cfg(feature = "relay-redis")]
+            let redis_backend = self.relay_redis_backend.take();
+            #[cfg(feature = "relay-redis")]
+            let backend: Box<dyn crate::relay::RelayBackend> = match redis_backend {
+                Some(backend) => backend,
+                None => Box::new(crate::relay::InMemoryBackend::new(config.topic_capacity)),
+            };
+            #[cfg(not(feature = "relay-redis"))]
+            let backend: Box<dyn crate::relay::RelayBackend> =
+                Box::new(crate::relay::InMemoryBackend::new(config.topic_capacity));
 
             // Collect channel handlers from inventory, sorted by specificity:
             // exact matches first, then prefix matches ordered by match_prefix

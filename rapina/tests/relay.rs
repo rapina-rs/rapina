@@ -326,3 +326,20 @@ async fn test_unsubscribe_stops_delivery() {
 
     ws_tx.close().await.ok();
 }
+
+#[cfg(feature = "relay-redis")]
+mod redis_tests {
+    use rapina::prelude::*;
+    use rapina::relay::RelayConfig;
+
+    // cargo test --features relay-redis -- --ignored
+    #[ignore]
+    #[tokio::test]
+    async fn test_with_relay_redis_builder_connects() {
+        let app = Rapina::new()
+            .with_relay_redis(RelayConfig::default(), "redis://127.0.0.1:6379")
+            .await;
+
+        assert!(app.is_ok());
+    }
+}
