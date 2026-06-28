@@ -401,7 +401,7 @@ impl Middleware for SecurityHeadersMiddleware {
 Rapina can interop with the [Tower](https://docs.rs/tower) ecosystem via the `tower` feature flag. This lets you use battle-tested Tower layers (retry, circuit breakers, concurrency limits, etc.) as Rapina middleware.
 
 ```toml
-rapina = { version = "0.12.0", features = ["tower"] }
+rapina = { version = "0.13.0", features = ["tower"] }
 ```
 
 ### Using Tower layers as middleware

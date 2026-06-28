@@ -9,12 +9,16 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-25
+
 ### Added
 - **Database import relationships**: `rapina import database` now turns single-column foreign keys into `BelongsTo` and `HasMany` relationship fields in generated `schema!` blocks when both sides of the relationship are imported (#548).
 - **Handler descriptions in discovery output**: Route macros can now carry explicit descriptions, with rustdoc fallback, into `llms.txt` and OpenAPI output (#596).
 - **OpenTelemetry OTLP tracing exporter**: `with_telemetry(TelemetryConfig { endpoint, service_name, sample_rate })` exports traces over OTLP gRPC to a collector such as Jaeger or Datadog, behind the `otel` feature. Incoming W3C `traceparent` headers are honored so traces continue across service boundaries, request spans follow the HTTP semantic conventions and carry the response status, the OTel `trace_id`/`span_id` are recorded on the request span so logs correlate with the exported trace, and pending spans are flushed on graceful shutdown. Plaintext gRPC by default; enable `otel-tls` for `https://` collectors (#607).
 - **Redis TLS certificates**: `CacheConfig::redis_with_tls` and `RedisTlsConfig` support CA certificates plus client certificates and keys for `rediss://` Redis cache connections (#617).
 - **`rapina doctor` `llms.txt` check**: `rapina doctor` now checks whether `/__rapina/llms.txt` is reachable and warns when it is disabled or unreachable (#618).
+- **Multi-database background jobs**: Background job persistence now supports MySQL and SQLite alongside PostgreSQL, with backend-specific SQL (insert, claim, retry, success/fail) dispatched by `DbBackend` and UUIDs parsed from text on SQLite (#631).
+- **`rapina import database --diff`**: Compares the `schema!` blocks in `src/entity.rs` against the live database and reports drift, columns on only one side, type and nullability mismatches, missing tables, and primary-key differences. Exits 0 when in sync, 2 on drift, and 1 on error for CI use; `--tables` scopes the comparison, round-trip-safe differences (`String` vs `text`, `bool` vs MySQL `tinyint`) are reported as notes, and combining it with `--force` is rejected since `--diff` writes nothing (#632).
 
 ### Changed
 - **Native CLI HTTP client**: `rapina doctor`, `rapina routes`, `rapina openapi`, and `rapina llms` use an internal `ureq` client instead of shelling out to `curl` (#586).
@@ -142,7 +146,8 @@ Routine dependency-only updates are intentionally omitted unless they change use
 - Standardized error handling with `trace_id`
 - CLI (`rapina new`, `rapina dev`)
 
-[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/rapina-rs/rapina/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/rapina-rs/rapina/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/rapina-rs/rapina/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/rapina-rs/rapina/compare/v0.9.0...v0.10.0

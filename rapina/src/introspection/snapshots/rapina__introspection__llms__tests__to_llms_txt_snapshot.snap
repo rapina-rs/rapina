@@ -1,11 +1,10 @@
 ---
 source: rapina/src/introspection/llms.rs
-assertion_line: 134
 expression: output
 ---
 # My API
 
-Built with [Rapina](https://rapina.rs) v0.12.0.
+Built with [Rapina](https://rapina.rs) v0.13.0.
 
 ## Routes
 

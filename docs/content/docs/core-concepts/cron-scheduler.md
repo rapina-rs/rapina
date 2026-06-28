@@ -28,7 +28,7 @@ Enable the `cron-scheduler` feature flag:
 
 ```toml
 [dependencies]
-rapina = { version = "0.12.0", features = ["cron-scheduler"] }
+rapina = { version = "0.13.0", features = ["cron-scheduler"] }
 ```
 
 No database or external service is required. The scheduler runs entirely in-process.
