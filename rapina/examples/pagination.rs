@@ -1,6 +1,6 @@
 //! Pagination example.
 //!
-//! Run with `cargo run --example pagination`
+//! Run with `cargo run --example pagination --features database`
 //!
 //! Endpoints:
 //! - GET /articles?page=1&per_page=2  — List articles with pagination
@@ -51,7 +51,7 @@ fn articles() -> Vec<Article> {
 }
 
 #[get("/articles")]
-async fn list_articles(page: Paginate) -> Result<Json<Paginated<Article>>> {
+async fn list_articles(page: Paginate) -> Result<Paginated<Article>> {
     let all_articles = articles();
     let total = all_articles.len() as u64;
 
@@ -64,7 +64,7 @@ async fn list_articles(page: Paginate) -> Result<Json<Paginated<Article>>> {
         .take(page.per_page as usize)
         .collect();
 
-    Ok(Json(Paginated {
+    Ok(Paginated {
         data,
         page: page.page,
         per_page: page.per_page,
@@ -72,17 +72,19 @@ async fn list_articles(page: Paginate) -> Result<Json<Paginated<Article>>> {
         total_pages,
         has_prev: page.page > 1,
         has_next: page.page < total_pages,
-    }))
+    })
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let addr = "127.0.0.1:3000";
+    let addr = "127.0.0.1:9999";
 
     println!("Rapina Pagination Example");
-    println!("  Usage:");
-    println!("    GET /articles");
-    println!("    GET /articles?page=2&per_page=1");
+    println!("  Try:");
+    println!("    GET /articles              # default page size (5)");
+    println!("    GET /articles?page=2       # page 2 → the 6th article");
+    println!("    GET /articles?per_page=2   # explicit override");
+    println!("    GET /articles?per_page=21  # 422: exceeds max (20)");
 
     Rapina::new()
         .state(PaginationConfig {
