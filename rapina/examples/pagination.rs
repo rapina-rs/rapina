@@ -12,7 +12,7 @@
 use rapina::pagination::{Paginate, Paginated, PaginationConfig};
 use rapina::prelude::*;
 
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema)]
 struct Article {
     id: u64,
     title: String,
@@ -87,7 +87,7 @@ async fn list_articles(page: Paginate) -> Result<Paginated<Article>> {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let addr = "127.0.0.1:9999";
+    let addr = "127.0.0.1:3000";
 
     println!("Rapina Pagination Example");
     println!("  Try:");
