@@ -111,6 +111,9 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc",
 tokio-cron-scheduler = { version = "0.15.1", optional = true }
 tokio-util = { version = "0.7.18", optional = true }
 
+# GraphQL (optional)
+async-graphql = { version = "7.0", optional = true }
+
 [dev-dependencies]
 async-stream = "0.3"
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -160,3 +163,4 @@ tower = ["tower-service", "tower-layer"]
 websocket = ["hyper-tungstenite", "tokio-tungstenite"]
 cron-scheduler = ["tokio-cron-scheduler", "tokio-util"]
 jwks = ["cron-scheduler", "hyper-rustls"]
+graphql = ["async-graphql"]
