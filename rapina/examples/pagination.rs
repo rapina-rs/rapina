@@ -54,6 +54,12 @@ fn articles() -> Vec<Article> {
     ]
 }
 
+// With a database, the entire handler would just look like this:
+//   async fn list_articles(db: Db, page: Paginate) -> Result<Paginated<Article>> {
+//       page.exec(Article::find(), db.conn()).await
+//   }
+//
+// To keep this example database-free, we are paginating an in-memory Vec manually.
 #[get("/articles")]
 async fn list_articles(page: Paginate) -> Result<Paginated<Article>> {
     let all_articles = articles();
