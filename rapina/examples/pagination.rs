@@ -2,8 +2,12 @@
 //!
 //! Run with `cargo run --example pagination --features database`
 //!
-//! Endpoints:
-//! - GET /articles?page=1&per_page=2  — List articles with pagination
+//!
+//! One endpoint, driven entirely by query params. Try:
+//!   GET /articles              → default page size (5, from PaginationConfig)
+//!   GET /articles?page=2       → page 2, still size 5 → returns the 6th article on the 2nd page
+//!   GET /articles?per_page=2   → explicit override, 2 per page
+//!   GET /articles?per_page=21  → 422: exceeds max_per_page (20)
 
 use rapina::pagination::{Paginate, Paginated, PaginationConfig};
 use rapina::prelude::*;
