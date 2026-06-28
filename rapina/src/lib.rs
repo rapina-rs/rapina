@@ -97,6 +97,8 @@ pub(crate) mod date_cache;
 pub mod discovery;
 pub mod error;
 pub mod extract;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod handler;
 pub mod health;
 pub mod introspection;
@@ -167,6 +169,9 @@ pub mod prelude {
     pub use crate::relay::{Relay, RelayConfig, RelayEvent};
     pub use crate::response::{IntoResponse, StaticStr};
     pub use crate::router::Router;
+
+    #[cfg(feature = "graphql")]
+    pub use crate::graphql::{GraphQLRequest, GraphQLResponse};
 
     pub use http::{Method, StatusCode};
     pub use schemars::JsonSchema;

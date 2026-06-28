@@ -254,6 +254,11 @@ impl Error {
         Self::new(404, "NOT_FOUND", message)
     }
 
+    /// Creates a 405 Method Not Allowed error
+    pub fn method_not_allowed(message: impl Into<String>) -> Self {
+        Self::new(405, "METHOD_NOT_ALLOWED", message)
+    }
+
     /// Creates a 409 Conflict error.
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(409, "CONFLICT", message)
