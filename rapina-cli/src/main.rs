@@ -461,32 +461,21 @@ fn main() {
     }
 }
 
+const JUCA_BANNER: &str = include_str!("../../juca.txt");
+
 fn print_banner() {
     println!();
-    println!(
-        "{}",
-        "  ╭─────────────────────────────────────╮".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  │                                     │".bright_magenta()
-    );
-    println!(
-        "{}{}{}",
-        "  │".bright_magenta(),
-        "          🦀 Rapina CLI 🦀           ".bold(),
-        "│".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  │                                     │".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  ╰─────────────────────────────────────╯".bright_magenta()
-    );
+    for line in JUCA_BANNER.lines().filter(|l| !l.trim().is_empty()) {
+        println!("{}", line.bright_blue());
+    }
+
+    println!("{}", "Rapina CLI".bold());
 }
 
 fn print_version() {
-    println!("rapina-cli {}", env!("CARGO_PKG_VERSION"));
+    println!(
+        "{} {}",
+        "rapina".bright_cyan().bold(),
+        env!("CARGO_PKG_VERSION").bright_white()
+    );
 }

@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+const JUCA_BANNER: &str = include_str!("../../../juca.txt");
+
 /// Configuration for the dev server.
 pub struct DevConfig {
     pub host: String,
@@ -218,6 +220,11 @@ fn print_banner(config: &DevConfig) {
 
     // Box is 61 chars wide total, 59 chars inner content
     let b = "│".custom_color(colors::mauve());
+
+    println!();
+    for line in JUCA_BANNER.lines().filter(|l| !l.trim().is_empty()) {
+        println!("{}", line.custom_color(colors::sky()).bold());
+    }
 
     println!();
     println!(
