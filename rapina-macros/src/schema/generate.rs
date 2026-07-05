@@ -9,6 +9,10 @@ use super::types::{FieldType, ScalarType};
 
 /// Generate the complete schema code from analyzed entities.
 pub fn generate_schema(schema: AnalyzedSchema) -> TokenStream {
+    if let Some(error) = composite_pk_target_error(&schema) {
+        return error;
+    }
+
     let entity_modules: Vec<TokenStream> = schema
         .entities
         .iter()
@@ -138,6 +142,41 @@ fn build_field_attr(parts: &[TokenStream], column_type: Option<TokenStream>) -> 
         (false, Some(ct)) => quote! {#[sea_orm(#(#parts), *)] #ct },
         (false, None) => quote! {#[sea_orm(#(#parts), *)]},
     }
+}
+
+fn composite_pk_target_error(schema: &AnalyzedSchema) -> Option<TokenStream> {
+    for entity in &schema.entities {
+        for field in &entity.fields {
+            let FieldType::BelongsTo { target, .. } = &field.ty else {
+                continue;
+            };
+
+            let Some(target_entity) = schema.entities.iter().find(|e| &e.name == target) else {
+                continue;
+            };
+            let Some(pk_cols) = &target_entity.attrs.primary_key else {
+                continue;
+            };
+
+            if pk_cols.len() > 1 {
+                let pk_list = pk_cols
+                    .iter()
+                    .map(|col| format!("`{}`", col))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let message = format!(
+                    "schema relationship `{}.{}` targets `{}` with composite primary key ({}); belongs_to relationships currently require a target with a single primary key column",
+                    entity.name, field.name, target_entity.name, pk_list
+                );
+
+                return Some(quote! {
+                    compile_error!(#message);
+                });
+            }
+        }
+    }
+
+    None
 }
 
 fn generate_custom_pk_fields(
@@ -814,6 +853,35 @@ mod tests {
         assert!(label_ref_module.contains("from = \"Column::LabelId\""));
         assert!(label_ref_module.contains("to = \"super::label::Column::UuidPk\""));
         assert!(!label_ref_module.contains("super::label::Column::Id"));
+    }
+
+    #[test]
+    fn test_generate_belongs_to_composite_pk_target_is_compile_error() {
+        let input = quote! {
+            #[primary_key(left_id, right_id)]
+            #[timestamps(none)]
+            Pair {
+                left_id: i32,
+                right_id: i32,
+            }
+
+            PairRef {
+                pair: Pair,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("compile_error !"));
+        assert!(output.contains("PairRef.pair"));
+        assert!(output.contains("Pair"));
+        assert!(output.contains("left_id"));
+        assert!(output.contains("right_id"));
+        assert!(!output.contains("pub pair_id : i32"));
+        assert!(!output.contains("Column::Id"));
     }
 
     #[test]
