@@ -58,8 +58,6 @@ async fn main() -> std::io::Result<()> {
      */
     tracing_subscriber::fmt().init();
 
-    let router = Router::new().get("/email", get_email);
-
     // OIDC Discovery endpoint of Google Accounts API
     let discovery_url = "https://accounts.google.com/.well-known/openid-configuration";
 
@@ -91,7 +89,6 @@ async fn main() -> std::io::Result<()> {
         .state(jwks_client)
         .state(jwks_validation)
         .discover()
-        .router(router)
         .listen("127.0.0.1:3000")
         .await
 }
