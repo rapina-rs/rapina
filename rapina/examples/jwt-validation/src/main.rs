@@ -10,7 +10,7 @@ struct GoogleClaims {
 }
 
 // Example authorization handler that compares the token subject field (.sub) to a hardcoded string
-async fn authorization_handler(token: JsonWebToken<GoogleClaims>) -> Result<()> {
+async fn authorization_handler(token: &JsonWebToken<GoogleClaims>) -> Result<()> {
     tracing::info!(sub = %token.sub, "authorizing request before it hits the handler");
     if "{YOUR GOOGLE USER ID HERE TO PASS THE AUTHORIZATION LOGIC}" == token.sub.as_str() {
         return Ok(());

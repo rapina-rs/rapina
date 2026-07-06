@@ -117,15 +117,12 @@ impl Parse for AuthorizeArgs {
 }
 
 /// TODO add docs
-fn authorize_needs_parts(func: &ItemFn, contains_authorize: &Option<Attribute>) -> bool {
-    if let Some(attr) = &contains_authorize {
-        let auth_args = attr
-            .parse_args::<AuthorizeArgs>()
-            .expect("#[authorize] args must be parseable");
+fn authorize_needs_parts(func: &ItemFn, authorize_attr: &Option<Attribute>) -> syn::Result<bool> {
+    if let Some(attr) = &authorize_attr {
+        let auth_args = attr.parse_args::<AuthorizeArgs>()?;
         authorize_needs_request_parts(&func.sig.inputs, &auth_args.deps)
-            .expect("Failed to resolve authorize dependencies")
     } else {
-        false
+        Ok(false)
     }
 }
 
@@ -202,7 +199,7 @@ fn build_authorize_prelude(
                     };
                 });
 
-                auth_args.push(quote!(#tmp));
+                auth_args.push(quote!(&#tmp));
             }
         }
     }
@@ -234,24 +231,13 @@ fn normalize_type(ty: &Type) -> String {
 /// TODO add docs (in docs/ folder too)
 /// TODO add tests
 #[proc_macro_attribute]
-pub fn authorize(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let func: ItemFn =
-        syn::parse2(item.clone().into()).expect("#[authorize] must be applied to a function");
-
-    if let Some(attr) = func
-        .attrs
-        .iter()
-        .find(|attr| attr.path().is_ident("public"))
-    {
-        return syn::Error::new(
-            attr.span(),
-            "#[authorize] contradicts #[public]. A public handler must not include authorization.",
+pub fn authorize(_attr: TokenStream, _item: TokenStream) -> TokenStream {
+    syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "#[authorize] must be used together with a route macro like #[get], #[post], #[put], etc., and placed below that route macro",
         )
         .to_compile_error()
-        .into();
-    }
-
-    item
+        .into()
 }
 
 /// Extract #[authorize] attribute from function attributes, removing it if found.
