@@ -81,13 +81,34 @@ mod schema;
 
 use route::route_macro;
 
-/// TODO add docs
+/// Parsed `#[authorize(...)]` arguments.
+///
+/// Supported forms:
+/// - `#[authorize(auth_fn)]` for zero-dependency authorization
+/// - `#[authorize(auth_fn(Dep1, Dep2, ...))]` for authorization with
+///   explicitly declared dependency types
+///
+/// `auth_fn` is the path to the async authorization function to invoke before
+/// the handler runs. `deps` lists the dependency types that should be extracted
+/// and passed to that function.
 struct AuthorizeArgs {
     auth_fn: syn::Path,
     deps: Vec<Type>,
 }
 
-/// TODO add docs
+/// Parses the arguments of `#[authorize(...)]` into an [`AuthorizeArgs`].
+///
+/// Supported forms:
+/// - `auth_fn`
+/// - `auth_fn(Dep1, Dep2, ...)`
+///
+/// The bare-path form represents a zero-dependency authorization function.
+/// When dependencies are present, they must be provided as a parenthesized,
+/// comma-separated list of types.
+///
+/// # Errors
+///
+/// Returns a parse error if trailing tokens are present after the function path
 impl Parse for AuthorizeArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let auth_fn: syn::Path = input.parse()?;
@@ -152,7 +173,25 @@ fn authorize_needs_request_parts(func: &ItemFn, authorize_args: &Option<Authoriz
     }
 }
 
-/// TODO add docs
+/// Builds the generated authorization prelude for a route handler.
+///
+/// The prelude runs before the handler body and is responsible for preparing
+/// the arguments for the `#[authorize(...)]` function call.
+///
+/// For each declared authorization dependency:
+/// - if the handler already has a parameter with the same normalized syntactic
+///   type, that handler binding is reused and passed by reference
+/// - otherwise, the dependency is extracted from request parts via
+///   [`rapina::extract::FromRequestParts`] and passed by reference
+///
+/// After all dependency arguments are prepared, the generated code awaits the
+/// authorization function. If authorization returns an error, request handling
+/// stops immediately and the error is converted into a Rapina response.
+///
+/// # Errors
+///
+/// Returns an error if a reused handler parameter does not use a simple
+/// identifier pattern and therefore cannot be referenced from generated code.
 fn build_authorize_prelude(
     inputs: &Punctuated<FnArg, Token![,]>,
     auth: &AuthorizeArgs,
@@ -211,7 +250,20 @@ fn build_authorize_prelude(
     })
 }
 
-/// TODO add docs
+/// Extracts the identifier binding from a function parameter pattern.
+///
+/// `#[authorize]` only supports reusing handler parameters declared with simple
+/// identifier patterns, such as `state: State<AppConfig>` or
+/// `token: JsonWebToken<T>`.
+///
+/// Examples of unsupported patterns include destructuring bindings like
+/// `State(state): State<AppConfig>`, tuple patterns like
+/// `(a, b): (String, String)`, wildcard patterns like `_: State<AppConfig>`,
+/// and other non-identifier parameter patterns.
+///
+/// # Errors
+///
+/// Returns a parse error if the pattern is not a simple identifier.
 fn extract_ident(pat: &Pat) -> syn::Result<Ident> {
     match pat {
         Pat::Ident(PatIdent { ident, .. }) => Ok(ident.clone()),
@@ -232,8 +284,47 @@ fn normalize_type(ty: &Type) -> String {
     ty.to_token_stream().to_string().replace(' ', "")
 }
 
-/// TODO add docs (in docs/ folder too)
-/// TODO add tests
+/// Marks a route handler as requiring authorization before the handler body runs.
+///
+/// This attribute is only valid when used together with a Rapina route macro
+/// such as `#[get]`, `#[post]`, or `#[put]`, and it must be placed **below**
+/// that route macro so the route macro can read and process it during expansion.
+///
+/// Supported forms:
+/// - `#[authorize(auth_fn)]` for zero-dependency authorization
+/// - `#[authorize(auth_fn(Dep1, Dep2, ...))]` for authorization functions that
+///   require extracted dependencies
+///
+/// Dependencies declared in the authorization function will reuse handler parameters
+/// when the same extractor type is already present on the handler. They may also
+/// be declared as Rapina extractors that are not present on the handler, in which case Rapina extracts them
+/// before invoking the authorization function. Therefore, it is not required to put all dependencies
+/// of the authorization function into the main handler parameter list. Rapina will handle it during compile-time.
+///
+/// The authorization function is invoked before the handler body. If it returns
+/// an error, request handling stops and the error is converted into a response.
+///
+/// This attribute is a marker parsed by Rapina's route macros; using it on its
+/// own always produces a compile error.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[get("/email")]
+/// #[authorize(authz::authorize)]
+/// async fn get_email() -> Result<Json<String>> {
+///     // handler body
+/// }
+/// ```
+///
+/// ```ignore
+/// #[get("/email")]
+/// #[authorize(authz::authorize(JsonWebToken<Claims>, State<AppState>))]
+/// async fn get_email(
+///     token: JsonWebToken<Claims>
+/// ) -> Result<Json<String>> {
+///     // handler body
+/// }
 #[proc_macro_attribute]
 pub fn authorize(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     syn::Error::new(
