@@ -224,6 +224,12 @@ fn extract_ident(pat: &Pat) -> syn::Result<Ident> {
     }
 }
 
+/// Normalizes a type into a whitespace-insensitive token string.
+///
+/// `syn::Type` stringification renders generics with spaces (e.g. `JsonWebToken < GoogleClaims >`),
+/// so this makes `JsonWebToken<GoogleClaims>` compare equal textually.
+///
+/// This is syntactic normalization only, not semantic type equality.
 fn normalize_type(ty: &Type) -> String {
     ty.to_token_stream().to_string().replace(' ', "")
 }
