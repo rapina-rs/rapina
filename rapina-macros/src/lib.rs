@@ -106,52 +106,50 @@ impl Parse for AuthorizeArgs {
                 content.parse_terminated(Type::parse, Token![,])?;
             parsed.into_iter().collect()
         } else {
-            input.parse::<Token![,]>()?;
-            let parsed: Punctuated<Type, Token![,]> =
-                input.parse_terminated(Type::parse, Token![,])?;
-            parsed.into_iter().collect()
+            return Err(syn::Error::new(
+                input.span(),
+                "expected dependency list in parentheses, e.g. #[authorize(auth_fn(Dep1, Dep2))]",
+            ));
         };
 
         Ok(Self { auth_fn, deps })
     }
 }
 
-/// TODO add docs
-fn authorize_needs_parts(func: &ItemFn, authorize_attr: &Option<Attribute>) -> syn::Result<bool> {
-    if let Some(attr) = &authorize_attr {
-        let auth_args = attr.parse_args::<AuthorizeArgs>()?;
-        authorize_needs_request_parts(&func.sig.inputs, &auth_args.deps)
+/// Returns whether authorization requires extracting additional request parts
+/// beyond the handler's declared parameters.
+///
+/// For each dependency declared in `#[authorize(...)]`, this checks whether a
+/// handler parameter with the same normalized syntactic type is already present.
+/// If any authorization dependency is not present among the handler inputs, the
+/// generated route must split the request into parts and extract that dependency
+/// separately before invoking the authorization function.
+///
+/// Type matching here is based on `normalize_type()` and is therefore purely
+/// syntactic, not semantic Rust type equality.
+fn authorize_needs_request_parts(func: &ItemFn, authorize_args: &Option<AuthorizeArgs>) -> bool {
+    if let Some(args) = &authorize_args {
+        // Collect and normalize handler types
+        let handler_types: Vec<String> = func
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|input| {
+                let FnArg::Typed(PatType { ty, .. }) = input else {
+                    return None;
+                };
+                Some(normalize_type(ty))
+            })
+            .collect();
+
+        // Normalize #[authorize] argument types and compare them for equality to any known handler type
+        args.deps
+            .iter()
+            .map(normalize_type)
+            .any(|dep_norm| !handler_types.iter().any(|ty| ty == &dep_norm))
     } else {
-        Ok(false)
+        false
     }
-}
-
-/// TODO add docs
-fn authorize_needs_request_parts(
-    inputs: &Punctuated<FnArg, Token![,]>,
-    deps: &[Type],
-) -> syn::Result<bool> {
-    for dep in deps {
-        let dep_norm = normalize_type(dep);
-        let mut found = false;
-
-        for input in inputs {
-            let FnArg::Typed(PatType { ty, .. }) = input else {
-                continue;
-            };
-
-            if normalize_type(ty) == dep_norm {
-                found = true;
-                break;
-            }
-        }
-
-        if !found {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
 }
 
 /// TODO add docs
