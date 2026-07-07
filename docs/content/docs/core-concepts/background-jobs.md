@@ -1,13 +1,13 @@
 +++
 title = "Background Jobs"
-description = "Persistent job queue backed by PostgreSQL"
+description = "Persistent job queue backed by your application database"
 weight = 9
 date = 2026-03-17
 +++
 
 Background jobs let you defer work to run outside the request cycle. Sending emails, processing uploads, generating reports — anything that shouldn't block an HTTP response.
 
-Rapina's job system uses your existing PostgreSQL database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by in-process workers with `FOR UPDATE SKIP LOCKED` for safe concurrent processing.
+Rapina's job system uses your existing application database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by in-process workers with backend-specific SQL for safe processing on PostgreSQL, MySQL 8.0+, and SQLite 3.35+.
 
 This page covers setup, defining jobs, enqueuing, running the worker, and the retry system.
 
@@ -18,20 +18,26 @@ tl;dr: Use Background Jobs for durable, transactional work that must complete re
 | | Cron Scheduler                               | Background Jobs                                                |
 |---|----------------------------------------------|----------------------------------------------------------------|
 | **Trigger** | Time-based (cron expression)                 | Event-based (enqueued from code)                               |
-| **Persistence** | None, in-memory only                         | PostgreSQL-backed                                              |
+| **Persistence** | None, in-memory only                         | Database-backed                                                |
 | **Retries** | None built-in                                | Configurable (exponential, fixed, none)                        |
 | **Survives restarts** | No. Schedule restarts with the process       | Yes. Pending jobs persist in the database                      |
 | **Use case** | Periodic maintenance, polling, cache refresh | Durable, transactional deferred work: emails, uploads, reports |
-| **Infrastructure** | No extra dependencies                        | Requires PostgreSQL                                            |
+| **Infrastructure** | No extra dependencies                        | Uses PostgreSQL, MySQL 8.0+, or SQLite 3.35+                  |
 
 ## Prerequisites
 
-You need the `database` feature with PostgreSQL. The jobs migration uses PostgreSQL-specific features (`gen_random_uuid()`, partial indexes) and does not support MySQL or SQLite.
+You need the `database` feature with one supported database backend:
 
 ```toml
 [dependencies]
 rapina = { version = "0.13.0", features = ["postgres"] }
 ```
+
+Use the matching feature for your database:
+
+- `postgres` for PostgreSQL
+- `mysql` for MySQL 8.0+
+- `sqlite` for SQLite 3.35+
 
 You also need a database connection configured in your app — see the [Database](/docs/core-concepts/database/) page.
 
@@ -159,7 +165,13 @@ pending → running → completed
                   ↘ failed   (or back to pending if retries remain)
 ```
 
-The worker atomically transitions each job from `pending` to `running` in a single SQL statement. On completion the job moves to `completed` or `failed`.
+The worker transitions each job from `pending` to `running` using the best available claim strategy for the configured backend. On completion the job moves to `completed` or `failed`.
+
+| Backend | Claim strategy |
+|---------|----------------|
+| PostgreSQL | Single CTE with `UPDATE ... FROM`, `RETURNING`, and `FOR UPDATE SKIP LOCKED` |
+| MySQL 8.0+ | Transactional `SELECT ... FOR UPDATE SKIP LOCKED`, followed by `UPDATE` and `SELECT` |
+| SQLite 3.35+ | `UPDATE ... WHERE id IN (subquery) ... RETURNING`; no `SKIP LOCKED` because SQLite is single-writer |
 
 Failed jobs are retried according to the `retry_policy` set on the handler.
 
@@ -188,6 +200,8 @@ async fn sync_inventory(payload: SyncPayload) -> JobResult { ... }
 
 Every retry waits the same `retry_delay_secs`. The first retry is always immediate regardless of the configured delay.
 
+MySQL stores retry delays with sub-second precision by using `INTERVAL ? MICROSECOND`; PostgreSQL and SQLite use their backend-specific timestamp arithmetic through the same retry policy.
+
 ### No retries
 
 ```rust
@@ -212,22 +226,28 @@ The migration creates a `rapina_jobs` table with the following columns:
 
 | Column | Type | Default | Description |
 |--------|------|---------|-------------|
-| `id` | UUID | `gen_random_uuid()` | Primary key |
+| `id` | UUID | Application-generated | Primary key |
 | `queue` | VARCHAR(255) | `'default'` | Logical queue name |
 | `job_type` | VARCHAR(255) | — | Fully-qualified type name for dispatch |
-| `payload` | JSONB | `'{}'` | Arbitrary data passed to the handler |
+| `payload` | JSON | — | Arbitrary data passed to the handler |
 | `status` | VARCHAR(32) | `'pending'` | Lifecycle state |
 | `attempts` | INTEGER | `0` | Number of times this job has been attempted |
 | `max_retries` | INTEGER | `3` | Maximum retry count before permanent failure |
-| `run_at` | TIMESTAMPTZ | `now()` | Earliest time to execute |
+| `run_at` | TIMESTAMPTZ | Application-supplied | Earliest time to execute |
 | `started_at` | TIMESTAMPTZ | NULL | When a worker started processing |
 | `locked_until` | TIMESTAMPTZ | NULL | Lease expiry for crash recovery |
 | `finished_at` | TIMESTAMPTZ | NULL | When the job completed or permanently failed |
 | `last_error` | TEXT | NULL | Error from the most recent failed attempt |
 | `trace_id` | VARCHAR(64) | NULL | Distributed trace ID from the enqueuing request |
-| `created_at` | TIMESTAMPTZ | `now()` | Insertion timestamp |
+| `created_at` | TIMESTAMPTZ | Application-supplied | Insertion timestamp |
 
-A partial index on `(queue, run_at) WHERE status = 'pending'` optimizes the worker's claim query.
+Indexing is backend-specific:
+
+- PostgreSQL creates a partial index on `(queue, run_at) WHERE status = 'pending'`.
+- MySQL creates a regular `(queue, run_at)` index because it does not support partial indexes.
+- SQLite skips the claim index because it is single-writer for this queue path.
+
+The migration uses a portable `JSON` payload column rather than PostgreSQL `JSONB`; jobs do not filter by payload, so this keeps the table portable across supported backends.
 
 ## Types
 
