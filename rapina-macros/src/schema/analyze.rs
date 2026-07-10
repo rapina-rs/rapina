@@ -76,9 +76,111 @@ pub fn analyze_schema(schema: Schema) -> Result<AnalyzedSchema> {
         analyzed_entities.push(analyze_entity(entity, &registry)?);
     }
 
-    Ok(AnalyzedSchema {
+    let analyzed = AnalyzedSchema {
         entities: analyzed_entities,
-    })
+    };
+
+    validate_relationship_primary_keys(&analyzed)?;
+
+    Ok(analyzed)
+}
+
+fn validate_relationship_primary_keys(schema: &AnalyzedSchema) -> Result<()> {
+    for entity in &schema.entities {
+        let Some(pk_cols) = &entity.attrs.primary_key else {
+            continue;
+        };
+        if pk_cols.len() != 1 {
+            continue;
+        }
+
+        let Some(field) = entity.fields.iter().find(|field| field.name == pk_cols[0]) else {
+            continue;
+        };
+        let FieldType::BelongsTo { target, .. } = &field.ty else {
+            continue;
+        };
+
+        let mut visiting = HashSet::from([entity.name.to_string()]);
+        if primary_key_relationship_has_cycle(target, schema, &mut visiting) {
+            return Err(syn::Error::new(
+                field.name.span(),
+                format!(
+                    "schema relationship `{}.{}` forms a primary key cycle; primary-key belongs_to relationships must resolve to a scalar primary key column",
+                    entity.name, field.name
+                ),
+            ));
+        }
+    }
+
+    for entity in &schema.entities {
+        for field in &entity.fields {
+            let FieldType::BelongsTo { target, .. } = &field.ty else {
+                continue;
+            };
+
+            let Some(target_entity) = schema.entities.iter().find(|e| &e.name == target) else {
+                continue;
+            };
+            let Some(pk_cols) = &target_entity.attrs.primary_key else {
+                continue;
+            };
+
+            if pk_cols.len() > 1 {
+                let pk_list = pk_cols
+                    .iter()
+                    .map(|col| format!("`{}`", col))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                return Err(syn::Error::new(
+                    field.name.span(),
+                    format!(
+                        "schema relationship `{}.{}` targets `{}` with composite primary key ({}); belongs_to relationships currently require a target with a single primary key column",
+                        entity.name, field.name, target_entity.name, pk_list
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn primary_key_relationship_has_cycle(
+    target: &Ident,
+    schema: &AnalyzedSchema,
+    visiting: &mut HashSet<String>,
+) -> bool {
+    let target_name = target.to_string();
+    if !visiting.insert(target_name.clone()) {
+        return true;
+    }
+
+    let has_cycle = schema
+        .entities
+        .iter()
+        .find(|entity| entity.name == target_name)
+        .and_then(|entity| {
+            let pk_cols = entity.attrs.primary_key.as_ref()?;
+            if pk_cols.len() != 1 {
+                return None;
+            }
+
+            let pk_field = entity
+                .fields
+                .iter()
+                .find(|field| field.name == pk_cols[0])?;
+            let FieldType::BelongsTo { target, .. } = &pk_field.ty else {
+                return None;
+            };
+
+            Some(primary_key_relationship_has_cycle(target, schema, visiting))
+        })
+        .unwrap_or(false);
+
+    visiting.remove(&target_name);
+    has_cycle
 }
 
 fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<AnalyzedEntity> {
@@ -532,6 +634,52 @@ mod tests {
         let result = analyze_schema(parsed);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("optional"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_self_referential_cycle_at_field() {
+        let input = r#"
+            #[timestamps(none)]
+            #[primary_key(parent)]
+            Category {
+                parent: Category,
+            }
+        "#
+        .parse()
+        .unwrap();
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err();
+
+        assert!(error.to_string().contains("Category.parent"));
+        assert!(error.to_string().contains("primary key cycle"));
+        assert_eq!(error.span().source_text().as_deref(), Some("parent"));
+    }
+
+    #[test]
+    fn test_analyze_composite_pk_target_error_points_at_field() {
+        let input = r#"
+            #[primary_key(left_id, right_id)]
+            #[timestamps(none)]
+            Pair {
+                left_id: i32,
+                right_id: i32,
+            }
+
+            PairRef {
+                pair: Pair,
+            }
+        "#
+        .parse()
+        .unwrap();
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err();
+
+        assert!(error.to_string().contains("PairRef.pair"));
+        assert!(error.to_string().contains("left_id"));
+        assert!(error.to_string().contains("right_id"));
+        assert_eq!(error.span().source_text().as_deref(), Some("pair"));
     }
 
     #[test]

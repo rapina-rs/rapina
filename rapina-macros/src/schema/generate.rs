@@ -9,10 +9,6 @@ use super::types::{FieldType, ScalarType};
 
 /// Generate the complete schema code from analyzed entities.
 pub fn generate_schema(schema: AnalyzedSchema) -> TokenStream {
-    if let Some(error) = composite_pk_target_error(&schema) {
-        return error;
-    }
-
     let entity_modules: Vec<TokenStream> = schema
         .entities
         .iter()
@@ -143,42 +139,6 @@ fn build_field_attr(parts: &[TokenStream], column_type: Option<TokenStream>) -> 
         (false, None) => quote! {#[sea_orm(#(#parts), *)]},
     }
 }
-
-fn composite_pk_target_error(schema: &AnalyzedSchema) -> Option<TokenStream> {
-    for entity in &schema.entities {
-        for field in &entity.fields {
-            let FieldType::BelongsTo { target, .. } = &field.ty else {
-                continue;
-            };
-
-            let Some(target_entity) = schema.entities.iter().find(|e| &e.name == target) else {
-                continue;
-            };
-            let Some(pk_cols) = &target_entity.attrs.primary_key else {
-                continue;
-            };
-
-            if pk_cols.len() > 1 {
-                let pk_list = pk_cols
-                    .iter()
-                    .map(|col| format!("`{}`", col))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let message = format!(
-                    "schema relationship `{}.{}` targets `{}` with composite primary key ({}); belongs_to relationships currently require a target with a single primary key column",
-                    entity.name, field.name, target_entity.name, pk_list
-                );
-
-                return Some(quote! {
-                    compile_error!(#message);
-                });
-            }
-        }
-    }
-
-    None
-}
-
 fn generate_custom_pk_fields(
     entity: &AnalyzedEntity,
     pk_cols: &[String],
@@ -214,22 +174,6 @@ fn generate_custom_pk_fields(
 }
 
 fn resolve_target_pk_type(target: &Ident, schema: &AnalyzedSchema) -> TokenStream {
-    resolve_target_pk_type_inner(target, schema, &mut Vec::new())
-}
-
-fn resolve_target_pk_type_inner(
-    target: &Ident,
-    schema: &AnalyzedSchema,
-    visiting: &mut Vec<String>,
-) -> TokenStream {
-    let target_name = target.to_string();
-    // Guard against self-referential or mutually-referential relationship PKs,
-    // which would otherwise recurse forever during macro expansion. Falling back
-    // to i32 keeps expansion terminating; such a cyclic PK has no scalar anchor.
-    if visiting.contains(&target_name) {
-        return quote! { i32 };
-    }
-
     let resolved = schema
         .entities
         .iter()
@@ -247,10 +191,7 @@ fn resolve_target_pk_type_inner(
                             target: inner_target,
                             ..
                         } => {
-                            visiting.push(target_name.clone());
-                            let ty = resolve_target_pk_type_inner(inner_target, schema, visiting);
-                            visiting.pop();
-                            return Some(ty);
+                            return Some(resolve_target_pk_type(inner_target, schema));
                         }
                         FieldType::HasMany { .. } => {}
                     }
@@ -856,35 +797,6 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_belongs_to_composite_pk_target_is_compile_error() {
-        let input = quote! {
-            #[primary_key(left_id, right_id)]
-            #[timestamps(none)]
-            Pair {
-                left_id: i32,
-                right_id: i32,
-            }
-
-            PairRef {
-                pair: Pair,
-            }
-        };
-
-        let parsed = parse_schema(input).unwrap();
-        let analyzed = analyze_schema(parsed).unwrap();
-        let generated = generate_schema(analyzed);
-        let output = generated.to_string();
-
-        assert!(output.contains("compile_error !"));
-        assert!(output.contains("PairRef.pair"));
-        assert!(output.contains("Pair"));
-        assert!(output.contains("left_id"));
-        assert!(output.contains("right_id"));
-        assert!(!output.contains("pub pair_id : i32"));
-        assert!(!output.contains("Column::Id"));
-    }
-
-    #[test]
     fn test_generate_belongs_to_pk_resolves_transitively() {
         // A relation to an entity whose own PK is a belongs_to must resolve the
         // FK scalar type transitively, not fall back to i32.
@@ -916,28 +828,6 @@ mod tests {
         // Task.project_id resolves transitively through Project's belongs_to PK.
         assert!(output.contains("pub project_id : rapina :: uuid :: Uuid"));
         assert!(!output.contains("pub project_id : i32"));
-    }
-
-    #[test]
-    fn test_generate_self_referential_belongs_to_pk_terminates() {
-        // A relationship PK that points back at its own entity has no scalar
-        // anchor; generation must terminate (falling back to i32) rather than
-        // recursing forever during macro expansion.
-        let input = quote! {
-            #[timestamps(none)]
-            #[primary_key(parent)]
-            Category {
-                parent: Category,
-            }
-        };
-
-        let parsed = parse_schema(input).unwrap();
-        let analyzed = analyze_schema(parsed).unwrap();
-        let generated = generate_schema(analyzed);
-        let output = generated.to_string();
-
-        assert!(output.contains("pub parent : i32"));
-        assert!(output.contains("auto_increment = false"));
     }
 
     #[test]
