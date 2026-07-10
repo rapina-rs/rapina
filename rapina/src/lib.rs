@@ -180,10 +180,18 @@ pub mod prelude {
     pub use validator::Validate;
 
     pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
+
+    #[cfg(feature = "metrics")]
+    pub use rapina_macros::metric;
 }
 
 // Re-export proc macros at crate root so they work as rapina::schema!, rapina::get!, etc.
 pub use rapina_macros::{Config, delete, get, job, patch, post, public, put, relay, schema};
+
+// Gated separately so misuse without the feature reads as "cannot find
+// attribute `metric`" instead of a path error inside the expansion.
+#[cfg(feature = "metrics")]
+pub use rapina_macros::metric;
 
 // Re-export dependencies so users don't need to add them to their Cargo.toml
 pub use http;

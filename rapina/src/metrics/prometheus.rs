@@ -62,9 +62,10 @@ impl MetricsRegistry {
             .expect("failed to register http_requests_in_flight");
 
         for collector in collectors {
-            registry
-                .register(collector)
-                .expect("failed to register custom metric");
+            let names: Vec<String> = collector.desc().iter().map(|d| d.fq_name.clone()).collect();
+            registry.register(collector).unwrap_or_else(|e| {
+                panic!("failed to register custom metric {names:?}: {e}");
+            });
         }
 
         Self {
