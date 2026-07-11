@@ -58,7 +58,7 @@ impl RelayBackend for RedisRelayBackend {
                 Err(e) => {
                     tracing::error!(error = %e, topic = %topic, "relay redis pubsub connection failed");
                     return Box::new(RedisTopicReceiver {
-                        pubsub: None,
+                        stream: None,
                         topic,
                     }) as Box<dyn TopicReceiver>;
                 }
@@ -67,13 +67,14 @@ impl RelayBackend for RedisRelayBackend {
             if let Err(e) = pubsub.subscribe(&topic).await {
                 tracing::error!(error = %e, topic = %topic, "relay redis subscribe failed");
                 return Box::new(RedisTopicReceiver {
-                    pubsub: None,
+                    stream: None,
                     topic,
                 }) as Box<dyn TopicReceiver>;
             }
 
+            let (_sink, stream) = pubsub.split();
             Box::new(RedisTopicReceiver {
-                pubsub: Some(pubsub),
+                stream: Some(stream),
                 topic,
             }) as Box<dyn TopicReceiver>
         })
@@ -81,22 +82,21 @@ impl RelayBackend for RedisRelayBackend {
 }
 
 /// Receives messages from a dedicated Redis pub/sub connection.
-///
-/// Dropping the receiver drops that connection, which Redis treats as an
-/// implicit unsubscribe/disconnect. Explicit `UNSUBSCRIBE` is async and cannot
-/// be awaited from `Drop`.
 struct RedisTopicReceiver {
-    pubsub: Option<redis::aio::PubSub>,
+    stream: Option<redis::aio::PubSubStream>,
     topic: String,
 }
 
 impl TopicReceiver for RedisTopicReceiver {
     fn recv(&mut self) -> RelayFuture<'_, Option<Arc<String>>> {
         Box::pin(async move {
-            let pubsub = self.pubsub.as_mut()?;
-            let mut messages = pubsub.on_message();
-            let msg = messages.next().await?;
+            let stream = self.stream.as_mut()?;
+            let msg = stream.next().await?;
 
+            // Redundant today: each receiver subscribes to exactly one channel, so every
+            // message here already belongs to `self.topic`. Kept defensively, becomes
+            // necessary if a shared connection ever multiplexes multiple channels and we
+            // need to demux by channel name.
             if msg.get_channel_name() != self.topic {
                 return None;
             }
@@ -108,7 +108,13 @@ impl TopicReceiver for RedisTopicReceiver {
 
 impl Drop for RedisTopicReceiver {
     fn drop(&mut self) {
-        self.pubsub.take();
+        // One dedicated connection per topic: dropping the stream closes the
+        // connection, and Redis treats that as an implicit unsubscribe. No explicit
+        // UNSUBSCRIBE is needed here (and it couldn't run anyway because Drop is sync,
+        // UNSUBSCRIBE is async). Explicit UNSUBSCRIBE only becomes necessary with a
+        // shared connection (planned as follow-up), and even then it lives in the
+        // backend's refcounted subscription management, not in this Drop.
+        self.stream.take();
     }
 }
 

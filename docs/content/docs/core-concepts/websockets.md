@@ -84,6 +84,23 @@ async fn main() -> std::io::Result<()> {
 
 This registers a WebSocket endpoint at `/ws` (configurable) that handles the subscription protocol automatically.
 
+For multi-instance deployments, enable the `relay-redis` feature (which also enables `websocket`) and configure a Redis-backed relay:
+
+```toml
+rapina = { version = "0.11", features = ["relay-redis"] }
+```
+
+```rust
+Rapina::new()
+    .with_relay_redis(RelayConfig::default(), "redis://127.0.0.1:6379")
+    .await?
+    .discover()
+    .listen("127.0.0.1:3000")
+    .await
+```
+
+Redis pub/sub delivers relay messages across every Rapina node connected to the same Redis instance. Presence tracking remains per-node and is not shared through Redis.
+
 ### Pushing from Handlers
 
 The `Relay` extractor lets you push messages to any topic from any HTTP handler:
