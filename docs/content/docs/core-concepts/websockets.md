@@ -87,7 +87,7 @@ This registers a WebSocket endpoint at `/ws` (configurable) that handles the sub
 For multi-instance deployments, enable the `relay-redis` feature (which also enables `websocket`) and configure a Redis-backed relay:
 
 ```toml
-rapina = { version = "0.11", features = ["relay-redis"] }
+rapina = { version = "0.13", features = ["relay-redis"] }
 ```
 
 ```rust
