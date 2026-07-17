@@ -437,7 +437,23 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Note: Routes starting with `/__rapina` are automatically public.
 #[proc_macro_attribute]
 pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let func: ItemFn = syn::parse(item.clone()).expect("#[public] must be applied to a function");
+    public_macro_impl(item).into()
+}
+
+fn public_macro_impl(item: TokenStream) -> proc_macro2::TokenStream {
+    let mut func: ItemFn =
+        syn::parse(item.clone()).expect("#[public] must be applied to a function");
+
+    // Throw compilation error if the contradicting #[authorize] attribute is placed below the #[public] macro
+    let authorize_attr = extract_authorize_attr(&mut func.attrs);
+    if authorize_attr.is_some() {
+        return Error::new(
+            authorize_attr.span(),
+            "#[authorize] contradicts #[public]. A public handler must not include authorization.",
+        )
+        .to_compile_error();
+    }
+
     let func_name_str = func.sig.ident.to_string();
     let item2: proc_macro2::TokenStream = item.into();
     quote! {
@@ -448,7 +464,6 @@ pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
     }
-    .into()
 }
 
 /// Registers a channel handler for the relay system.
