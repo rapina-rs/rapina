@@ -18,28 +18,20 @@ async fn authorization_handler(token: &JsonWebToken<GoogleClaims>) -> Result<()>
     Err(Error::forbidden("Missing permissions"))
 }
 
+// Example handler that takes no parameter and is authorized by an authorization handler within another module
+#[get("/example")]
+#[authorize(authorization_handler(JsonWebToken<GoogleClaims>))]
+async fn pong() -> Result<Json<String>> {
+    tracing::info!("this is called within the handler body");
+    Ok(Json("success".to_string()))
+}
+
 // Example handler that takes two parameters and is authorized by an authorization handler within another module
 #[get("/email")]
 #[authorize(authz::authorize(JsonWebToken))]
 async fn get_email(token: JsonWebToken<GoogleClaims>, _unused: Headers) -> Result<Json<String>> {
     tracing::info!(sub = %token.sub, "authenticated request");
     Ok(Json(token.claims.email))
-}
-
-// Example handler that takes two parameters and is authorized by an authorization handler within the same module
-#[get("/example1")]
-#[authorize(authorization_handler(JsonWebToken<GoogleClaims>))]
-async fn ping(_unused: JsonWebToken) -> Result<Json<String>> {
-    tracing::info!("this is called within the handler body");
-    Ok(Json("success".to_string()))
-}
-
-// Example handler that takes no parameter and is authorized by an authorization handler within another module
-#[get("/example2")]
-#[authorize(authz::authorize(JsonWebToken))]
-async fn pong() -> Result<Json<String>> {
-    tracing::info!("this is called within the handler body");
-    Ok(Json("success".to_string()))
 }
 
 #[tokio::main]
