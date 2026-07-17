@@ -125,6 +125,11 @@ impl Parse for AuthorizeArgs {
             parenthesized!(content in input);
             let parsed: Punctuated<Type, Token![,]> =
                 content.parse_terminated(Type::parse, Token![,])?;
+
+            if !input.is_empty() {
+                return Err(input.error("unexpected tokens after authorization dependencies"));
+            }
+
             parsed.into_iter().collect()
         } else {
             return Err(syn::Error::new(
@@ -137,116 +142,131 @@ impl Parse for AuthorizeArgs {
     }
 }
 
-/// Returns whether authorization requires extracting additional request parts
-/// beyond the handler's declared parameters.
+/// Generated authorization code split into extraction and invocation phases.
 ///
-/// For each dependency declared in `#[authorize(...)]`, this checks whether a
-/// handler parameter with the same normalized syntactic type is already present.
-/// If any authorization dependency is not present among the handler inputs, the
-/// generated route must split the request into parts and extract that dependency
-/// separately before invoking the authorization function.
-///
-/// Type matching here is based on `normalize_type()` and is therefore purely
-/// syntactic, not semantic Rust type equality.
-fn authorize_needs_request_parts(func: &ItemFn, authorize_args: &Option<AuthorizeArgs>) -> bool {
-    if let Some(args) = &authorize_args {
-        // Collect and normalize handler types
-        let handler_types: Vec<String> = func
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|input| {
-                let FnArg::Typed(PatType { ty, .. }) = input else {
-                    return None;
-                };
-                Some(normalize_type(ty))
-            })
-            .collect();
+/// The phases must remain separate because authorization-only dependencies need
+/// request parts, while reused handler dependencies are not in scope until the
+/// route's normal extractor bindings have been created.
+struct AuthorizePlan {
+    /// Dependencies not present in the handler signature. These are extracted
+    /// from request parts before handler extraction consumes the request.
+    extracts: proc_macro2::TokenStream,
 
-        // Normalize #[authorize] argument types and compare them for equality to any known handler type
-        args.deps
-            .iter()
-            .map(normalize_type)
-            .any(|dep_norm| !handler_types.iter().any(|ty| ty == &dep_norm))
-    } else {
-        false
-    }
+    /// Invokes the authorization function after reusable handler bindings have
+    /// been created.
+    call: proc_macro2::TokenStream,
+
+    /// Whether `extracts` needs access to `__rapina_parts`.
+    needs_request_parts: bool,
 }
 
-/// Builds the generated authorization prelude for a route handler.
+/// Builds the generated authorization plan for a route handler.
 ///
-/// The prelude runs before the handler body and is responsible for preparing
-/// the arguments for the `#[authorize(...)]` function call.
+/// Authorization dependencies fall into two categories:
 ///
-/// For each declared authorization dependency:
-/// - if the handler already has a parameter with the same normalized syntactic
-///   type, that handler binding is reused and passed by reference
-/// - otherwise, the dependency is extracted from request parts via
-///   [`rapina::extract::FromRequestParts`] and passed by reference
+/// - **Reused handler dependencies**: if a dependency's type matches a handler parameter
+///   type, the generated authorization handler call borrows the handler binding.
+/// - **Authorization-only dependencies**: if no handler parameter matches, the
+///   dependency is extracted separately through `rapina::extract::FromRequestParts` before it is invoked.
 ///
-/// After all dependency arguments are prepared, the generated code awaits the
-/// authorization function. If authorization returns an error, request handling
-/// stops immediately and the error is converted into a Rapina response.
+/// Extraction and policy invocation are deliberately returned as separate token
+/// streams. Authorization-only dependencies must be extracted while request
+/// parts are available, whereas the policy call must happen only after reusable
+/// handler parameters have been extracted and bound. Keeping these phases
+/// separate prevents generated references to handler bindings before those
+/// bindings are in scope.
+///
+/// Type matching is syntactic and whitespace-insensitive; it does not resolve
+/// aliases or determine semantic Rust type equality. For example,
+/// `State<AppState>` and `rapina::extract::State<AppState>` are treated as
+/// different types and result in separate extraction.
 ///
 /// # Errors
 ///
 /// Returns an error if a reused handler parameter does not use a simple
 /// identifier pattern and therefore cannot be referenced from generated code.
-fn build_authorize_prelude(
+fn build_authorize_plan(
     inputs: &Punctuated<FnArg, Token![,]>,
     auth: &AuthorizeArgs,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> syn::Result<AuthorizePlan> {
     let auth_fn = &auth.auth_fn;
 
-    let mut auth_extracts = Vec::new();
-    let mut auth_args = Vec::with_capacity(auth.deps.len());
+    let mut extracts = Vec::new();
+    let mut arguments = Vec::with_capacity(auth.deps.len());
+    let mut needs_request_parts = false;
 
-    for (i, dep_ty) in auth.deps.iter().enumerate() {
-        let dep_norm = normalize_type(dep_ty);
-        let mut found = None;
+    for (index, dependency_type) in auth.deps.iter().enumerate() {
+        let normalized_dependency = normalize_type(dependency_type);
 
-        for input in inputs {
+        // Prefer an existing handler parameter over extracting the same syntactically
+        // matching dependency a second time.
+        let matching_handler_parameter = inputs.iter().find_map(|input| {
             let FnArg::Typed(PatType { pat, ty, .. }) = input else {
-                continue;
+                return None;
             };
 
-            if normalize_type(ty) == dep_norm {
-                let ident = extract_ident(pat)?;
-                found = Some(quote!(&#ident));
-                break;
+            if normalize_type(ty) == normalized_dependency {
+                Some(pat)
+            } else {
+                None
             }
+        });
+
+        if let Some(pattern) = matching_handler_parameter {
+            let identifier = extract_ident(pattern)?;
+            arguments.push(quote!(&#identifier));
+            continue;
         }
 
-        match found {
-            Some(expr) => auth_args.push(expr),
-            None => {
-                let tmp = syn::Ident::new(
-                    &format!("__rapina_auth_dep_{}", i),
-                    proc_macro2::Span::call_site(),
-                );
+        // The parameter was not found in the handler parameters;
+        // set flag to have it extracted from the Rapina request parts later
+        needs_request_parts = true;
 
-                auth_extracts.push(quote! {
-                    let #tmp = match <#dep_ty as rapina::extract::FromRequestParts>::from_request_parts(
-                        &__rapina_parts,
-                        &__rapina_params,
-                        &__rapina_state,
-                    ).await {
-                        Ok(v) => v,
-                        Err(e) => return rapina::response::IntoResponse::into_response(e),
-                    };
-                });
+        let temporary = syn::Ident::new(
+            &format!("__rapina_auth_dep_{index}"),
+            proc_macro2::Span::call_site(),
+        );
 
-                auth_args.push(quote!(&#tmp));
-            }
-        }
+        // Authorization-only dependencies must implement FromRequestParts. Body-consuming
+        // extractors cannot be used here because the request body must remain available to the route handler.
+        extracts.push(quote! {
+            let #temporary =
+                match <#dependency_type as rapina::extract::FromRequestParts>::from_request_parts(
+                    &__rapina_parts,
+                    &__rapina_params,
+                    &__rapina_state,
+                )
+                .await
+                {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return rapina::response::IntoResponse::into_response(error);
+                    }
+                };
+        });
+
+        arguments.push(quote!(&#temporary));
     }
 
-    Ok(quote! {
-        #(#auth_extracts)*
-        match #auth_fn(#(#auth_args),*).await {
+    let extracts = quote! {
+        #(#extracts)*
+    };
+
+    // Policy failures short-circuit request handling, ensuring that the route
+    // body is never executed after authorization has been denied.
+    let call = quote! {
+        match #auth_fn(#(#arguments),*).await {
             Ok(()) => {}
-            Err(e) => return rapina::response::IntoResponse::into_response(e),
-        };
+            Err(error) => {
+                return rapina::response::IntoResponse::into_response(error);
+            }
+        }
+    };
+
+    Ok(AuthorizePlan {
+        extracts,
+        call,
+        needs_request_parts,
     })
 }
 
@@ -713,6 +733,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::metric_macro_impl;
+    use super::{AuthorizeArgs, job_macro_impl, join_paths, metric_macro_impl, route_macro_core};
     use quote::quote;
 
     #[test]
