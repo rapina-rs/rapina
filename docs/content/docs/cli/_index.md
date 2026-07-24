@@ -22,6 +22,7 @@ cargo install rapina-cli
 | `rapina test` | Run tests with pretty output |
 | `rapina routes` | List all registered routes |
 | `rapina doctor` | Run API health checks |
+| `rapina seed` | Load, dump, or generate database seed data |
 | `rapina migrate new <name>` | Generate a new migration file |
 | `rapina openapi export` | Export OpenAPI spec |
 | `rapina openapi check` | Verify spec is up to date |

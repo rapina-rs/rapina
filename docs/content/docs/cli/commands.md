@@ -192,6 +192,114 @@ The exit codes suit CI: `0` when code and database agree, `2` on drift, `1` on a
 
 Two cases are reported as notes rather than drift because they behave the same at runtime: a `String` field against a `text` column, and a `bool` field against a MySQL `tinyint` (MySQL has no native boolean). A field whose type has no `schema!` equivalent is skipped on both sides with a warning, so a hand-added enum column won't show as false drift.
 
+## rapina seed
+
+Load, dump, or generate JSON seed data for a Rapina project:
+
+```bash
+rapina seed load
+rapina seed dump
+rapina seed generate
+```
+
+The seed commands are available behind database-specific feature flags. Install the CLI with the feature that matches your database:
+
+```bash
+cargo install rapina-cli --features seed-postgres
+cargo install rapina-cli --features seed-mysql
+cargo install rapina-cli --features seed-sqlite
+```
+
+`load` and `dump` connect to the database using `DATABASE_URL`. Seed files live in a `seeds/` directory at the project root, and each table maps to a JSON file named `seeds/{table_name}.json`.
+
+### rapina seed load
+
+Load JSON seed files from `seeds/` into the database:
+
+```bash
+rapina seed load
+```
+
+Each `.json` file must contain an array of objects. For example, `seeds/users.json` inserts records into the `users` table.
+
+Options:
+
+| Flag              | Description                                               |
+| ----------------- | --------------------------------------------------------- |
+| `--entity <NAME>` | Load only `seeds/<NAME>.json`                             |
+| `--fresh`         | Truncate the target tables before inserting seed records  |
+
+Examples:
+
+```bash
+# Load all seed files
+rapina seed load
+
+# Load only seeds/users.json
+rapina seed load --entity users
+
+# Truncate target tables before loading
+rapina seed load --fresh
+```
+
+Without `--fresh`, existing rows with the same primary key are skipped rather than updated.
+
+### rapina seed dump
+
+Dump database rows into JSON seed files:
+
+```bash
+rapina seed dump
+```
+
+If `seeds/` does not exist, Rapina creates it. Each selected table is written as pretty-printed JSON to `seeds/{table_name}.json`.
+
+Options:
+
+| Flag              | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `--entity <NAME>` | Dump only a specific table to a seed file    |
+
+Examples:
+
+```bash
+# Dump all database tables
+rapina seed dump
+
+# Dump only the users table
+rapina seed dump --entity users
+```
+
+### rapina seed generate
+
+Generate fake seed data from `schema!` macro blocks in `src/entity.rs`:
+
+```bash
+rapina seed generate
+```
+
+Rapina reads each entity schema, generates type-aware sample values, pluralizes the entity name for the table name, and writes `seeds/{table_name}.json`.
+
+Options:
+
+| Flag              | Description                                      | Default |
+| ----------------- | ------------------------------------------------ | ------- |
+| `--count <N>`     | Number of records to generate per entity         | `10`    |
+| `--entity <NAME>` | Generate seed data for a specific entity only    | all     |
+
+Examples:
+
+```bash
+# Generate 10 records per entity
+rapina seed generate
+
+# Generate 25 records per entity
+rapina seed generate --count 25
+
+# Generate records only for the user entity
+rapina seed generate --entity user
+```
+
 ## rapina dev
 
 Start the development server with hot reload:
