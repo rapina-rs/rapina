@@ -147,7 +147,7 @@ fn test_issue_678_related_resolves_to_canonical_from_column() {
     // find_also_related only compiles at all because Related<Account> exists
     // for Tx — and it must resolve to `from`, the canonical field.
     let stmt = regression_tx::Entity::find()
-        .find_also_related(regression_account::Entity)
+        .find_also_related(account::Entity)
         .build(DbBackend::Sqlite)
         .to_string();
 
@@ -175,4 +175,112 @@ fn test_issue_678_linked_resolves_to_losing_to_column() {
         .to_string();
 
     assert!(stmt.to_lowercase().contains("to_id"));
+}
+
+// Extended regression coverage for issue #678: three `belongs_to` fields to
+// the same target. The canonical-selection logic must scale past two
+// candidates, and every losing field needs its own distinct `Linked`.
+schema! {
+    Warehouse {
+        name: String,
+    }
+
+    Shipment {
+        origin: Warehouse,
+        destination: Warehouse,
+        backup: Option<Warehouse>,
+        weight: i64,
+    }
+}
+
+#[test]
+fn test_issue_678_three_way_related_resolves_to_first_field() {
+    use rapina::sea_orm::{DbBackend, QueryTrait};
+
+    // `origin` is declared first among the three Warehouse fields, so it is
+    // canonical and the only one reachable via Related/find_also_related.
+    let stmt = shipment::Entity::find()
+        .find_also_related(warehouse::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    assert!(stmt.to_lowercase().contains("origin_id"));
+}
+
+#[test]
+fn test_issue_678_three_way_linked_resolves_to_each_losing_field() {
+    use rapina::sea_orm::{DbBackend, ModelTrait, QueryTrait};
+
+    let shipment = shipment::Model {
+        id: 1,
+        origin_id: 1,
+        destination_id: 2,
+        backup_id: Some(3),
+        weight: 100,
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // Both non-canonical fields get their own Linked struct, each resolving
+    // to its own foreign key column rather than falling back to `origin_id`.
+    let destination_stmt = shipment
+        .find_linked(shipment::DestinationLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+    assert!(destination_stmt.to_lowercase().contains("destination_id"));
+
+    let backup_stmt = shipment
+        .find_linked(shipment::BackupLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+    assert!(backup_stmt.to_lowercase().contains("backup_id"));
+}
+
+// Self-referential regression case for issue #678: an entity with two
+// `belongs_to` fields pointing at itself (e.g. an org chart). The target
+// type name equals the entity's own name, which exercises the same
+// `target_mod == self` codegen path as a normal self-relation, combined
+// with the canonical/Linked split.
+schema! {
+    Employee {
+        name: String,
+        manager: Option<Employee>,
+        mentor: Option<Employee>,
+    }
+}
+
+#[test]
+fn test_issue_678_self_referential_related_resolves_to_manager() {
+    use rapina::sea_orm::{DbBackend, QueryTrait};
+
+    // `manager` is declared first, so it is canonical for the self-relation.
+    let stmt = employee::Entity::find()
+        .find_also_related(employee::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    assert!(stmt.to_lowercase().contains("manager_id"));
+}
+
+#[test]
+fn test_issue_678_self_referential_linked_resolves_to_mentor() {
+    use rapina::sea_orm::{DbBackend, ModelTrait, QueryTrait};
+
+    let employee = employee::Model {
+        id: 1,
+        name: "Alice".to_string(),
+        manager_id: Some(2),
+        mentor_id: Some(3),
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // `mentor` lost the canonical tiebreak, so it's only reachable via the
+    // generated Linked, and it must resolve to mentor_id, not manager_id.
+    let stmt = employee
+        .find_linked(employee::MentorLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    assert!(stmt.to_lowercase().contains("mentor_id"));
 }
