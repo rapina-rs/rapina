@@ -105,5 +105,15 @@ pub enum FieldType {
     /// A has_many relationship (Vec<Entity>)
     HasMany { target: syn::Ident },
     /// A belongs_to relationship (Entity or Option<Entity>)
-    BelongsTo { target: syn::Ident, optional: bool },
+    BelongsTo {
+        target: syn::Ident,
+        optional: bool,
+        /// True for the first `belongs_to` field declared against a given
+        /// target within this entity. Two or more fields can point at the
+        /// same target (e.g. `Tx { from: Option<Account>, to: Option<Account> }`),
+        /// but SeaORM's `Related<T>` can only be implemented once per target.
+        /// Only the canonical field gets a `Related` impl in the generate
+        /// stage; the rest fall back to a generated `Linked` (issue #678).
+        is_canonical: bool,
+    },
 }

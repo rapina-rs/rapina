@@ -99,10 +99,17 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
         }
     }
 
+    // Two or more `belongs_to` fields on this entity can point at the same
+    // target (e.g. `Tx { from: Option<Account>, to: Option<Account> }`).
+    // SeaORM's `Related<T>` can only be implemented once per target, so the
+    // first field declared against a given target is canonical; later ones
+    // are tagged non-canonical and fall back to a generated `Linked` in the
+    // generate stage instead of a conflicting `Related` impl (issue #678).
+    let mut seen_targets: HashSet<String> = HashSet::new();
     let mut analyzed_fields = Vec::new();
 
     for field in entity.fields {
-        analyzed_fields.push(analyze_field(field, registry)?);
+        analyzed_fields.push(analyze_field(field, registry, &mut seen_targets)?);
     }
 
     // Validate custom primary key columns exist in the entity
@@ -145,7 +152,11 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
     })
 }
 
-fn analyze_field(field: FieldDef, registry: &EntityRegistry) -> Result<AnalyzedField> {
+fn analyze_field(
+    field: FieldDef,
+    registry: &EntityRegistry,
+    seen_targets: &mut HashSet<String>,
+) -> Result<AnalyzedField> {
     let ty = match field.ty {
         RawFieldType::Scalar { scalar, optional } => FieldType::Scalar { scalar, optional },
 
@@ -171,9 +182,11 @@ fn analyze_field(field: FieldDef, registry: &EntityRegistry) -> Result<AnalyzedF
 
             // If it's a known entity, it's a belongs_to relationship
             if registry.contains(&type_name) {
+                let is_canonical = seen_targets.insert(type_name);
                 FieldType::BelongsTo {
                     target: name,
                     optional,
+                    is_canonical,
                 }
             } else {
                 return Err(syn::Error::new(
@@ -256,6 +269,95 @@ mod tests {
             post.fields[0].ty,
             FieldType::BelongsTo {
                 optional: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_analyze_single_belongs_to_is_canonical() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            Post {
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let post = &analyzed.entities[1];
+        assert!(matches!(
+            post.fields[0].ty,
+            FieldType::BelongsTo {
+                is_canonical: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_analyze_ambiguous_belongs_to_first_field_wins() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let tx = &analyzed.entities[1];
+        assert!(matches!(
+            tx.fields[0].ty,
+            FieldType::BelongsTo {
+                is_canonical: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            tx.fields[1].ty,
+            FieldType::BelongsTo {
+                is_canonical: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_analyze_belongs_to_unaffected_by_unrelated_target() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Currency {
+                code: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                to: Option<Account>,
+                currency: Currency,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let tx = &analyzed.entities[2];
+        assert!(matches!(
+            tx.fields[2].ty,
+            FieldType::BelongsTo {
+                is_canonical: true,
                 ..
             }
         ));

@@ -47,6 +47,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     let model_fields = generate_model_fields(entity, schema);
     let relation_variants = generate_relation_variants(entity, schema);
     let related_impls = generate_related_impls(entity, schema);
+    let linked_impls = generate_linked_impls(entity, schema);
 
     // Generate timestamp fields based on entity attrs
     let created_at_field = if entity.attrs.has_created_at {
@@ -112,6 +113,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
             }
 
             #related_impls
+            #linked_impls
 
             impl ActiveModelBehavior for ActiveModel {}
         }
@@ -212,7 +214,9 @@ fn generate_model_field(field: &AnalyzedField, schema: &AnalyzedSchema) -> Optio
             })
         }
 
-        FieldType::BelongsTo { target, optional } => {
+        FieldType::BelongsTo {
+            target, optional, ..
+        } => {
             // Generate foreign key column: author -> author_id
             let fk_name = format_ident!("{}_id", field_name.to_string().to_snake_case());
 
@@ -291,6 +295,7 @@ fn generate_relation_variant(
         FieldType::BelongsTo {
             target,
             optional: _,
+            ..
         } => {
             let variant_name = to_pascal_case(&field.name.to_string());
             let variant_ident = format_ident!("{}", variant_name);
@@ -329,23 +334,85 @@ fn generate_related_impls(entity: &AnalyzedEntity, _schema: &AnalyzedSchema) -> 
 }
 
 fn generate_related_impl(field: &AnalyzedField) -> Option<TokenStream> {
+    let target = match &field.ty {
+        FieldType::HasMany { target } => target,
+        // Two or more `belongs_to` fields to the same target can't each get
+        // a `Related` impl — Rust forbids two impls of the same trait for
+        // the same type (E0119). Only the canonical field (the first
+        // declared for that target — see analyze.rs) gets one; the rest are
+        // handled by generate_linked_impl instead (issue #678).
+        FieldType::BelongsTo {
+            target,
+            is_canonical,
+            ..
+        } => {
+            if !*is_canonical {
+                return None;
+            }
+            target
+        }
+        FieldType::Scalar { .. } => return None,
+    };
+
     let variant_name = to_pascal_case(&field.name.to_string());
     let variant_ident = format_ident!("{}", variant_name);
+    let target_mod = format_ident!("{}", target.to_string().to_snake_case());
 
-    match &field.ty {
-        FieldType::HasMany { target } | FieldType::BelongsTo { target, .. } => {
-            let target_mod = format_ident!("{}", target.to_string().to_snake_case());
-
-            Some(quote! {
-                impl Related<super::#target_mod::Entity> for Entity {
-                    fn to() -> RelationDef {
-                        Relation::#variant_ident.def()
-                    }
-                }
-            })
+    Some(quote! {
+        impl Related<super::#target_mod::Entity> for Entity {
+            fn to() -> RelationDef {
+                Relation::#variant_ident.def()
+            }
         }
-        FieldType::Scalar { .. } => None,
+    })
+}
+
+fn generate_linked_impls(entity: &AnalyzedEntity, _schema: &AnalyzedSchema) -> TokenStream {
+    let impls: Vec<TokenStream> = entity
+        .fields
+        .iter()
+        .filter_map(generate_linked_impl)
+        .collect();
+
+    quote! {
+        #(#impls)*
     }
+}
+
+/// Generate a `Linked` for `belongs_to` fields that lost the `Related`
+/// tiebreak (see generate_related_impl) — this keeps every field navigable
+/// via `find_linked`, even though only one field per target can use the
+/// `Related`-based `find_related`/`has_many` path.
+fn generate_linked_impl(field: &AnalyzedField) -> Option<TokenStream> {
+    let FieldType::BelongsTo {
+        target,
+        is_canonical,
+        ..
+    } = &field.ty
+    else {
+        return None;
+    };
+    if *is_canonical {
+        return None;
+    }
+
+    let variant_name = to_pascal_case(&field.name.to_string());
+    let variant_ident = format_ident!("{}", variant_name);
+    let target_mod = format_ident!("{}", target.to_string().to_snake_case());
+    let link_ident = format_ident!("{}Link", variant_name);
+
+    Some(quote! {
+        pub struct #link_ident;
+
+        impl Linked for #link_ident {
+            type FromEntity = Entity;
+            type ToEntity = super::#target_mod::Entity;
+
+            fn link(&self) -> Vec<RelationDef> {
+                vec![Relation::#variant_ident.def()]
+            }
+        }
+    })
 }
 
 /// Convert snake_case or camelCase to PascalCase.
@@ -458,6 +525,65 @@ mod tests {
 
         assert!(output.contains("has_many = \"super::post::Entity\""));
         assert!(output.contains("impl Related < super :: post :: Entity >"));
+    }
+
+    #[test]
+    fn test_generate_ambiguous_belongs_to_yields_one_related_and_one_linked() {
+        // The issue #678 repro: two belongs_to fields to the same target.
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // Both belongs_to columns and both Relation variants are still generated.
+        assert!(output.contains("pub from_id : Option < i32 >"));
+        assert!(output.contains("pub to_id : Option < i32 >"));
+        assert!(output.contains("belongs_to = \"super::account::Entity\""));
+
+        // Exactly one Related<account::Entity> impl — the canonical field (`from`).
+        let related_count = output
+            .matches("impl Related < super :: account :: Entity > for Entity")
+            .count();
+        assert_eq!(related_count, 1);
+        assert!(output.contains("Relation :: From . def ()"));
+
+        // The losing field (`to`) gets a Linked instead.
+        assert!(output.contains("pub struct ToLink"));
+        assert!(output.contains("impl Linked for ToLink"));
+        assert!(output.contains("type ToEntity = super :: account :: Entity"));
+        assert!(output.contains("Relation :: To . def ()"));
+    }
+
+    #[test]
+    fn test_generate_single_belongs_to_has_no_linked_impl() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            Post {
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        assert!(output.contains("impl Related < super :: user :: Entity > for Entity"));
+        assert!(!output.contains("impl Linked for"));
     }
 
     #[test]

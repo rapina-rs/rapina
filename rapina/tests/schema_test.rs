@@ -122,3 +122,57 @@ fn test_entity_traits_implemented() {
     let _ = test_post::Entity::table_name(&test_post::Entity);
     let _ = test_comment::Entity::table_name(&test_comment::Entity);
 }
+
+// Regression test for issue #678: two `belongs_to` fields to the same
+// target used to produce two conflicting `impl Related<account::Entity> for
+// tx::Entity` blocks (E0119) — this whole file would fail to compile without
+// the fix. `from` is canonical and keeps `Related`; `to` is reachable
+// through the generated `Linked` (`regression_tx::ToLink`).
+schema! {
+    Account {
+        name: String,
+    }
+
+    RegressionTx {
+        from: Option<Account>,
+        to: Option<Account>,
+        amount: i64,
+    }
+}
+
+#[test]
+fn test_issue_678_related_resolves_to_canonical_from_column() {
+    use rapina::sea_orm::{DbBackend, QueryTrait};
+
+    // find_also_related only compiles at all because Related<Account> exists
+    // for Tx — and it must resolve to `from`, the canonical field.
+    let stmt = regression_tx::Entity::find()
+        .find_also_related(regression_account::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    assert!(stmt.to_lowercase().contains("from_id"));
+}
+
+#[test]
+fn test_issue_678_linked_resolves_to_losing_to_column() {
+    use rapina::sea_orm::{DbBackend, ModelTrait, QueryTrait};
+
+    let tx = regression_tx::Model {
+        id: 1,
+        from_id: Some(1),
+        to_id: Some(2),
+        amount: 500,
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // No Related<Account> exists for the `to` direction — find_linked is the
+    // only route, and it must resolve to `to_id`, not `from_id`.
+    let stmt = tx
+        .find_linked(regression_tx::ToLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    assert!(stmt.to_lowercase().contains("to_id"));
+}
