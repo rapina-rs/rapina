@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
 colored = "3"
+terminal_size = "0.4"
 notify = { version = "8", default-features = false, features = [
   "macos_kqueue",
 ] }
