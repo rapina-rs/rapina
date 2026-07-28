@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+const JUCA_BANNER: &str = include_str!("../../../juca.txt");
+
 /// Configuration for the dev server.
 pub struct DevConfig {
     pub host: String,
@@ -216,8 +218,19 @@ fn print_banner(config: &DevConfig) {
     let url = format!("http://{}:{}", config.host, config.port);
     let routes_url = format!("{}/__rapina/routes", url);
 
-    // Box is 61 chars wide total, 59 chars inner content
+    // Box is 61 chars wide total, 59 chars inner content, plus 1 leading space = 62
+    const BOX_WIDTH: usize = 62;
     let b = "│".custom_color(colors::mauve());
+
+    println!();
+    for line in JUCA_BANNER.lines().filter(|l| !l.trim().is_empty()) {
+        let padding = BOX_WIDTH.saturating_sub(line.chars().count()) / 2;
+        println!(
+            "{}{}",
+            " ".repeat(padding),
+            line.custom_color(colors::sky()).bold()
+        );
+    }
 
     println!();
     println!(

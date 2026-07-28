@@ -6,6 +6,7 @@ mod common;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use terminal_size::{Width, terminal_size};
 
 use crate::commands::{FieldInfo, templates::DatabaseType};
 
@@ -582,32 +583,51 @@ fn main() {
     }
 }
 
+const JUCA_BANNER: &str = include_str!("../../juca.txt");
+
 fn print_banner() {
     println!();
-    println!(
-        "{}",
-        "  ╭─────────────────────────────────────╮".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  │                                     │".bright_magenta()
-    );
-    println!(
-        "{}{}{}",
-        "  │".bright_magenta(),
-        "          🦀 Rapina CLI 🦀           ".bold(),
-        "│".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  │                                     │".bright_magenta()
-    );
-    println!(
-        "{}",
-        "  ╰─────────────────────────────────────╯".bright_magenta()
-    );
+    let banner_lines: Vec<&str> = JUCA_BANNER
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let banner_width = banner_lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
+    let terminal_width = terminal_size()
+        .map(|(Width(width), _)| usize::from(width))
+        .or_else(|| {
+            std::env::var("COLUMNS")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+        })
+        .filter(|width| *width > banner_width)
+        .unwrap_or(banner_width);
+
+    for line in banner_lines {
+        println!("{}", center_line(line, terminal_width).bright_blue());
+    }
+
+    println!();
+    println!("{}", center_line("Rapina CLI", terminal_width).bold());
+}
+
+fn center_line(text: &str, width: usize) -> String {
+    let text_width = text.chars().count();
+    if width <= text_width {
+        return text.to_string();
+    }
+
+    let padding = (width - text_width) / 2;
+    format!("{}{}", " ".repeat(padding), text)
 }
 
 fn print_version() {
-    println!("rapina-cli {}", env!("CARGO_PKG_VERSION"));
+    println!(
+        "{} {}",
+        "rapina".bright_cyan().bold(),
+        env!("CARGO_PKG_VERSION").bright_white()
+    );
 }

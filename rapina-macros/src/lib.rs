@@ -990,6 +990,83 @@ fn relay_macro_impl(
     }
 }
 
+/// Marks a static Prometheus collector for auto-discovery.
+///
+/// Annotate a module-level `static` holding a collector and `.discover()`
+/// registers it with the `/metrics` endpoint, so you don't have to thread it
+/// through `add_metric()`. Requires the `metrics` feature plus both
+/// `.enable_metrics()` and `.discover()` on the app builder.
+///
+/// The collector type must be `Clone` (all built-in prometheus types are;
+/// clones share the same underlying values). Wrap the collector in
+/// `std::sync::LazyLock` or `once_cell::sync::Lazy`; no built-in prometheus
+/// type can be constructed in a const context, so a bare static won't
+/// compile. `OnceLock`-style cells are not supported, and the static must
+/// live at module scope, not inside a function body.
+///
+/// This is the only Rapina attribute applied to a `static` rather than a
+/// function.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::sync::LazyLock;
+/// use rapina::metric;
+/// use rapina::prometheus::IntCounter;
+///
+/// #[metric]
+/// static ORDERS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+///     IntCounter::new("orders_total", "Total orders placed").unwrap()
+/// });
+/// ```
+#[proc_macro_attribute]
+pub fn metric(attr: TokenStream, item: TokenStream) -> TokenStream {
+    metric_macro_impl(attr.into(), item.into()).into()
+}
+
+fn metric_macro_impl(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(attr, "#[metric] does not take arguments")
+            .to_compile_error();
+    }
+    let item = match syn::parse2::<syn::ItemStatic>(item) {
+        Ok(item) => item,
+        Err(err) => {
+            return syn::Error::new(
+                err.span(),
+                "#[metric] can only be applied to a `static` item",
+            )
+            .to_compile_error();
+        }
+    };
+    if let syn::StaticMutability::Mut(m) = &item.mutability {
+        return syn::Error::new_spanned(m, "#[metric] cannot be applied to a `static mut`")
+            .to_compile_error();
+    }
+
+    let ident = &item.ident;
+    let collector_fn = quote::format_ident!("__rapina_metric_{}", ident);
+
+    quote! {
+        #item
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #collector_fn() -> Box<dyn rapina::prometheus::core::Collector> {
+            Box::new(#ident.clone())
+        }
+
+        rapina::inventory::submit! {
+            rapina::discovery::MetricDescriptor {
+                collector: #collector_fn,
+            }
+        }
+    }
+}
+
 /// Defines a background job handler.
 ///
 /// Annotate an `async fn` to register it as a background job. The first
@@ -1459,7 +1536,9 @@ fn derive_config_impl(input: proc_macro2::TokenStream) -> proc_macro2::TokenStre
 
 #[cfg(test)]
 mod tests {
-    use super::{job_macro_impl, join_paths, relay_macro_impl, route_macro_core};
+    use super::{
+        job_macro_impl, join_paths, metric_macro_impl, relay_macro_impl, route_macro_core,
+    };
     use quote::quote;
 
     #[test]
@@ -2003,6 +2082,59 @@ mod tests {
 
         assert!(output_str.contains("is_prefix : false"));
         assert!(output_str.contains("match_prefix : \"chat:lobby\""));
+    }
+
+    #[test]
+    fn test_metric_macro_generates_collector_fn_and_inventory() {
+        let input = quote! {
+            static ORDERS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+                IntCounter::new("orders_total", "Total orders placed").unwrap()
+            });
+        };
+
+        let output = metric_macro_impl(quote!(), input);
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("static ORDERS_TOTAL"));
+        assert!(output_str.contains("__rapina_metric_ORDERS_TOTAL"));
+        assert!(output_str.contains("inventory :: submit !"));
+        assert!(output_str.contains("MetricDescriptor"));
+    }
+
+    #[test]
+    fn test_metric_macro_rejects_args() {
+        let input = quote! {
+            static ORDERS_TOTAL: LazyLock<IntCounter> = LazyLock::new(make_counter);
+        };
+
+        let output_str = metric_macro_impl(quote!(name = "orders"), input).to_string();
+
+        assert!(output_str.contains("compile_error !"));
+        assert!(output_str.contains("does not take arguments"));
+    }
+
+    #[test]
+    fn test_metric_macro_rejects_fn() {
+        let input = quote! {
+            fn not_a_static() {}
+        };
+
+        let output_str = metric_macro_impl(quote!(), input).to_string();
+
+        assert!(output_str.contains("compile_error !"));
+        assert!(output_str.contains("can only be applied to a `static` item"));
+    }
+
+    #[test]
+    fn test_metric_macro_rejects_static_mut() {
+        let input = quote! {
+            static mut ORDERS_TOTAL: IntCounter = make_counter();
+        };
+
+        let output_str = metric_macro_impl(quote!(), input).to_string();
+
+        assert!(output_str.contains("compile_error !"));
+        assert!(output_str.contains("cannot be applied to a `static mut`"));
     }
 
     #[test]

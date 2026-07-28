@@ -223,12 +223,7 @@ impl<T> Paginated<T> {
 
 impl<T: Serialize> IntoResponse for Paginated<T> {
     fn into_response(self) -> http::Response<BoxBody> {
-        let body = serde_json::to_vec(&self).unwrap_or_default();
-        http::Response::builder()
-            .status(http::StatusCode::OK)
-            .header("content-type", "application/json")
-            .body(crate::response::full(body))
-            .unwrap()
+        crate::error::json_response(http::StatusCode::OK, &self)
     }
 }
 
@@ -362,12 +357,7 @@ impl<T> CursorPaginated<T> {
 
 impl<T: Serialize> IntoResponse for CursorPaginated<T> {
     fn into_response(self) -> http::Response<BoxBody> {
-        let body = serde_json::to_vec(&self).unwrap_or_default();
-        http::Response::builder()
-            .status(http::StatusCode::OK)
-            .header("content-type", "application/json")
-            .body(crate::response::full(body))
-            .unwrap()
+        crate::error::json_response(http::StatusCode::OK, &self)
     }
 }
 
