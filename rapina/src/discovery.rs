@@ -73,3 +73,17 @@ pub struct PublicMarker {
 }
 
 inventory::collect!(PublicMarker);
+
+/// Metadata about a custom Prometheus collector, collected at link time via
+/// `inventory`.
+///
+/// Emitted by `#[metric]` on a static collector. Registered into the metrics
+/// registry when both `.enable_metrics()` and `.discover()` are set.
+#[cfg(feature = "metrics")]
+pub struct MetricDescriptor {
+    /// Produces an owned, boxed clone of the collector.
+    pub collector: fn() -> Box<dyn prometheus::core::Collector>,
+}
+
+#[cfg(feature = "metrics")]
+inventory::collect!(MetricDescriptor);

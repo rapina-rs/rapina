@@ -28,8 +28,8 @@
 use serde::Serialize;
 use std::fmt;
 
-use crate::response::{APPLICATION_JSON, APPLICATION_PROBLEM_JSON, BoxBody, IntoResponse};
-use http::header::CONTENT_TYPE;
+use crate::response::{APPLICATION_JSON, BoxBody, IntoResponse};
+use http::{StatusCode, header::CONTENT_TYPE};
 
 /// Configuration for error response format.
 ///
@@ -63,6 +63,29 @@ tokio::task_local! {
     pub(crate) static ERROR_CONFIG: ErrorConfig;
 }
 
+/// Serialize a value into a JSON HTTP response.
+///
+/// On serialization failure, returns a 500 with a structured error body.
+pub(crate) fn json_response<T: Serialize>(
+    status: http::StatusCode,
+    value: &T,
+) -> http::Response<BoxBody> {
+    match serde_json::to_vec(value) {
+        Ok(body) => http::Response::builder()
+            .status(status)
+            .header(
+                http::header::CONTENT_TYPE,
+                crate::response::APPLICATION_JSON,
+            )
+            .body(crate::response::full(body))
+            .unwrap(),
+        Err(e) => {
+            tracing::error!("Failed to serialize response: {e}");
+            Error::internal("Failed to serialize response").into_response()
+        }
+    }
+}
+
 /// Standard error response format.
 pub mod standard {
     use serde::Serialize;
@@ -91,7 +114,10 @@ pub mod standard {
 
 /// RFC 7807 Problem Details error response format.
 pub mod rfc7807 {
+    use http::{StatusCode, header::CONTENT_TYPE};
     use serde::Serialize;
+
+    use crate::response::{APPLICATION_PROBLEM_JSON, IntoResponse};
 
     /// The Problem Details JSON structure as defined by RFC 7807.
     #[derive(Debug, Serialize, PartialEq)]
@@ -137,6 +163,34 @@ pub mod rfc7807 {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// Allows returning a [`ProblemDetails`] directly from a handler.
+    ///
+    /// Sets `Content-Type: application/problem+json` and serializes
+    /// the body per RFC 7807.
+    impl IntoResponse for ProblemDetails {
+        fn into_response(self) -> http::Response<crate::response::BoxBody> {
+            let body = match serde_json::to_vec(&self) {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::error!("Failed to serialize RFC 7807 error response: {e}");
+                    return http::Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .header(CONTENT_TYPE, APPLICATION_PROBLEM_JSON)
+                            .body(crate::response::full(
+                                r#"{"type":"about:blank","title":"Internal Server Error","status":500,"detail":"Failed to serialize error response"}"#.as_bytes(),
+                            ))
+                            .unwrap();
+                }
+            };
+
+            http::Response::builder()
+                .status(self.status)
+                .header(CONTENT_TYPE, APPLICATION_PROBLEM_JSON)
+                .body(crate::response::full(body))
+                .unwrap()
+        }
     }
 }
 
@@ -428,14 +482,8 @@ impl IntoResponse for Error {
         let config = ERROR_CONFIG.try_with(|c| c.clone()).unwrap_or_default();
 
         if config.use_rfc7807 {
-            let response = self.to_rfc7807_response(trace_id, &config.base_uri);
-            let body = serde_json::to_vec(&response).unwrap_or_default();
-
-            http::Response::builder()
-                .status(self.0.status)
-                .header(CONTENT_TYPE, APPLICATION_PROBLEM_JSON)
-                .body(crate::response::full(body))
-                .unwrap()
+            self.to_rfc7807_response(trace_id, &config.base_uri)
+                .into_response()
         } else {
             let response = standard::ErrorResponse {
                 error: standard::ErrorDetail {
@@ -443,9 +491,22 @@ impl IntoResponse for Error {
                     message: self.0.message.clone(),
                     details: self.0.details.clone(),
                 },
-                trace_id,
+                trace_id: trace_id.clone(),
             };
-            let body = serde_json::to_vec(&response).unwrap_or_default();
+            let body = match serde_json::to_vec(&response) {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::error!("Failed to serialize error response: {e}");
+                    let body = format!(
+                        r#"{{"error":{{"code":"INTERNAL_ERROR","message":"Failed to serialize error response"}},"trace_id":"{trace_id}"}}"#
+                    );
+                    return http::Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .header(CONTENT_TYPE, APPLICATION_JSON)
+                        .body(crate::response::full(body.into_bytes()))
+                        .unwrap();
+                }
+            };
 
             http::Response::builder()
                 .status(self.0.status)
@@ -796,6 +857,40 @@ mod tests {
         assert_eq!(
             rfc7807::get_error_title("INTERNAL_SERVER_ERROR"),
             "Internal Server Error"
+        );
+    }
+
+    #[tokio::test]
+    async fn json_response_returns_serialized_body() {
+        #[derive(Serialize)]
+        struct Msg {
+            msg: &'static str,
+        }
+
+        let res = json_response(http::StatusCode::OK, &Msg { msg: "hello" });
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        assert_eq!(
+            res.headers().get(http::header::CONTENT_TYPE).unwrap(),
+            "application/json"
+        );
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], br#"{"msg":"hello"}"#);
+    }
+
+    #[tokio::test]
+    async fn json_response_falls_back_to_error_on_serialization_failure() {
+        let mut map = std::collections::HashMap::new();
+        map.insert(vec![1u8], 42);
+
+        let res = json_response(http::StatusCode::OK, &map);
+
+        assert_eq!(res.status(), http::StatusCode::INTERNAL_SERVER_ERROR);
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let body_str = std::str::from_utf8(&body).unwrap();
+        assert!(
+            body_str.contains("Failed to serialize response"),
+            "expected error body, got: {body_str}"
         );
     }
 }

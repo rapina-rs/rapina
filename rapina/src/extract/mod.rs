@@ -28,9 +28,8 @@ pub use multipart::{Field, Multipart};
 
 use crate::context::RequestContext;
 use crate::error::Error;
-use crate::response::{APPLICATION_JSON, BoxBody, FORM_CONTENT_TYPE, IntoResponse};
+use crate::response::{BoxBody, FORM_CONTENT_TYPE, IntoResponse};
 use crate::state::AppState;
-use http::header::CONTENT_TYPE;
 
 /// Extracts and deserializes JSON request bodies.
 ///
@@ -466,12 +465,7 @@ impl<T: DeserializeOwned + Send> FromRequest for Json<T> {
 
 impl<T: serde::Serialize> IntoResponse for (http::StatusCode, Json<T>) {
     fn into_response(self) -> http::Response<BoxBody> {
-        let body = serde_json::to_vec(&(self.1).0).unwrap_or_default();
-        http::Response::builder()
-            .status(self.0)
-            .header(CONTENT_TYPE, APPLICATION_JSON)
-            .body(crate::response::full(body))
-            .unwrap()
+        crate::error::json_response(self.0, &(self.1).0)
     }
 }
 

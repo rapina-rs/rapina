@@ -129,6 +129,39 @@ All types that implement `prometheus::core::Collector` are accepted — `IntCoun
 
 > **Name collisions:** Rapina panics at startup if a custom metric name clashes with a built-in metric (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`) or with another previously registered custom collector. Use unique names to avoid this.
 
+## Auto-discovery
+
+Instead of wiring collectors through the builder, mark a module-level `static` with `#[metric]` and let `.discover()` register it, the same hands-free flow route handlers get:
+
+```rust
+use std::sync::LazyLock;
+
+use rapina::metric;
+use rapina::prelude::*;
+use rapina::prometheus::IntCounter;
+
+#[metric]
+static ORDERS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    IntCounter::new("orders_total", "Total orders placed").unwrap()
+});
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    // Handlers increment ORDERS_TOTAL directly; .discover() finds and registers it.
+    Rapina::new()
+        .enable_metrics()
+        .discover()
+        .listen("127.0.0.1:3000")
+        .await
+}
+```
+
+Discovery requires both calls. With `.enable_metrics()` but no `.discover()`, or `.discover()` but no metrics, the collector stays out of `/metrics` and Rapina logs a warning at startup naming the missing call. With both off, nothing happens.
+
+The collector type must be `Clone` (all built-in prometheus types are; clones share the same underlying values, which is why incrementing the static shows up in `/metrics`). Wrap the collector in `std::sync::LazyLock` or `once_cell::sync::Lazy`; no built-in prometheus type can be constructed in a const context, so a bare static won't compile. `OnceLock`-style cells are not supported, and the static must live at module scope. Non-`Clone` custom collectors keep using `add_metric()`.
+
+> **Name collisions apply here too:** discovered collectors go through the same registry, so two `#[metric]` statics sharing a metric name anywhere in your binary (including dependencies), or a `#[metric]` static plus an `add_metric()` call with the same name, panic at startup. The panic message names the colliding metric.
+
 ## Scraping with Prometheus
 
 Point Prometheus at the `/metrics` endpoint in your `prometheus.yml`:

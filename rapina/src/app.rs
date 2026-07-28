@@ -763,6 +763,10 @@ impl Rapina {
     /// Requires the `metrics` feature and `.enable_metrics()` (or `.with_metrics(true)`)
     /// to be called as well.
     ///
+    /// For collectors stored in module-level statics, the `#[metric]` attribute plus
+    /// `.discover()` registers them automatically without this call. Registering the
+    /// same metric name through both paths panics at startup.
+    ///
     /// # Panics
     ///
     /// Panics at startup if the collector's metric name collides with a built-in Rapina metric
@@ -1034,6 +1038,34 @@ impl Rapina {
                 .get_named("/__rapina/health", "health_check", health_check)
                 .get_named("/__rapina/health/live", "liveness_check", liveness_check)
                 .get_named("/__rapina/health/ready", "readiness_check", readiness_check);
+        }
+
+        #[cfg(feature = "metrics")]
+        {
+            let discovered: Vec<_> = inventory::iter::<crate::discovery::MetricDescriptor>
+                .into_iter()
+                .collect();
+            if !discovered.is_empty() {
+                match (self.auto_discover, self.metrics) {
+                    (true, true) => {
+                        for descriptor in &discovered {
+                            self.custom_metrics.push((descriptor.collector)());
+                        }
+                        tracing::info!("Discovered {} custom metrics", discovered.len());
+                    }
+                    (true, false) => tracing::warn!(
+                        "{} #[metric] static(s) found but metrics are disabled. \
+                        Call .enable_metrics() or .with_metrics(true) to register them.",
+                        discovered.len()
+                    ),
+                    (false, true) => tracing::warn!(
+                        "{} #[metric] static(s) found but auto-discovery is disabled. \
+                        Call .discover() to register them.",
+                        discovered.len()
+                    ),
+                    (false, false) => {}
+                }
+            }
         }
 
         #[cfg(feature = "metrics")]
