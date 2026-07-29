@@ -530,6 +530,20 @@ pub(crate) fn generate_migration(
         })
         .unzip();
 
+    // The `schema!` macro always emits a default auto-increment `id: i32`
+    // primary key when no `#[primary_key(...)]` attr and no explicit `id`
+    // field are present. Mirror that here so the migration stays in sync
+    // with the generated entity.
+    if primary_key.is_none() && !fields.iter().any(|f| f.name == "id") {
+        column_defs.insert(
+            0,
+            format!(
+                "                    .col(ColumnDef::new({pascal_plural}::Id).integer().not_null().primary_key().auto_increment())"
+            ),
+        );
+        iden_variants.insert(0, "    Id,".to_string());
+    }
+
     if with_timestamps {
         column_defs.push(format!(
             "                    .col(ColumnDef::new({pascal_plural}::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))"
