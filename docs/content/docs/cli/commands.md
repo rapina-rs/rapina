@@ -95,6 +95,8 @@ Fields use a `name:type` format. Supported types:
 
 `bool`/`boolean` columns always emit `DEFAULT FALSE` in the migration. This avoids requiring every insert to explicitly set the field when `false` is the natural starting state.
 
+If no `id` field is declared and no explicit `#[primary_key(...)]` is set, an auto-increment `id: i32` primary key column is injected automatically into the migration and the entity's `schema!` block. Declaring your own `id` field (e.g. `id:uuid`) opts out of this default — your declared type and column are used as-is instead.
+
 `created_at` and `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`) are injected automatically into every generated migration and the entity's `schema!` block. These columns are required for SeaORM's `ActiveModelBehavior` and `before_save` hooks to work correctly.
 
 To skip the timestamp columns (e.g., for a join table or audit log with custom timestamp logic):
