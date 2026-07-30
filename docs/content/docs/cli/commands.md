@@ -103,32 +103,36 @@ To skip the timestamp columns (e.g., for a join table or audit log with custom t
 rapina add resource user name:string email:string --no-timestamps
 ```
 
-The generated handlers follow Rapina conventions and are ready to wire into your router. The command prints the exact code you need to add to `main.rs`:
+The generated handlers follow Rapina conventions and are ready to wire into your router. The `mod <resource>;` declaration is wired into `src/main.rs` automatically (idempotent — running the command again won't duplicate it). The command's output is just a confirmation:
 
 ```
   Next steps:
 
-  1. Add the module declaration to src/main.rs:
+  1. Run cargo build to verify
 
-     mod users;
-     mod entity;
-     mod migrations;
-
-  2. Register the routes in your Router:
-
-     use users::handlers::{list_users, get_user, create_user, update_user, delete_user};
-
-     let router = Router::new()
-         .get("/users", list_users)
-         .get("/users/:id", get_user)
-         .post("/users", create_user)
-         .put("/users/:id", update_user)
-         .delete("/users/:id", delete_user);
-
-  3. Enable the database feature in Cargo.toml:
-
-     rapina = { version = "...", features = ["postgres"] }
+  Resource User created successfully!
 ```
+
+Two steps still need to be done manually, since the command doesn't know your router or which database feature you're using:
+
+- Register the routes in your Router:
+
+  ```rust
+  use users::handlers::{list_users, get_user, create_user, update_user, delete_user};
+
+  let router = Router::new()
+      .get("/users", list_users)
+      .get("/users/:id", get_user)
+      .post("/users", create_user)
+      .put("/users/:id", update_user)
+      .delete("/users/:id", delete_user);
+  ```
+
+- Enable the database feature in `Cargo.toml`:
+
+  ```toml
+  rapina = { version = "...", features = ["postgres"] }
+  ```
 
 The resource name must be lowercase with underscores (e.g., `user`, `blog_post`). Pluralization is automatic. If the resource directory already exists, the command fails with a clear error instead of overwriting.
 
