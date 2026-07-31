@@ -106,16 +106,29 @@ rapina add resource user name:string email:string --no-timestamps
 The generated handlers follow Rapina conventions and are ready to wire into your router. The `mod <resource>;` declaration is wired into `src/main.rs` automatically (idempotent — running the command again won't duplicate it). The command's output is just a confirmation:
 
 ```
+Adding resource: User
+
+  ✓ Created src/users/
+  ✓ Created src/users/mod.rs
+  ✓ Created src/users/handlers.rs
+  ✓ Created src/users/dto.rs
+  ✓ Created src/users/error.rs
+  ✓ Updated src/entity.rs
+  ✓ Created src/migrations/
+  ✓ Created src/migrations/m20260723_090145_create_users.rs
+  ✓ Updated src/migrations/mod.rs
+  ✓ Wired mod users; in src/main.rs
+
   Next steps:
 
   1. Run cargo build to verify
 
-  Resource User created successfully!
+  Resource Item created successfully!
 ```
 
 Two steps still need to be done manually, since the command doesn't know your router or which database feature you're using:
 
-- Register the routes in your Router:
+- Register the routes in your Router, or add `.discover()` in the app struct `Rapina::new()`:
 
   ```rust
   use users::handlers::{list_users, get_user, create_user, update_user, delete_user};
@@ -127,6 +140,8 @@ Two steps still need to be done manually, since the command doesn't know your ro
       .put("/users/:id", update_user)
       .delete("/users/:id", delete_user);
   ```
+
+- Add `mod entity` in main.rs, also add `mod migrations` if you wish to use the migrations app methods
 
 - Enable the database feature in `Cargo.toml`:
 
