@@ -52,13 +52,20 @@ rust_decimal = "1"
 dotenvy = "0.15.7"
 
 # OpenAPI
-schemars = { version = "1.2.0", features = ["chrono04", "uuid1", "rust_decimal1"] }
+schemars = { version = "1.2.0", features = [
+  "chrono04",
+  "uuid1",
+  "rust_decimal1",
+] }
 
 # JWT Authentication
-jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 
 # JWKS (optional)
-hyper-rustls = { version = "0.27.9", optional = true, features = ["http1", "http2"] }
+hyper-rustls = { version = "0.27.9", optional = true, features = [
+  "http1",
+  "http2",
+] }
 
 # Concurrent map (used by cache + rate-limit)
 dashmap = "6.2.1"
@@ -79,20 +86,28 @@ rapina-macros = { version = "0.13.0", path = "../rapina-macros/" }
 inventory = "0.3"
 
 # Database (optional)
-sea-orm = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
+sea-orm = { version = "2.0.0", optional = true, features = [
+  "runtime-tokio-rustls",
+] }
 
 # Database migration (optional)
-sea-orm-migration = { version = "1.1", optional = true, features = ["runtime-tokio-rustls"] }
+sea-orm-migration = { version = "2.0.0", optional = true, features = [
+  "runtime-tokio-rustls",
+] }
 async-trait = { version = "0.1", optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = { version = "0.23.0", optional = true }
 
 # Prometheus (optional)
-prometheus = { version = '0.13', optional = true }
+prometheus = { version = '0.14.0', optional = true }
 
 # OpenTelemetry OTLP export (optional)
 opentelemetry = { version = "0.32", optional = true }
 opentelemetry_sdk = { version = "0.32", optional = true }
-opentelemetry-otlp = { version = "0.32", optional = true, default-features = false, features = ["grpc-tonic", "trace", "internal-logs"] }
+opentelemetry-otlp = { version = "0.32", optional = true, default-features = false, features = [
+  "grpc-tonic",
+  "trace",
+  "internal-logs",
+] }
 tracing-opentelemetry = { version = "0.33", optional = true }
 
 # Redis cache backend (optional)
@@ -105,7 +120,11 @@ tower-layer = { version = "0.3", optional = true }
 # WebSocket (optional)
 hyper-tungstenite = { version = "0.30", optional = true }
 tokio-tungstenite = { version = "0.30", optional = true }
-futures-util = { version = "0.3", default-features = false, features = ["alloc", "sink", "async-await"] }
+futures-util = { version = "0.3", default-features = false, features = [
+  "alloc",
+  "sink",
+  "async-await",
+] }
 
 # Cron Scheduler (optional)
 tokio-cron-scheduler = { version = "0.15.1", optional = true }
@@ -155,11 +174,20 @@ default = ["compression", "rate-limit"]
 rate-limit = []
 compression = ["flate2"]
 database = ["sea-orm", "sea-orm-migration", "async-trait", "base64"]
-postgres = ["database", "sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
+postgres = [
+  "database",
+  "sea-orm/sqlx-postgres",
+  "sea-orm-migration/sqlx-postgres",
+]
 mysql = ["database", "sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 sqlite = ["database", "sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 metrics = ["prometheus"]
-otel = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "tracing-opentelemetry"]
+otel = [
+  "opentelemetry",
+  "opentelemetry_sdk",
+  "opentelemetry-otlp",
+  "tracing-opentelemetry",
+]
 otel-tls = ["otel", "opentelemetry-otlp/tls-roots"]
 cache-redis = ["redis"]
 multipart = ["multer"]

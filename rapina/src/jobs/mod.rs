@@ -260,9 +260,15 @@ where
         DbBackend::Postgres => backend::Postgres::build_insert_stmt(req, trace_id, id),
         DbBackend::MySql => backend::Mysql::build_insert_stmt(req, trace_id, id),
         DbBackend::Sqlite => backend::Sqlite::build_insert_stmt(req, trace_id, id),
+        _ => {
+            return Err(crate::error::Error::internal(format!(
+                "database backend {} not supported",
+                conn.get_database_backend().as_str()
+            )));
+        }
     };
 
-    conn.execute(stmt)
+    conn.execute_raw(stmt)
         .await
         .map_err(|e| crate::error::Error::internal(format!("failed to enqueue job: {e}")))?;
 

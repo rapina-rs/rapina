@@ -247,7 +247,7 @@ mod cursor_e2e {
         let backend = conn.get_database_backend();
         let schema = Schema::new(DbBackend::Sqlite);
         let stmt = schema.create_table_from_entity(entity::Entity);
-        conn.execute(backend.build(&stmt)).await.unwrap();
+        conn.execute_raw(backend.build(&stmt)).await.unwrap();
 
         for i in 1..=rows {
             entity::ActiveModel {

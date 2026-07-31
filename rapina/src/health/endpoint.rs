@@ -64,7 +64,7 @@ pub async fn readiness_check(
         if let Some(conn) = state.get::<sea_orm::DatabaseConnection>() {
             let backend = conn.get_database_backend();
             let db_ok = conn
-                .execute(Statement::from_string(backend, "SELECT 1"))
+                .execute_raw(Statement::from_string(backend, "SELECT 1"))
                 .await
                 .is_ok();
             checks.insert(

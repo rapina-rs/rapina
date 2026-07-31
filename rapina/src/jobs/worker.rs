@@ -34,7 +34,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use sea_orm::DatabaseConnection;
 use tracing::Instrument;
 
 use crate::jobs::backend::{Mysql, Postgres, Sqlite};
@@ -325,6 +325,7 @@ async fn claim_batch(
         sea_orm::DbBackend::Postgres => Postgres::claim_batch(db, config).await,
         sea_orm::DbBackend::MySql => Mysql::claim_batch(db, config).await,
         sea_orm::DbBackend::Sqlite => Sqlite::claim_batch(db, config).await,
+        _ => unreachable!("unsupported database backend"),
     }
 }
 
