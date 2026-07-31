@@ -122,7 +122,7 @@ matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 # In-memory span exporter for the otel propagation/export test.
 opentelemetry_sdk = { version = "0.32", features = ["testing"] }
-serial_test = "3"
+serial_test = "4"
 tempfile = "3"
 tower = { version = "0.5", features = ["limit"] }
 
