@@ -121,15 +121,15 @@ impl JwksClient {
 }
 
 pub fn default_validation() -> Validation {
-    let mut validation = Validation::default();
-
     // account for 10 seconds of clock skew per default
-    validation.leeway = 10;
-
     // enable aud (audience), exp (expiration) and nbf (not before) field validation
-    validation.validate_aud = true;
-    validation.validate_exp = true;
-    validation.validate_nbf = true;
+    let mut validation = Validation {
+        leeway: 10,
+        validate_aud: true,
+        validate_exp: true,
+        validate_nbf: true,
+        ..Validation::default()
+    };
 
     // require aud to be present in every token — aligns with jsonwebtoken crate recommendation
     validation.required_spec_claims.insert("aud".to_string());
