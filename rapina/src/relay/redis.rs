@@ -91,17 +91,37 @@ impl TopicReceiver for RedisTopicReceiver {
     fn recv(&mut self) -> RelayFuture<'_, Option<Arc<String>>> {
         Box::pin(async move {
             let stream = self.stream.as_mut()?;
-            let msg = stream.next().await?;
 
-            // Redundant today: each receiver subscribes to exactly one channel, so every
-            // message here already belongs to `self.topic`. Kept defensively, becomes
-            // necessary if a shared connection ever multiplexes multiple channels and we
-            // need to demux by channel name.
-            if msg.get_channel_name() != self.topic {
-                return None;
+            loop {
+                let Some(msg) = stream.next().await else {
+                    tracing::warn!(topic = %self.topic, "relay redis subscription stream ended");
+                    return None;
+                };
+
+                // Redundant today: each receiver subscribes to exactly one channel, so every
+                // message here already belongs to `self.topic`. Kept defensively, becomes
+                // necessary if a shared connection ever multiplexes multiple channels and we
+                // need to demux by channel name.
+                if msg.get_channel_name() != self.topic {
+                    tracing::warn!(
+                        topic = %self.topic,
+                        channel = %msg.get_channel_name(),
+                        "relay redis skipped message for unexpected channel"
+                    );
+                    continue;
+                }
+
+                match msg.get_payload::<String>() {
+                    Ok(payload) => return Some(Arc::new(payload)),
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            topic = %self.topic,
+                            "relay redis skipped undecodable message"
+                        );
+                    }
+                }
             }
-
-            msg.get_payload::<String>().ok().map(Arc::new)
         })
     }
 }
@@ -143,6 +163,54 @@ mod tests {
             .push(topic, Arc::new(r#"{"ok":true}"#.to_owned()))
             .await
             .expect("Redis publish failed");
+
+        let msg = timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .expect("timed out waiting for Redis relay message")
+            .expect("Redis relay subscription closed");
+
+        assert_eq!(&*msg, r#"{"ok":true}"#);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_redis_relay_skips_mismatched_channel() {
+        let subscriber = RedisRelayBackend::connect("redis://127.0.0.1:6379")
+            .await
+            .expect("Redis connection failed for subscriber");
+        let publisher = RedisRelayBackend::connect("redis://127.0.0.1:6379")
+            .await
+            .expect("Redis connection failed for publisher");
+
+        let topic = "rapina:test:relay:expected";
+        let foreign_topic = "rapina:test:relay:foreign";
+        let mut pubsub = subscriber
+            .client
+            .get_async_pubsub()
+            .await
+            .expect("Redis Pub/Sub connection failed");
+        pubsub
+            .subscribe(foreign_topic)
+            .await
+            .expect("Redis foreign-topic subscribe failed");
+        pubsub
+            .subscribe(topic)
+            .await
+            .expect("Redis expected-topic subscribe failed");
+        let (_sink, stream) = pubsub.split();
+        let mut receiver = RedisTopicReceiver {
+            stream: Some(stream),
+            topic: topic.to_owned(),
+        };
+
+        publisher
+            .push(foreign_topic, Arc::new(r#"{"foreign":true}"#.to_owned()))
+            .await
+            .expect("Redis foreign-topic publish failed");
+        publisher
+            .push(topic, Arc::new(r#"{"ok":true}"#.to_owned()))
+            .await
+            .expect("Redis expected-topic publish failed");
 
         let msg = timeout(Duration::from_secs(2), receiver.recv())
             .await
