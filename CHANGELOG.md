@@ -9,6 +9,40 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+### Added
+- **Extended route macro OpenAPI options**: Route macros (`#[get]`, `#[post]`, `#[put]`, `#[patch]`, `#[delete]`) now accept four new optional parameters for richer OpenAPI descriptions:
+  - `id = "operation.id"` — sets a stable, explicit `operationId` in the OpenAPI spec, overriding the default (handler function name). Duplicate `id` values across public routes are caught at startup.
+  - `summary = "Short description"` — sets the one-line OpenAPI `summary` field, overriding the auto-generated humanized name.
+  - `tags = ["tag1", "tag2"]` — attaches OpenAPI tags to the operation, enabling grouping in tools like Swagger UI.
+  - `deprecated = true` — marks the operation as deprecated in the OpenAPI spec.
+
+  Example:
+  ```rust
+  #[post(
+      "/users",
+      id = "users.create",
+      summary = "Create a user",
+      tags = ["users"],
+  )]
+  async fn create_user(body: Json<CreateUser>) -> Json<User> { /* ... */ }
+  ```
+
+- **Route `description` now propagated to OpenAPI**: The `description` macro attribute (and rustdoc fallback) was previously captured but never written to the OpenAPI `Operation::description` field. It is now correctly set.
+
+- **Swagger UI endpoint** (`swagger-ui` feature): Serving the interactive Swagger UI is now built into the framework. Enable it with the `swagger-ui` Cargo feature and call `.swagger_ui()` on the app builder:
+  ```rust
+  Rapina::new()
+      .openapi("My API", "1.0.0")
+      .swagger_ui()                     // serves at /__rapina/swagger/
+      // or .swagger_ui_at("/docs/")    // custom path
+      .listen("127.0.0.1:3000")
+      .await
+  ```
+  The UI loads the Swagger UI bundle from the unpkg CDN and points it at `/__rapina/openapi.json`. Requires OpenAPI to be enabled.
+
+### Fixed
+- **`description` attribute not reaching OpenAPI spec**: Route descriptions set via `description = "..."` or rustdoc `///` comments were collected but never serialized into the OpenAPI `Operation::description` field. This is now fixed.
+
 ## [0.13.0] - 2026-06-25
 
 ### Added

@@ -44,6 +44,14 @@ pub struct RouteConfig {
     pub header_parameters: Vec<HeaderParamInfo>,
     /// Human-readable description of what this handler does.
     pub description: Option<&'static str>,
+    /// Stable OpenAPI operationId override (from `id = "..."` on the route macro).
+    pub operation_id: Option<&'static str>,
+    /// Short one-line OpenAPI summary (from `summary = "..."` on the route macro).
+    pub summary: Option<&'static str>,
+    /// OpenAPI tags (from `tags = [...]` on the route macro).
+    pub tags: Vec<String>,
+    /// Whether the operation is deprecated (from `deprecated = true` on the route macro).
+    pub deprecated: bool,
 }
 
 impl Default for RouteConfig {
@@ -57,6 +65,10 @@ impl Default for RouteConfig {
             error_responses: Vec::new(),
             header_parameters: Vec::new(),
             description: None,
+            operation_id: None,
+            summary: None,
+            tags: Vec::new(),
+            deprecated: false,
         }
     }
 }
@@ -71,6 +83,10 @@ pub(crate) struct Route {
     pub(crate) error_responses: Vec<ErrorVariant>,
     pub(crate) header_parameters: Vec<HeaderParamInfo>,
     pub(crate) description: Option<&'static str>,
+    pub(crate) operation_id: Option<&'static str>,
+    pub(crate) summary: Option<&'static str>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) deprecated: bool,
     handler: HandlerFn,
 }
 
@@ -152,6 +168,10 @@ impl Router {
             error_responses: config.error_responses,
             header_parameters: config.header_parameters,
             description: config.description,
+            operation_id: config.operation_id,
+            summary: config.summary,
+            tags: config.tags,
+            deprecated: config.deprecated,
             handler,
         };
 
@@ -222,6 +242,10 @@ impl Router {
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
                 description: H::description(),
+                operation_id: H::operation_id(),
+                summary: H::summary(),
+                tags: H::tags().iter().map(|s| s.to_string()).collect(),
+                deprecated: H::deprecated(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -244,6 +268,10 @@ impl Router {
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
                 description: H::description(),
+                operation_id: H::operation_id(),
+                summary: H::summary(),
+                tags: H::tags().iter().map(|s| s.to_string()).collect(),
+                deprecated: H::deprecated(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -284,6 +312,10 @@ impl Router {
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
                 description: H::description(),
+                operation_id: H::operation_id(),
+                summary: H::summary(),
+                tags: H::tags().iter().map(|s| s.to_string()).collect(),
+                deprecated: H::deprecated(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -324,6 +356,10 @@ impl Router {
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
                 description: H::description(),
+                operation_id: H::operation_id(),
+                summary: H::summary(),
+                tags: H::tags().iter().map(|s| s.to_string()).collect(),
+                deprecated: H::deprecated(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -364,6 +400,10 @@ impl Router {
                 error_responses: H::error_responses(),
                 header_parameters: H::header_parameters(),
                 description: H::description(),
+                operation_id: H::operation_id(),
+                summary: H::summary(),
+                tags: H::tags().iter().map(|s| s.to_string()).collect(),
+                deprecated: H::deprecated(),
             },
             move |req, params, state| {
                 let h = handler.clone();
@@ -396,7 +436,7 @@ impl Router {
         self.routes
             .iter()
             .map(|(method, route)| {
-                RouteInfo::new(
+                let mut info = RouteInfo::new(
                     method.as_str(),
                     &route.pattern,
                     &route.handler_name,
@@ -407,7 +447,12 @@ impl Router {
                     route.error_responses.clone(),
                     route.header_parameters.clone(),
                     route.description,
-                )
+                );
+                info.operation_id = route.operation_id.map(|s| s.to_string());
+                info.summary = route.summary.map(|s| s.to_string());
+                info.tags = route.tags.clone();
+                info.deprecated = route.deprecated;
+                info
             })
             .collect()
     }

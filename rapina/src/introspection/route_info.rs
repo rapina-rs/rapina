@@ -48,6 +48,20 @@ pub struct RouteInfo {
     /// Human-readable description of what this handler does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Stable OpenAPI `operationId` override (from `id = "..."` on the route macro).
+    /// When `None` the handler name is used as the `operationId`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    /// Short one-line OpenAPI summary (from `summary = "..."` on the route macro).
+    /// When `None` a humanized version of the handler name is auto-generated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// OpenAPI tags for grouping operations (from `tags = [...]` on the route macro).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Whether the operation is marked deprecated (from `deprecated = true` on the route macro).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub deprecated: bool,
 }
 
 impl RouteInfo {
@@ -83,6 +97,10 @@ impl RouteInfo {
             error_responses,
             header_parameters,
             description: description.map(|s| s.into()),
+            operation_id: None,
+            summary: None,
+            tags: Vec::new(),
+            deprecated: false,
         }
     }
 }

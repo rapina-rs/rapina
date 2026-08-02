@@ -61,6 +61,10 @@ pub struct Operation {
     #[serde(rename = "operationId", skip_serializing_if = "Option::is_none")]
     pub operation_id: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<bool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<Parameter>,
     #[serde(rename = "requestBody", skip_serializing_if = "Option::is_none")]
     pub request_body: Option<RequestBody>,
@@ -81,6 +85,8 @@ impl Default for Operation {
             summary: None,
             description: None,
             operation_id: None,
+            tags: Vec::new(),
+            deprecated: None,
             parameters: Vec::new(),
             request_body: None,
             responses,
@@ -238,11 +244,17 @@ pub fn build_openapi_spec(
             continue;
         }
 
-        if !seen_operation_ids.insert(&route.handler_name) {
+        // Prefer explicit `id` override, fall back to handler_name for uniqueness check
+        let effective_op_id = route
+            .operation_id
+            .as_deref()
+            .unwrap_or(&route.handler_name);
+
+        if !seen_operation_ids.insert(effective_op_id) {
             panic!(
-                "Duplicate operationId '{}' in OpenAPI spec. Each handler must have a unique name. \
-                 Found duplicate on {} {}.",
-                route.handler_name, route.method, route.path
+                "Duplicate operationId '{}' in OpenAPI spec. Each handler must have a unique name \
+                 (or unique `id` override). Found duplicate on {} {}.",
+                effective_op_id, route.method, route.path
             );
         }
         // Extract path parameters (e.g., :id -> id)
@@ -303,11 +315,17 @@ pub fn build_openapi_spec(
             }
         };
 
-        let summary = humanize_handler_name(&route.handler_name);
+        let summary = route
+            .summary
+            .clone()
+            .unwrap_or_else(|| humanize_handler_name(&route.handler_name));
 
         let mut operation = Operation {
             summary: Some(summary),
-            operation_id: Some(route.handler_name.clone()),
+            description: route.description.clone(),
+            operation_id: Some(effective_op_id.to_string()),
+            tags: route.tags.clone(),
+            deprecated: if route.deprecated { Some(true) } else { None },
             parameters: params,
             ..Default::default()
         };
@@ -815,5 +833,169 @@ mod tests {
         let spec = build_openapi_spec("Test API", "1.0.0", &routes);
         assert!(spec.paths.contains_key("/posts"));
         assert!(!spec.paths.contains_key("/__rapina/routes"));
+    }
+
+    #[test]
+    fn test_explicit_operation_id_overrides_handler_name() {
+        let mut route = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route.operation_id = Some("users.list".to_string());
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let get_op = spec.paths.get("/users").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_op.operation_id.as_deref(), Some("users.list"));
+    }
+
+    #[test]
+    fn test_explicit_summary_overrides_humanized_name() {
+        let mut route = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route.summary = Some("Browse all users".to_string());
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let get_op = spec.paths.get("/users").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_op.summary.as_deref(), Some("Browse all users"));
+    }
+
+    #[test]
+    fn test_description_set_from_route() {
+        let route = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            Some("Returns a paginated list of users"),
+        );
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let get_op = spec.paths.get("/users").unwrap().get.as_ref().unwrap();
+        assert_eq!(
+            get_op.description.as_deref(),
+            Some("Returns a paginated list of users")
+        );
+    }
+
+    #[test]
+    fn test_tags_added_to_operation() {
+        let mut route = RouteInfo::new(
+            "POST",
+            "/users",
+            "create_user",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route.tags = vec!["users".to_string(), "admin".to_string()];
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let post_op = spec.paths.get("/users").unwrap().post.as_ref().unwrap();
+        assert_eq!(post_op.tags, vec!["users", "admin"]);
+    }
+
+    #[test]
+    fn test_deprecated_flag_in_operation() {
+        let mut route = RouteInfo::new(
+            "GET",
+            "/old",
+            "old_endpoint",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route.deprecated = true;
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let get_op = spec.paths.get("/old").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_op.deprecated, Some(true));
+    }
+
+    #[test]
+    fn test_no_deprecated_when_false() {
+        let route = RouteInfo::new(
+            "GET",
+            "/active",
+            "active_endpoint",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+
+        let spec = build_openapi_spec("Test API", "1.0.0", &[route]);
+        let get_op = spec.paths.get("/active").unwrap().get.as_ref().unwrap();
+        assert_eq!(get_op.deprecated, None);
+    }
+
+    #[test]
+    fn test_explicit_operation_id_used_for_uniqueness_check() {
+        // Two handlers with different function names but same explicit `id` should panic
+        let mut route1 = RouteInfo::new(
+            "GET",
+            "/users",
+            "list_users",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route1.operation_id = Some("shared.id".to_string());
+
+        let mut route2 = RouteInfo::new(
+            "GET",
+            "/items",
+            "list_items",
+            None,
+            None,
+            None::<String>,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None::<String>,
+        );
+        route2.operation_id = Some("shared.id".to_string());
+
+        let result = std::panic::catch_unwind(|| {
+            build_openapi_spec("Test API", "1.0.0", &[route1, route2])
+        });
+        assert!(result.is_err(), "duplicate explicit operationId should panic");
     }
 }

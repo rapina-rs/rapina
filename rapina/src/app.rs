@@ -78,6 +78,10 @@ pub struct Rapina {
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
     pub(crate) openapi_version: String,
+    /// Path where Swagger UI is served (`None` = disabled).
+    /// Requires the `swagger-ui` feature and OpenAPI to be enabled.
+    #[cfg(feature = "swagger-ui")]
+    pub(crate) swagger_ui_path: Option<String>,
     /// Authentication configuration (if enabled)
     pub(crate) auth_config: Option<AuthConfig>,
     /// Public routes registry
@@ -143,6 +147,8 @@ impl Rapina {
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
+            #[cfg(feature = "swagger-ui")]
+            swagger_ui_path: None,
             auth_config: None,
             public_routes: PublicRoutes::new(),
             auto_discover: false,
@@ -808,6 +814,56 @@ impl Rapina {
         self
     }
 
+    /// Enables the Swagger UI at the default path (`/__rapina/swagger/`).
+    ///
+    /// Requires the `swagger-ui` Cargo feature and OpenAPI to be enabled via
+    /// [`.openapi()`](Self::openapi). The UI loads the Swagger UI bundle from
+    /// a CDN and displays the spec served at `/__rapina/openapi.json`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     Rapina::new()
+    ///         .openapi("My API", "1.0.0")
+    ///         .swagger_ui()
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    #[cfg(feature = "swagger-ui")]
+    pub fn swagger_ui(self) -> Self {
+        self.swagger_ui_at("/__rapina/swagger/")
+    }
+
+    /// Enables the Swagger UI at a custom path.
+    ///
+    /// Requires the `swagger-ui` Cargo feature and OpenAPI to be enabled via
+    /// [`.openapi()`](Self::openapi).
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     Rapina::new()
+    ///         .openapi("My API", "1.0.0")
+    ///         .swagger_ui_at("/docs/")
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    #[cfg(feature = "swagger-ui")]
+    pub fn swagger_ui_at(mut self, path: impl Into<String>) -> Self {
+        self.swagger_ui_path = Some(path.into());
+        self
+    }
+
     /// Enables response caching with the given configuration.
     ///
     /// Caches GET responses that use `#[cache(ttl = N)]` and auto-invalidates
@@ -1086,6 +1142,25 @@ impl Rapina {
             self.router =
                 self.router
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
+        }
+
+        #[cfg(feature = "swagger-ui")]
+        if let Some(ref ui_path) = self.swagger_ui_path {
+            if !self.openapi {
+                tracing::warn!(
+                    "Swagger UI is enabled at '{}' but OpenAPI is not configured. \
+                     Call .openapi(title, version) before .swagger_ui() to enable it.",
+                    ui_path
+                );
+            }
+            let spec_url = "/__rapina/openapi.json".to_string();
+            let config =
+                crate::openapi::SwaggerUiConfig::new(ui_path.clone(), spec_url);
+            self.state = self.state.with(config);
+            let ui_path_owned = ui_path.clone();
+            self.router = self
+                .router
+                .get_named(&ui_path_owned, "swagger_ui", crate::openapi::swagger_ui_handler);
         }
 
         // Sort routes so static segments take priority over parameterized ones.
