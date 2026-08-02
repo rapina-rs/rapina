@@ -723,6 +723,23 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_custom_pk_keeps_column_type() {
+        let input = quote! {
+            #[primary_key(code)]
+            #[timestamps(none)]
+            Region {
+                code: Text,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let output = generate_schema(analyzed).to_string();
+
+        assert!(output.contains("column_type = \"Text\""));
+    }
+
+    #[test]
     fn test_generate_default_pk_unchanged() {
         // Entities without #[primary_key] should still get auto id
         let input = quote! {
