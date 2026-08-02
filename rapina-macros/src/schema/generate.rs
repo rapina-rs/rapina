@@ -118,21 +118,47 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     }
 }
 
+fn sea_orm_parts(field: &AnalyzedField) -> Vec<TokenStream> {
+    let mut parts = Vec::new();
+    if field.attrs.unique {
+        parts.push(quote! {unique});
+    }
+    if field.attrs.indexed {
+        parts.push(quote! {indexed});
+    }
+    if let Some(ref col_name) = field.attrs.column_name {
+        parts.push(quote! {column_name = #col_name});
+    }
+    parts
+}
+
+fn build_field_attr(parts: &[TokenStream], column_type: Option<TokenStream>) -> TokenStream {
+    match (parts.is_empty(), column_type) {
+        (true, ct) => ct.unwrap_or_default(),
+        (false, Some(ct)) => quote! {#[sea_orm(#(#parts), *)] #ct },
+        (false, None) => quote! {#[sea_orm(#(#parts), *)]},
+    }
+}
+
 fn generate_custom_pk_fields(entity: &AnalyzedEntity, pk_cols: &[String]) -> TokenStream {
     let fields: Vec<TokenStream> = pk_cols
         .iter()
         .filter_map(|col_name| {
             let field = entity.fields.iter().find(|f| f.name == col_name)?;
-            if let FieldType::Scalar { scalar, .. } = &field.ty {
-                let field_name = &field.name;
-                let rust_type = scalar.rust_type();
-                Some(quote! {
-                    #[sea_orm(primary_key, auto_increment = false)]
-                    pub #field_name: #rust_type,
-                })
-            } else {
-                None
-            }
+            let FieldType::Scalar { scalar, .. } = &field.ty else {
+                return None;
+            };
+            let field_name = &field.name;
+            let rust_type = scalar.rust_type();
+
+            let mut parts = vec![quote! {primary_key}, quote! {auto_increment = false}];
+            parts.extend(sea_orm_parts(field));
+            let field_attr = build_field_attr(&parts, scalar.column_type_attr());
+
+            Some(quote! {
+                #field_attr
+                pub #field_name: #rust_type,
+            })
         })
         .collect();
 
@@ -160,51 +186,12 @@ fn generate_model_field(field: &AnalyzedField, schema: &AnalyzedSchema) -> Optio
     match &field.ty {
         FieldType::Scalar { scalar, optional } => {
             let rust_type = scalar.rust_type();
-            let column_type_attr = scalar.column_type_attr();
-
             let final_type = if *optional {
                 quote! { Option<#rust_type> }
             } else {
                 rust_type
             };
-
-            // Build sea_orm attribute parts
-            let mut sea_orm_parts: Vec<TokenStream> = Vec::new();
-
-            // Add unique if specified
-            if field.attrs.unique {
-                sea_orm_parts.push(quote! { unique });
-            }
-
-            // Add indexed if specified
-            if field.attrs.indexed {
-                sea_orm_parts.push(quote! { indexed });
-            }
-
-            // Add custom column name if specified
-            if let Some(ref col_name) = field.attrs.column_name {
-                sea_orm_parts.push(quote! { column_name = #col_name });
-            }
-
-            // Combine column_type_attr with other attributes
-            let field_attr = if sea_orm_parts.is_empty() {
-                column_type_attr.unwrap_or_default()
-            } else if let Some(col_type) = column_type_attr {
-                // Extract the column_type value and combine
-                let col_type_str = col_type.to_string();
-                if col_type_str.contains("column_type") {
-                    // Parse out the column_type value
-                    let combined = quote! {
-                        #[sea_orm(#(#sea_orm_parts),*)]
-                        #col_type
-                    };
-                    combined
-                } else {
-                    quote! { #[sea_orm(#(#sea_orm_parts),*)] }
-                }
-            } else {
-                quote! { #[sea_orm(#(#sea_orm_parts),*)] }
-            };
+            let field_attr = build_field_attr(&sea_orm_parts(field), scalar.column_type_attr());
 
             Some(quote! {
                 #field_attr
