@@ -30,6 +30,24 @@ schema! {
         post: TestPost,
         author: Option<TestUser>,
     }
+
+    #[table_name = "test_tx_labels"]
+    #[timestamps(none)]
+    #[primary_key(tx_id, label_id)]
+    TestTxLabel {
+        #[column = "transaction_id"]
+        tx_id: i32,
+        label_id: i32,
+    }
+
+    #[table_name = "test_regions"]
+    #[timestamps(none)]
+    #[primary_key(code)]
+    TestRegion {
+        #[column = "region_code"]
+        code: Text,
+    }
+
 }
 
 #[test]
@@ -121,4 +139,11 @@ fn test_entity_traits_implemented() {
     let _ = test_user::Entity::table_name(&test_user::Entity);
     let _ = test_post::Entity::table_name(&test_post::Entity);
     let _ = test_comment::Entity::table_name(&test_comment::Entity);
+}
+
+#[test]
+fn test_composite_pk_respects_column_rename() {
+    assert_eq!(test_tx_label::Column::TxId.as_str(), "transaction_id");
+    assert_eq!(test_tx_label::Column::LabelId.as_str(), "label_id");
+    assert_eq!(test_region::Column::Code.as_str(), "region_code");
 }
