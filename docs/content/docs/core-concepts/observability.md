@@ -52,7 +52,7 @@ Enable the `otel` feature flag:
 
 ```toml
 [dependencies]
-rapina = { version = "0.13.0", features = ["otel"] }
+rapina = { version = "0.13.1", features = ["otel"] }
 ```
 
 Then configure the exporter with `with_telemetry`:
