@@ -15,7 +15,7 @@ Add the feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = { version = "0.13.0", features = ["graphql"] }
+rapina = { version = "0.13.1", features = ["graphql"] }
 async-graphql = "7.0"
 ```
 
