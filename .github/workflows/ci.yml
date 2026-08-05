@@ -188,6 +188,31 @@ jobs:
       - name: Check MSRV
         run: cargo check --locked --all-targets
 
+  publish-dry-run:
+    name: Publish Dry Run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-publish-
+
+      # Packaging builds each crate from its own tarball, so this catches paths
+      # that escape a crate root (include_str!, include, readme) before a tag fires.
+      - name: Publish dry run
+        run: cargo publish --workspace --dry-run --locked
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
