@@ -59,6 +59,28 @@ pub trait Handler: Clone + Send + Sync + 'static {
         None
     }
 
+    /// Stable OpenAPI `operationId` override set via `id = "..."` on the route macro.
+    /// When absent the handler name is used.
+    fn operation_id() -> Option<&'static str> {
+        None
+    }
+
+    /// Short one-line OpenAPI summary set via `summary = "..."` on the route macro.
+    /// When absent a humanized version of the handler name is auto-generated.
+    fn summary() -> Option<&'static str> {
+        None
+    }
+
+    /// OpenAPI tags set via `tags = [...]` on the route macro.
+    fn tags() -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Whether this operation is marked deprecated via `deprecated = true` on the route macro.
+    fn deprecated() -> bool {
+        false
+    }
+
     /// Handle the request.
     fn call(&self, req: Request<Incoming>, params: PathParams, state: Arc<AppState>) -> BoxFuture;
 }

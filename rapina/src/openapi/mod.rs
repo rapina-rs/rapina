@@ -5,6 +5,10 @@
 
 mod endpoint;
 mod spec;
+#[cfg(feature = "swagger-ui")]
+pub mod swagger_ui;
 
 pub use endpoint::*;
 pub use spec::*;
+#[cfg(feature = "swagger-ui")]
+pub use swagger_ui::{SwaggerUiConfig, swagger_ui_handler};
