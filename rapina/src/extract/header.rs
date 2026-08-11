@@ -1,9 +1,12 @@
-//! Typed header extractor.
+//! Header extractors.
 //!
 //! `Header<T>` extracts a single HTTP header and parses it into `T` via the
 //! [`FromHeaderStr`] trait.  The header name is derived automatically from the
 //! Rust identifier (snake_case → kebab-case) or can be overridden with the
 //! `#[header("explicit-name")]` attribute on the handler parameter.
+//!
+//! [`Headers`] extracts the whole [`http::HeaderMap`] instead, for when the
+//! header names are only known at runtime.
 //!
 //! # Examples
 //!
@@ -27,8 +30,11 @@
 
 use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::error::Error;
+use crate::extract::{FromRequestParts, PathParams};
+use crate::state::AppState;
 
 /// A typed, named header extractor.
 ///
@@ -226,6 +232,65 @@ pub fn extract_optional_header<T: FromHeaderStr>(
     })
 }
 
+// ── Headers ──────────────────────────────────────────────────────────────────
+
+/// Provides access to all request headers as a raw [`http::HeaderMap`].
+///
+/// Extracts the entire header map from the request. Use this when you need to
+/// iterate over all headers or access multiple headers dynamically.
+///
+/// # Distinction from `Header<T>`
+///
+/// - `Headers` — gives you the full [`http::HeaderMap`]; access headers by
+///   name at runtime. No parsing is performed automatically.
+/// - [`Header<T>`](crate::extract::Header) — extracts and parses a single,
+///   named header into a typed value `T` at compile time via the proc-macro.
+///   Prefer `Header<T>` when you know the header name upfront.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[get("/auth")]
+/// async fn check_auth(headers: Headers) -> Result<String> {
+///     let auth = headers.get("authorization")
+///         .ok_or_else(|| Error::unauthorized("missing auth header"))?;
+///     Ok("Authenticated".to_string())
+/// }
+/// ```
+#[derive(Debug)]
+pub struct Headers(pub http::HeaderMap);
+
+impl Headers {
+    /// Gets a header value by name.
+    pub fn get(&self, key: &str) -> Option<&http::HeaderValue> {
+        self.0.get(key)
+    }
+
+    /// Consumes the extractor and returns the inner HeaderMap.
+    pub fn into_inner(self) -> http::HeaderMap {
+        self.0
+    }
+}
+
+impl Deref for Headers {
+    type Target = http::HeaderMap;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromRequestParts for Headers {
+    async fn from_request_parts(
+        parts: &http::request::Parts,
+        _params: &PathParams,
+        _state: &Arc<AppState>,
+    ) -> Result<Self, Error> {
+        Ok(Headers(parts.headers.clone()))
+    }
+}
+
 // ── Macro-generated FromRequestParts helper ──────────────────────────────────
 //
 // The rapina-macros crate calls this when it emits the blanket impl for a
@@ -239,7 +304,7 @@ pub use extract_optional_header as __extract_optional_header;
 
 #[cfg(test)]
 mod tests {
-    use crate::test::TestRequest;
+    use crate::test::{TestRequest, empty_params, empty_state};
 
     use super::*;
 
@@ -363,5 +428,47 @@ mod tests {
     fn test_header_value_f64() {
         assert_eq!(f64::from_header_str("1.5").unwrap(), 1.5_f64);
         assert!(f64::from_header_str("abc").is_err());
+    }
+
+    // Headers extractor tests
+    #[tokio::test]
+    async fn test_headers_extractor() {
+        let (parts, _) = TestRequest::get("/")
+            .header("x-custom", "value")
+            .header("authorization", "Bearer token")
+            .into_parts();
+
+        let result = Headers::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+        assert!(result.is_ok());
+
+        let headers = result.unwrap();
+        assert_eq!(headers.get("x-custom").unwrap().to_str().unwrap(), "value");
+        assert_eq!(
+            headers.get("authorization").unwrap().to_str().unwrap(),
+            "Bearer token"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_headers_extractor_missing_header() {
+        let (parts, _) = TestRequest::get("/").into_parts();
+        let result = Headers::from_request_parts(&parts, &empty_params(), &empty_state()).await;
+
+        assert!(result.is_ok());
+        let headers = result.unwrap();
+        assert!(headers.get("x-nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_headers_into_inner() {
+        let headers = Headers(http::HeaderMap::new());
+        let inner = headers.into_inner();
+        assert!(inner.is_empty());
+    }
+
+    #[test]
+    fn test_headers_autoderef() {
+        let headers = Headers(http::HeaderMap::new());
+        assert!(headers.is_empty());
     }
 }
