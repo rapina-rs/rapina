@@ -50,6 +50,31 @@ schema! {
 
 }
 
+// Join table whose composite primary key is made of entity-typed fields (#619).
+// Each PK column is a belongs_to relationship; the generated FK columns must
+// keep their verbatim names (tx_id / label_id, no extra _id suffix) and adopt
+// the target entities' primary-key scalar types.
+schema! {
+    #[table_name = "transactions"]
+    Tx {
+        name: String,
+    }
+
+    #[table_name = "labels"]
+    Label {
+        #[unique]
+        name: String,
+    }
+
+    #[table_name = "transaction_labels"]
+    #[timestamps(none)]
+    #[primary_key(tx_id, label_id)]
+    TxLabel {
+        tx_id: Tx,
+        label_id: Label,
+    }
+}
+
 #[test]
 fn test_user_model_compiles() {
     use test_user::Model;
@@ -146,4 +171,26 @@ fn test_composite_pk_respects_column_rename() {
     assert_eq!(test_tx_label::Column::TxId.as_str(), "transaction_id");
     assert_eq!(test_tx_label::Column::LabelId.as_str(), "label_id");
     assert_eq!(test_region::Column::Code.as_str(), "region_code");
+}
+
+#[test]
+fn test_join_table_entity_typed_primary_key_compiles() {
+    use tx_label::Model;
+
+    // The composite PK columns are the verbatim field names (no _id suffix)
+    // and resolve to the target entities' i32 primary keys. A join table has
+    // no auto-generated `id` column.
+    let link = Model {
+        tx_id: 1,
+        label_id: 2,
+    };
+
+    assert_eq!(link.tx_id, 1);
+    assert_eq!(link.label_id, 2);
+
+    // Relations to both parent entities are generated (named after the fields).
+    let _ = tx_label::Relation::TxId;
+    let _ = tx_label::Relation::LabelId;
+
+    let _ = tx_label::Entity::table_name(&tx_label::Entity);
 }

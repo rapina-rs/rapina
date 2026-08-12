@@ -76,9 +76,111 @@ pub fn analyze_schema(schema: Schema) -> Result<AnalyzedSchema> {
         analyzed_entities.push(analyze_entity(entity, &registry)?);
     }
 
-    Ok(AnalyzedSchema {
+    let analyzed = AnalyzedSchema {
         entities: analyzed_entities,
-    })
+    };
+
+    validate_relationship_primary_keys(&analyzed)?;
+
+    Ok(analyzed)
+}
+
+fn validate_relationship_primary_keys(schema: &AnalyzedSchema) -> Result<()> {
+    for entity in &schema.entities {
+        let Some(pk_cols) = &entity.attrs.primary_key else {
+            continue;
+        };
+        if pk_cols.len() != 1 {
+            continue;
+        }
+
+        let Some(field) = entity.fields.iter().find(|field| field.name == pk_cols[0]) else {
+            continue;
+        };
+        let FieldType::BelongsTo { target, .. } = &field.ty else {
+            continue;
+        };
+
+        let mut visiting = HashSet::from([entity.name.to_string()]);
+        if primary_key_relationship_has_cycle(target, schema, &mut visiting) {
+            return Err(syn::Error::new(
+                field.name.span(),
+                format!(
+                    "schema relationship `{}.{}` forms a primary key cycle; primary-key belongs_to relationships must resolve to a scalar primary key column",
+                    entity.name, field.name
+                ),
+            ));
+        }
+    }
+
+    for entity in &schema.entities {
+        for field in &entity.fields {
+            let FieldType::BelongsTo { target, .. } = &field.ty else {
+                continue;
+            };
+
+            let Some(target_entity) = schema.entities.iter().find(|e| &e.name == target) else {
+                continue;
+            };
+            let Some(pk_cols) = &target_entity.attrs.primary_key else {
+                continue;
+            };
+
+            if pk_cols.len() > 1 {
+                let pk_list = pk_cols
+                    .iter()
+                    .map(|col| format!("`{}`", col))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                return Err(syn::Error::new(
+                    field.name.span(),
+                    format!(
+                        "schema relationship `{}.{}` targets `{}` with composite primary key ({}); belongs_to relationships currently require a target with a single primary key column",
+                        entity.name, field.name, target_entity.name, pk_list
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn primary_key_relationship_has_cycle(
+    target: &Ident,
+    schema: &AnalyzedSchema,
+    visiting: &mut HashSet<String>,
+) -> bool {
+    let target_name = target.to_string();
+    if !visiting.insert(target_name.clone()) {
+        return true;
+    }
+
+    let has_cycle = schema
+        .entities
+        .iter()
+        .find(|entity| entity.name == target_name)
+        .and_then(|entity| {
+            let pk_cols = entity.attrs.primary_key.as_ref()?;
+            if pk_cols.len() != 1 {
+                return None;
+            }
+
+            let pk_field = entity
+                .fields
+                .iter()
+                .find(|field| field.name == pk_cols[0])?;
+            let FieldType::BelongsTo { target, .. } = &pk_field.ty else {
+                return None;
+            };
+
+            Some(primary_key_relationship_has_cycle(target, schema, visiting))
+        })
+        .unwrap_or(false);
+
+    visiting.remove(&target_name);
+    has_cycle
 }
 
 fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<AnalyzedEntity> {
@@ -122,17 +224,36 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
             }
         }
 
-        // Validate PK columns are scalar types (not relationships)
+        // Validate PK columns are database columns. A (required) belongs_to field
+        // is allowed because it generates a non-null FK column using the target
+        // entity's PK type. A has_many field has no column, and an optional
+        // belongs_to would produce a nullable column, neither of which can be a
+        // primary key.
         for field in &analyzed_fields {
             let fname = field.name.to_string();
-            if pk_cols.contains(&fname) && !matches!(field.ty, FieldType::Scalar { .. }) {
-                return Err(syn::Error::new(
-                    field.name.span(),
-                    format!(
-                        "primary_key column '{}' must be a scalar type, not a relationship",
-                        fname
-                    ),
-                ));
+            if !pk_cols.contains(&fname) {
+                continue;
+            }
+            match &field.ty {
+                FieldType::HasMany { .. } => {
+                    return Err(syn::Error::new(
+                        field.name.span(),
+                        format!(
+                            "primary_key column '{}' cannot be a has_many relationship",
+                            fname
+                        ),
+                    ));
+                }
+                FieldType::BelongsTo { optional: true, .. } => {
+                    return Err(syn::Error::new(
+                        field.name.span(),
+                        format!(
+                            "primary_key column '{}' cannot be an optional relationship; a primary key cannot be nullable",
+                            fname
+                        ),
+                    ));
+                }
+                _ => {}
             }
         }
     }
@@ -437,24 +558,128 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_primary_key_must_be_scalar() {
+    fn test_analyze_primary_key_allows_belongs_to_fields() {
         let input = quote! {
-            User {
-                email: String,
+            #[table_name = "transactions"]
+            Tx {
+                name: String,
             }
 
-            #[primary_key(author)]
+            #[table_name = "labels"]
+            Label {
+                #[unique]
+                name: String,
+            }
+
+            #[table_name = "transaction_labels"]
             #[timestamps(none)]
+            #[primary_key(tx_id, label_id)]
+            TxLabel {
+                tx_id: Tx,
+                label_id: Label,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        let tx_label = &analyzed.entities[2];
+        assert_eq!(
+            tx_label.attrs.primary_key,
+            Some(vec!["tx_id".to_string(), "label_id".to_string()])
+        );
+        assert!(matches!(tx_label.fields[0].ty, FieldType::BelongsTo { .. }));
+        assert!(matches!(tx_label.fields[1].ty, FieldType::BelongsTo { .. }));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_has_many_fields() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+            }
+
             Post {
-                author: User,
                 title: String,
+            }
+
+            #[primary_key(posts)]
+            #[timestamps(none)]
+            UserPosts {
+                posts: Vec<Post>,
             }
         };
 
         let parsed = parse_schema(input).unwrap();
         let result = analyze_schema(parsed);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("scalar type"));
+        assert!(result.unwrap_err().to_string().contains("has_many"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_optional_belongs_to() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            #[primary_key(user_id)]
+            #[timestamps(none)]
+            Membership {
+                user_id: Option<User>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let result = analyze_schema(parsed);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("optional"));
+    }
+
+    #[test]
+    fn test_analyze_primary_key_rejects_self_referential_cycle_at_field() {
+        let input = r#"
+            #[timestamps(none)]
+            #[primary_key(parent)]
+            Category {
+                parent: Category,
+            }
+        "#
+        .parse()
+        .unwrap();
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err();
+
+        assert!(error.to_string().contains("Category.parent"));
+        assert!(error.to_string().contains("primary key cycle"));
+        assert_eq!(error.span().source_text().as_deref(), Some("parent"));
+    }
+
+    #[test]
+    fn test_analyze_composite_pk_target_error_points_at_field() {
+        let input = r#"
+            #[primary_key(left_id, right_id)]
+            #[timestamps(none)]
+            Pair {
+                left_id: i32,
+                right_id: i32,
+            }
+
+            PairRef {
+                pair: Pair,
+            }
+        "#
+        .parse()
+        .unwrap();
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err();
+
+        assert!(error.to_string().contains("PairRef.pair"));
+        assert!(error.to_string().contains("left_id"));
+        assert!(error.to_string().contains("right_id"));
+        assert_eq!(error.span().source_text().as_deref(), Some("pair"));
     }
 
     #[test]
