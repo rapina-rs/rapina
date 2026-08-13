@@ -47,6 +47,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     let model_fields = generate_model_fields(entity, schema);
     let relation_variants = generate_relation_variants(entity, schema);
     let related_impls = generate_related_impls(entity, schema);
+    let linked_impls = generate_linked_impls(entity, schema);
 
     // Generate timestamp fields based on entity attrs
     let created_at_field = if entity.attrs.has_created_at {
@@ -112,6 +113,8 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
             }
 
             #related_impls
+
+            #linked_impls
 
             impl ActiveModelBehavior for ActiveModel {}
         }
@@ -368,6 +371,11 @@ fn generate_related_impls(entity: &AnalyzedEntity, _schema: &AnalyzedSchema) -> 
 }
 
 fn generate_related_impl(field: &AnalyzedField) -> Option<TokenStream> {
+    // Related<T> is one impl per target, so only the field analysis nominated.
+    if !field.implement_related {
+        return None;
+    }
+
     let variant_name = to_pascal_case(&field.name.to_string());
     let variant_ident = format_ident!("{}", variant_name);
 
@@ -379,6 +387,53 @@ fn generate_related_impl(field: &AnalyzedField) -> Option<TokenStream> {
                 impl Related<super::#target_mod::Entity> for Entity {
                     fn to() -> RelationDef {
                         Relation::#variant_ident.def()
+                    }
+                }
+            })
+        }
+        FieldType::Scalar { .. } => None,
+    }
+}
+
+fn generate_linked_impls(entity: &AnalyzedEntity, _schema: &AnalyzedSchema) -> TokenStream {
+    let impls: Vec<TokenStream> = entity
+        .fields
+        .iter()
+        .filter_map(generate_linked_impl)
+        .collect();
+
+    quote! {
+        #(#impls)*
+    }
+}
+
+/// Reach a target that lost the `Related` nomination, via `find_linked`.
+///
+/// `Linked` is implemented on a named struct rather than keyed on the type
+/// pair, so an entity may have as many as it likes to one target.
+fn generate_linked_impl(field: &AnalyzedField) -> Option<TokenStream> {
+    if field.implement_related {
+        return None;
+    }
+
+    let variant_name = to_pascal_case(&field.name.to_string());
+    let variant_ident = format_ident!("{}", variant_name);
+    let link_ident = format_ident!("{}Link", variant_name);
+
+    match &field.ty {
+        FieldType::HasMany { target } | FieldType::BelongsTo { target, .. } => {
+            let target_mod = format_ident!("{}", target.to_string().to_snake_case());
+
+            Some(quote! {
+                #[derive(Copy, Clone, Debug)]
+                pub struct #link_ident;
+
+                impl Linked for #link_ident {
+                    type FromEntity = Entity;
+                    type ToEntity = super::#target_mod::Entity;
+
+                    fn link(&self) -> Vec<RelationDef> {
+                        vec![Relation::#variant_ident.def()]
                     }
                 }
             })

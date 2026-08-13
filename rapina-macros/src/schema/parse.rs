@@ -49,6 +49,11 @@ pub struct FieldAttrs {
     pub column_name: Option<String>,
     /// Mark field as indexed, e.g., #[index]
     pub indexed: bool,
+
+    // we will impl <Related> based on this value.
+    // This is for hasMany/BelongsTo field. we need explicit marker
+    // in case a table has multiple foriegn keys pointing to the same source.
+    pub related: bool,
 }
 
 /// A single entity definition.
@@ -274,11 +279,14 @@ fn parse_field_attrs(input: ParseStream) -> Result<FieldAttrs> {
                 let value: syn::LitStr = content.parse()?;
                 attrs.column_name = Some(value.value());
             }
+            "related" => {
+                attrs.related = true;
+            }
             _ => {
                 return Err(syn::Error::new(
                     attr_name.span(),
                     format!(
-                        "unknown field attribute '{}'. Supported: unique, index, column",
+                        "unknown field attribute '{}'. Supported: unique, index, related, column",
                         attr_name_str
                     ),
                 ));

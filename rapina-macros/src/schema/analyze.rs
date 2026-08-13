@@ -5,7 +5,7 @@
 //! 2. Resolve relationships and validate targets exist
 
 use proc_macro2::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use syn::{Ident, Result};
 
 use super::parse::{EntityAttrs, EntityDef, FieldAttrs, FieldDef, RawFieldType, Schema};
@@ -35,6 +35,8 @@ pub struct AnalyzedField {
     pub ty: FieldType,
     #[allow(dead_code)]
     pub span: Span,
+
+    pub implement_related: bool,
 }
 
 /// Entity registry for cross-reference validation.
@@ -207,6 +209,8 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
         analyzed_fields.push(analyze_field(field, registry)?);
     }
 
+    validate_relation_rules(&entity.name, &mut analyzed_fields)?;
+
     // Validate custom primary key columns exist in the entity
     if let Some(ref pk_cols) = entity.attrs.primary_key {
         let field_names: HashSet<String> =
@@ -313,7 +317,187 @@ fn analyze_field(field: FieldDef, registry: &EntityRegistry) -> Result<AnalyzedF
         name: field.name,
         ty,
         span: field.span,
+        implement_related: false,
     })
+}
+
+/// Decide which fields on one entity own a `Related` impl.
+fn validate_relation_rules(entity: &Ident, fields: &mut [AnalyzedField]) -> Result<()> {
+    validate_related_attr_placement(fields)?;
+
+    let mut error: Option<syn::Error> = None;
+
+    for (target, group) in group_fk_fields_by_target(fields) {
+        match validate_target_relations(entity, &target, &group, fields) {
+            Ok(winner) => fields[winner].implement_related = true,
+            Err(e) => match error {
+                Some(ref mut acc) => acc.combine(e),
+                None => error = Some(e),
+            },
+        }
+    }
+
+    match error {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// Group an entity's relationship fields by the entity they target.
+///
+/// Members are returned as indices rather than references so the result borrows
+/// nothing: the caller stays free to read `fields` while validating a group and
+/// to take `&mut` on it afterwards to grant `implement_related` to the winner.
+fn group_fk_fields_by_target(fields: &[AnalyzedField]) -> HashMap<String, Vec<usize>> {
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (index, field) in fields.iter().enumerate() {
+        let target = match &field.ty {
+            FieldType::BelongsTo { target, .. } | FieldType::HasMany { target } => {
+                target.to_string()
+            }
+            FieldType::Scalar { .. } => continue,
+        };
+
+        groups.entry(target).or_default().push(index);
+    }
+
+    groups
+}
+
+/// Decide which field in one target group owns `Related`, returning its index.
+fn validate_target_relations(
+    entity: &Ident,
+    target: &str,
+    members: &[usize],
+    fields: &[AnalyzedField],
+) -> Result<usize> {
+    // One field pointing at this target: nothing to disambiguate, whichever
+    // kind it is.
+    if let [only] = members {
+        return Ok(*only);
+    }
+
+    let (belongs_to, has_many): (Vec<usize>, Vec<usize>) = members
+        .iter()
+        .copied()
+        .partition(|&i| matches!(fields[i].ty, FieldType::BelongsTo { .. }));
+
+    // Currently , we almost never pick a winner from a group of hasMany
+    validate_has_many_group(entity, target, &has_many, fields)?;
+
+    validate_belongs_to_group(entity, target, &belongs_to, fields)
+}
+
+/// Rule 1 — at most one `has_many` may reference a given target.
+fn validate_has_many_group(
+    entity: &Ident,
+    target: &str,
+    has_many: &[usize],
+    fields: &[AnalyzedField],
+) -> Result<()> {
+    if has_many.len() < 2 {
+        return Ok(());
+    }
+
+    Err(syn::Error::new(
+        entity.span(),
+        format!(
+            "entity '{}' has {} has_many fields referencing '{}' ({}); this is not supported yet — SeaORM cannot distinguish them without an explicit foreign key",
+            entity,
+            has_many.len(),
+            target,
+            field_list(has_many, fields),
+        ),
+    ))
+}
+
+/// Rule 2 — exactly one `belongs_to` owns `Related` for this target.
+fn validate_belongs_to_group(
+    entity: &Ident,
+    target: &str,
+    belongs_to: &[usize],
+    fields: &[AnalyzedField],
+) -> Result<usize> {
+    if let [only] = belongs_to {
+        return Ok(*only);
+    }
+
+    let marked: Vec<usize> = belongs_to
+        .iter()
+        .copied()
+        .filter(|&i| fields[i].attrs.related)
+        .collect();
+
+    match marked.as_slice() {
+        [one] => Ok(*one),
+
+        [] => Err(syn::Error::new(
+            entity.span(),
+            format!(
+                "entity '{}' has {} belongs_to fields referencing '{}' ({}); mark exactly one with #[related] to choose which owns `Related`",
+                entity,
+                belongs_to.len(),
+                target,
+                field_list(belongs_to, fields),
+            ),
+        )),
+
+        [_, second, ..] => Err(syn::Error::new(
+            fields[*second].name.span(),
+            format!(
+                "entity '{}' marks {} belongs_to fields referencing '{}' with #[related] ({}); only one may be marked",
+                entity,
+                marked.len(),
+                target,
+                field_list(&marked, fields),
+            ),
+        )),
+    }
+}
+
+fn field_list(indices: &[usize], fields: &[AnalyzedField]) -> String {
+    indices
+        .iter()
+        .map(|&i| format!("'{}'", fields[i].name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+// Validate that #[related] is only used on belongs_to fields, not has_many or scalar fields.
+fn validate_related_attr_placement(fields: &[AnalyzedField]) -> Result<()> {
+    for field in fields.iter() {
+        if !field.attrs.related {
+            continue;
+        }
+
+        match &field.ty {
+            FieldType::BelongsTo { .. } => {}
+
+            // For now , we dont support #[related] on has_many fields. TODO for later
+            FieldType::HasMany { .. } => {
+                return Err(syn::Error::new(
+                    field.name.span(),
+                    format!(
+                        "#[related] cannot be used on the has_many field '{}'",
+                        field.name
+                    ),
+                ));
+            }
+
+            FieldType::Scalar { .. } => {
+                return Err(syn::Error::new(
+                    field.name.span(),
+                    format!(
+                        "#[related] can only be used on a forign key field (belongs_to), but was used on the scalar field '{}'",
+                        field.name
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
