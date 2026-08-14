@@ -530,6 +530,20 @@ pub(crate) fn generate_migration(
         })
         .unzip();
 
+    // The `schema!` macro always emits a default auto-increment `id: i32`
+    // primary key when no `#[primary_key(...)]` attr and no explicit `id`
+    // field are present. Mirror that here so the migration stays in sync
+    // with the generated entity.
+    if primary_key.is_none() && !fields.iter().any(|f| f.name == "id") {
+        column_defs.insert(
+            0,
+            format!(
+                "                    .col(ColumnDef::new({pascal_plural}::Id).integer().not_null().primary_key().auto_increment())"
+            ),
+        );
+        iden_variants.insert(0, "    Id,".to_string());
+    }
+
     if with_timestamps {
         column_defs.push(format!(
             "                    .col(ColumnDef::new({pascal_plural}::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))"
@@ -1594,5 +1608,50 @@ schema! {
         let result = remove_schema_block(content, "UsersRole");
         assert!(!result.contains("UsersRole"));
         assert!(!result.contains("schema!"));
+    }
+
+    #[test]
+    fn test_generate_migration_injects_default_id_when_absent() {
+        let fields: Vec<FieldInfo> = vec!["name:string".parse().unwrap()];
+        let content = generate_migration("users", "Users", &fields, false, None);
+
+        assert!(
+            content.contains(
+                ".col(ColumnDef::new(Users::Id).integer().not_null().primary_key().auto_increment())"
+            ),
+            "default id column should be injected when absent"
+        );
+        assert!(
+            content.contains("    Id,"),
+            "Id iden variant should be injected"
+        );
+
+        let id_pos = content.find("Users::Id).integer()").unwrap();
+        let name_pos = content.find("Users::Name).string()").unwrap();
+        assert!(
+            id_pos < name_pos,
+            "injected id column should precede other columns"
+        );
+    }
+
+    #[test]
+    fn test_generate_migration_preserves_id_type_when_declared() {
+        let fields: Vec<FieldInfo> =
+            vec!["id:uuid".parse().unwrap(), "name:string".parse().unwrap()];
+        let content = generate_migration("users", "Users", &fields, false, None);
+
+        assert!(
+            content.contains(".col(ColumnDef::new(Users::Id).uuid().not_null().primary_key())"),
+            "explicit uuid id column should be preserved as-is"
+        );
+        assert!(
+            !content.contains(".auto_increment()"),
+            "declared uuid id must not gain the default i32 auto_increment column"
+        );
+        assert_eq!(
+            content.matches("    Id,").count(),
+            1,
+            "id iden variant must appear exactly once, not duplicated by injection"
+        );
     }
 }

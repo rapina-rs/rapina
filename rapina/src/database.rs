@@ -329,6 +329,23 @@ impl std::ops::Deref for Db {
     }
 }
 
+impl crate::extract::FromRequestParts for Db {
+    async fn from_request_parts(
+        _parts: &http::request::Parts,
+        _params: &crate::extract::PathParams,
+        state: &std::sync::Arc<crate::state::AppState>,
+    ) -> Result<Self, Error> {
+        use sea_orm::DatabaseConnection;
+
+        let conn = state.get::<DatabaseConnection>().ok_or_else(|| {
+            Error::internal(
+                "Database connection not configured. Did you forget to call .with_database()?",
+            )
+        })?;
+        Ok(Db::new(conn.clone()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

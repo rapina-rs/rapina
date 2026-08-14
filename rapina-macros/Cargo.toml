@@ -1,6 +1,6 @@
 [package]
 name = "rapina-macros"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Procedural macros for the Rapina web framework"
@@ -18,3 +18,6 @@ syn = { version = "3.0", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 heck = "0.5"
+
+[dev-dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }

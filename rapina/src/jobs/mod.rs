@@ -111,6 +111,7 @@ use std::sync::Arc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend};
 use uuid::Uuid;
 
+use crate::extract::FromRequestParts;
 use crate::state::AppState;
 
 /// Unique identifier for an enqueued background job.
@@ -243,6 +244,32 @@ impl Jobs {
         C: ConnectionTrait,
     {
         insert_job(conn, req.into(), self.trace_id.as_deref()).await
+    }
+}
+
+impl FromRequestParts for Jobs {
+    async fn from_request_parts(
+        parts: &http::request::Parts,
+        _params: &crate::extract::PathParams,
+        state: &Arc<AppState>,
+    ) -> Result<Self, crate::error::Error> {
+        use sea_orm::DatabaseConnection;
+
+        let pool = state
+            .get::<DatabaseConnection>()
+            .ok_or_else(|| {
+                crate::error::Error::internal(
+                    "Database connection not configured. Did you forget to call .with_database()?",
+                )
+            })?
+            .clone();
+
+        let trace_id = parts
+            .extensions
+            .get::<crate::context::RequestContext>()
+            .map(|ctx| ctx.trace_id().to_owned());
+
+        Ok(Jobs::new(pool, trace_id))
     }
 }
 
@@ -393,5 +420,18 @@ mod tests {
         let stmt = backend::Postgres::build_retry_stmt(Uuid::new_v4(), "err", 0.5);
         let vals = stmt.values.as_ref().unwrap();
         assert!(matches!(&vals.0[2], sea_orm::Value::String(Some(_))));
+    }
+
+    #[tokio::test]
+    async fn jobs_extractor_missing_db_returns_500() {
+        let (parts, _) = crate::test::TestRequest::get("/").into_parts();
+        let result = Jobs::from_request_parts(
+            &parts,
+            &crate::test::empty_params(),
+            &crate::test::empty_state(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().status(), 500);
     }
 }
