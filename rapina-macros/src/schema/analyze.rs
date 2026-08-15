@@ -386,8 +386,8 @@ fn validate_target_relations(
         .copied()
         .partition(|&i| matches!(fields[i].ty, FieldType::BelongsTo { .. }));
 
-    // Well-formedness first: a bad has_many pair is not fixed by nominating
-    // someone else, so there is no point contesting the group after it.
+    // Well-formedness first: two has_many to one target stay ambiguous whichever
+    // field ends up owning `Related`, so choosing an owner cannot rescue them.
     validate_has_many_group(entity, target, &has_many, fields)?;
 
     validate_belongs_to_group(entity, target, &belongs_to, fields)

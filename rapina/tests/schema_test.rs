@@ -205,9 +205,10 @@ fn join_clause(sql: &str) -> &str {
     &sql[sql.find("JOIN").expect("expected a JOIN")..]
 }
 
-// Issue #678: two fields targeting the same entity used to emit two conflicting
-// `impl Related<..>` blocks (E0119). None of the entities below compile on main,
-// so this file building at all is the regression test.
+// Issue #678: an entity with two fields aimed at the same target needs exactly
+// one `impl Related<Target>`, since a second is a conflicting implementation
+// (E0119). Every entity below has such a pair, so a regression here shows up as
+// this file failing to compile rather than as a failing assertion.
 schema! {
     #[table_name = "rel_accounts"]
     RelAccount {
@@ -228,7 +229,7 @@ schema! {
         name: String,
     }
 
-    // Three to one target, so the winner has two distinct losers.
+    // Three belongs_to to one target: one owns Related, two need a Linked each.
     #[table_name = "rel_shipments"]
     RelShipment {
         origin: RelWarehouse,
@@ -237,7 +238,7 @@ schema! {
         backup: Option<RelWarehouse>,
     }
 
-    // belongs_to and has_many to the same target, which is itself.
+    // Self-referential: `parent` and `children` both target RelCategory.
     #[table_name = "rel_categories"]
     RelCategory {
         name: String,
@@ -270,7 +271,7 @@ fn test_unmarked_field_reaches_its_own_column_through_linked() {
     };
 
     // No Related covers `from`, so the generated Linked is the only route --
-    // and it must resolve to from_id rather than collapsing onto the winner.
+    // and it must resolve to from_id rather than collapsing onto to_id.
     let stmt = tx
         .find_linked(rel_tx::FromLink)
         .build(DbBackend::Sqlite)
@@ -298,7 +299,8 @@ fn test_every_loser_of_a_three_way_group_keeps_its_own_column() {
         .to_string();
     assert!(join_clause(&related).contains("backup_id"));
 
-    // Two losers, two distinct links -- neither falls back to the other's key.
+    // Two unmarked fields, two links: each keeps its own column rather than
+    // both resolving to backup_id or to each other's.
     let origin = shipment
         .find_linked(rel_shipment::OriginLink)
         .build(DbBackend::Sqlite)
@@ -332,8 +334,8 @@ fn test_self_referential_belongs_to_and_has_many_coexist() {
         updated_at: DateTimeUtc::default(),
     };
 
-    // `parent` and `children` both target RelCategory, so on main this pair
-    // was E0119. `parent` owns Related; `children` reverses it via Linked.
+    // `parent` owns Related for RelCategory; `children` reverses that same
+    // edge through Linked rather than declaring a second Related.
     let _ = rel_category::Relation::Parent;
     let _ = rel_category::Relation::Children;
 

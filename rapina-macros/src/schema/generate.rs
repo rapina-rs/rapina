@@ -371,7 +371,8 @@ fn generate_related_impls(entity: &AnalyzedEntity, _schema: &AnalyzedSchema) -> 
 }
 
 fn generate_related_impl(field: &AnalyzedField) -> Option<TokenStream> {
-    // Related<T> is one impl per target, so only the field analysis nominated.
+    // Rust permits one Related<T> impl per target type, so only the single field
+    // chosen in analyze.rs gets one; every other field gets a Linked instead.
     if !field.implement_related {
         return None;
     }
