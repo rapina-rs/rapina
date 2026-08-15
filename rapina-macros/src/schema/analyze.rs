@@ -5,7 +5,7 @@
 //! 2. Resolve relationships and validate targets exist
 
 use proc_macro2::Span;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use syn::{Ident, Result};
 
 use super::parse::{EntityAttrs, EntityDef, FieldAttrs, FieldDef, RawFieldType, Schema};
@@ -345,11 +345,14 @@ fn validate_relation_rules(entity: &Ident, fields: &mut [AnalyzedField]) -> Resu
 
 /// Group an entity's relationship fields by the entity they target.
 ///
+/// Ordered by target name so an entity with several bad groups reports its
+/// errors the same way on every compile.
+///
 /// Members are returned as indices rather than references so the result borrows
 /// nothing: the caller stays free to read `fields` while validating a group and
 /// to take `&mut` on it afterwards to grant `implement_related` to the winner.
-fn group_fk_fields_by_target(fields: &[AnalyzedField]) -> HashMap<String, Vec<usize>> {
-    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+fn group_fk_fields_by_target(fields: &[AnalyzedField]) -> BTreeMap<String, Vec<usize>> {
+    let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
 
     for (index, field) in fields.iter().enumerate() {
         let target = match &field.ty {
@@ -383,13 +386,17 @@ fn validate_target_relations(
         .copied()
         .partition(|&i| matches!(fields[i].ty, FieldType::BelongsTo { .. }));
 
-    // Currently , we almost never pick a winner from a group of hasMany
+    // Well-formedness first: a bad has_many pair is not fixed by nominating
+    // someone else, so there is no point contesting the group after it.
     validate_has_many_group(entity, target, &has_many, fields)?;
 
     validate_belongs_to_group(entity, target, &belongs_to, fields)
 }
 
-/// Rule 1 — at most one `has_many` may reference a given target.
+/// Two `has_many` to one target are indistinguishable: each expands to
+/// `R::to().rev()`, the *target's* back-edge, so they produce identical
+/// `RelationDef`s regardless of which field wins the nomination. Reject them
+/// rather than emit two differently-named links that run the same query.
 fn validate_has_many_group(
     entity: &Ident,
     target: &str,
@@ -412,7 +419,7 @@ fn validate_has_many_group(
     ))
 }
 
-/// Rule 2 — exactly one `belongs_to` owns `Related` for this target.
+/// Exactly one `belongs_to` owns `Related` for this target.
 fn validate_belongs_to_group(
     entity: &Ident,
     target: &str,
@@ -479,7 +486,7 @@ fn validate_related_attr_placement(fields: &[AnalyzedField]) -> Result<()> {
                 return Err(syn::Error::new(
                     field.name.span(),
                     format!(
-                        "#[related] cannot be used on the has_many field '{}'",
+                        "#[related] cannot be used on the has_many field '{}'; mark the belongs_to field that owns the foreign key instead",
                         field.name
                     ),
                 ));
@@ -489,7 +496,7 @@ fn validate_related_attr_placement(fields: &[AnalyzedField]) -> Result<()> {
                 return Err(syn::Error::new(
                     field.name.span(),
                     format!(
-                        "#[related] can only be used on a forign key field (belongs_to), but was used on the scalar field '{}'",
+                        "#[related] can only be used on a foreign key field (belongs_to), but was used on the scalar field '{}'",
                         field.name
                     ),
                 ));
@@ -887,5 +894,305 @@ mod tests {
             entity.attrs.primary_key,
             Some(vec!["user_id".to_string(), "role_id".to_string()])
         );
+    }
+
+    /// Every message in a `syn::Error`. `to_string()` renders only the first,
+    /// so combined errors have to be walked to be seen at all.
+    fn error_messages(error: syn::Error) -> Vec<String> {
+        error.into_iter().map(|e| e.to_string()).collect()
+    }
+
+    /// Which fields of `entity` were nominated to own a `Related` impl.
+    fn nominated(entity: &AnalyzedEntity) -> Vec<String> {
+        entity
+            .fields
+            .iter()
+            .filter(|f| f.implement_related)
+            .map(|f| f.name.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn test_related_single_belongs_to_is_nominated() {
+        let input = quote! {
+            User {
+                email: String,
+            }
+
+            Post {
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // One field to a target needs no #[related] to disambiguate.
+        assert_eq!(nominated(&analyzed.entities[1]), vec!["author"]);
+    }
+
+    #[test]
+    fn test_related_single_has_many_is_nominated() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        assert_eq!(nominated(&analyzed.entities[0]), vec!["posts"]);
+    }
+
+    #[test]
+    fn test_related_belongs_to_beats_has_many_to_same_target() {
+        let input = quote! {
+            Category {
+                name: String,
+                parent: Option<Category>,
+                children: Vec<Category>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // The has_many cannot own `Related`: SeaORM derives it as the reverse
+        // of the target's own impl, so `children` resolves through `parent`.
+        assert_eq!(nominated(&analyzed.entities[0]), vec!["parent"]);
+    }
+
+    #[test]
+    fn test_related_attr_picks_the_marked_belongs_to() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                #[related]
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // Marked on the second field, so a "first field wins" regression fails.
+        assert_eq!(nominated(&analyzed.entities[1]), vec!["to"]);
+    }
+
+    #[test]
+    fn test_related_attr_leaves_other_targets_alone() {
+        let input = quote! {
+            Warehouse {
+                name: String,
+            }
+
+            Currency {
+                code: String,
+            }
+
+            Shipment {
+                origin: Warehouse,
+                destination: Warehouse,
+                #[related]
+                backup: Option<Warehouse>,
+                currency: Currency,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // `currency` is the only field for its target, so it is nominated
+        // independently of the contested Warehouse group.
+        assert_eq!(nominated(&analyzed.entities[2]), vec!["backup", "currency"]);
+    }
+
+    #[test]
+    fn test_related_rejects_two_belongs_to_with_none_marked() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        assert!(error.contains("mark exactly one with #[related]"));
+        assert!(error.contains("'from', 'to'"));
+    }
+
+    #[test]
+    fn test_related_rejects_two_belongs_to_both_marked() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                #[related]
+                from: Option<Account>,
+                #[related]
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        assert!(error.contains("only one may be marked"));
+        assert!(error.contains("'from', 'to'"));
+    }
+
+    #[test]
+    fn test_related_rejects_two_has_many_to_same_target() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+                drafts: Vec<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        // Both mirror Post's single `Related<User>`, so they would produce
+        // identical joins and `drafts` would silently mean every post.
+        assert!(error.contains("has_many fields referencing"));
+        assert!(error.contains("'posts', 'drafts'"));
+    }
+
+    #[test]
+    fn test_related_rejects_two_has_many_even_when_a_belongs_to_could_win() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+                drafts: Vec<Post>,
+                favourite: Option<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        // `favourite` is eligible and would work, but the has_many pair is
+        // broken with or without it: both mirror Post's back-edge, so they
+        // resolve identically no matter who owns `Related`.
+        assert!(error.contains("has_many fields referencing"));
+    }
+
+    #[test]
+    fn test_related_attr_rejected_on_has_many_field() {
+        let input = quote! {
+            User {
+                #[related]
+                posts: Vec<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        assert!(error.contains("cannot be used on the has_many field 'posts'"));
+        assert!(error.contains("mark the belongs_to field that owns the foreign key instead"));
+    }
+
+    #[test]
+    fn test_related_attr_rejected_on_scalar_field() {
+        let input = quote! {
+            User {
+                #[related]
+                email: String,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let error = analyze_schema(parsed).unwrap_err().to_string();
+
+        assert!(error.contains("foreign key field (belongs_to)"));
+        assert!(error.contains("scalar field 'email'"));
+    }
+
+    #[test]
+    fn test_related_reports_every_contested_group() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Warehouse {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                to: Option<Account>,
+                origin: Option<Warehouse>,
+                destination: Option<Warehouse>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let messages = error_messages(analyze_schema(parsed).unwrap_err());
+
+        // Groups are walked in target-name order, so both groups are reported
+        // and always in the same order.
+        assert_eq!(messages.len(), 2);
+        assert!(messages[0].contains("'Account'"));
+        assert!(messages[1].contains("'Warehouse'"));
+    }
+
+    #[test]
+    fn test_related_misplaced_attr_reported_before_group_rules() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                #[related]
+                amount: i64,
+                from: Option<Account>,
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let messages = error_messages(analyze_schema(parsed).unwrap_err());
+
+        // A misplaced #[related] makes the group rules meaningless, so it is
+        // reported alone rather than alongside the unmarked Account group.
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("scalar field 'amount'"));
     }
 }

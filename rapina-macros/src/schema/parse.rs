@@ -52,7 +52,7 @@ pub struct FieldAttrs {
 
     // we will impl <Related> based on this value.
     // This is for hasMany/BelongsTo field. we need explicit marker
-    // in case a table has multiple foriegn keys pointing to the same source.
+    // in case a table has multiple foreign keys pointing to the same source.
     pub related: bool,
 }
 
@@ -642,12 +642,10 @@ mod tests {
 
         let result = parse_schema(input);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown field attribute")
-        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("unknown field attribute"));
+        assert!(error.contains("related"));
     }
 
     #[test]

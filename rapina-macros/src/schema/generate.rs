@@ -555,6 +555,44 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_contested_target_gets_one_related_and_one_linked() {
+        let input = quote! {
+            Account {
+                name: String,
+            }
+
+            Tx {
+                from: Option<Account>,
+                #[related]
+                to: Option<Account>,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // A second Related for the same target would be E0119 (issue #678).
+        assert_eq!(
+            output
+                .matches("impl Related < super :: account :: Entity > for Entity")
+                .count(),
+            1
+        );
+        assert!(output.contains("Relation :: To . def ()"));
+
+        // The unmarked field stays reachable through a Linked instead.
+        assert!(output.contains("pub struct FromLink"));
+        assert!(output.contains("impl Linked for FromLink"));
+        assert!(!output.contains("pub struct ToLink"));
+
+        // Both foreign keys and both relation variants survive either way.
+        assert!(output.contains("pub from_id : Option < i32 >"));
+        assert!(output.contains("pub to_id : Option < i32 >"));
+    }
+
+    #[test]
     fn test_generate_optional_belongs_to() {
         let input = quote! {
             User {
