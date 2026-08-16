@@ -236,6 +236,7 @@ A relationship field named in `#[primary_key(...)]` keeps its column name **verb
 | `#[unique]` | Mark field as unique |
 | `#[index]` | Create an index on this column |
 | `#[column = "name"]` | Custom column name in database |
+| `#[related]` | Make this the default connector to the target table, used by `find_related` / `find_also_related` |
 
 ```rust
 User {
@@ -249,6 +250,42 @@ User {
     name: String,
 }
 ```
+
+### Handling Complex Relations
+
+A table can have several foreign key columns pointing at the same table. When it does, mark one of them with `#[related]` to make it the default connector to that table:
+
+```rust
+Account {
+    name: String,
+}
+
+Transaction {
+    from: Option<Account>,
+    #[related]
+    to: Option<Account>,
+    amount: i64,
+}
+```
+
+`find_related` and `find_also_related` ask for an entity, not a field, so they follow the marked one. The other fields are reached through a generated link named after the field — `from` becomes `FromLink`:
+
+```rust
+// follows `to`, the default connector
+let txs = Transaction::find()
+    .find_also_related(Account)
+    .all(db.conn())
+    .await?;
+
+// follows `from`
+let sender = tx.find_linked(transaction::FromLink).one(db.conn()).await?;
+```
+
+Rules:
+
+- Exactly one field per group must be marked. Marking none, or marking two, is a compile error naming the fields involved.
+- `#[related]` only applies to `belongs_to` fields, since those are the ones holding a foreign key column.
+- It is only needed when two or more fields point at the same table. A single relationship needs nothing.
 
 ## Database Schema
 
