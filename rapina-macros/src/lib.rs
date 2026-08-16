@@ -355,12 +355,11 @@ pub fn authorize(_attr: TokenStream, _item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Extract #[authorize] attribute from function attributes, removing it if found.
-fn extract_authorize_attr(attrs: &mut Vec<syn::Attribute>) -> Option<Attribute> {
+/// Extracts all #[authorize] attributes from the function attributes, removing them if found.
+fn extract_authorize_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<Attribute> {
     attrs
-        .iter()
-        .position(|attr| attr.path().is_ident("authorize"))
-        .map(|idx| attrs.remove(idx))
+        .extract_if(.., |attr| attr.path().is_ident("authorize"))
+        .collect::<Vec<_>>()
 }
 
 /// Registers a GET route handler.
@@ -457,27 +456,26 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Note: Routes starting with `/__rapina` are automatically public.
 #[proc_macro_attribute]
 pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    public_macro_impl(item).into()
+    public_macro_impl(item.into()).into()
 }
 
-fn public_macro_impl(item: TokenStream) -> proc_macro2::TokenStream {
+fn public_macro_impl(item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let mut func: ItemFn =
-        syn::parse(item.clone()).expect("#[public] must be applied to a function");
+        syn::parse2(item.clone()).expect("#[public] must be applied to a function");
 
-    // Throw compilation error if the contradicting #[authorize] attribute is placed below the #[public] macro
-    let authorize_attr = extract_authorize_attr(&mut func.attrs);
-    if authorize_attr.is_some() {
-        return Error::new(
-            authorize_attr.span(),
+    // Throw compilation error if the contradicting #[authorize] attributes are placed below the #[public] macro
+    let authorize_attrs = extract_authorize_attrs(&mut func.attrs);
+    if !authorize_attrs.is_empty() {
+        return Error::new_spanned(
+            &authorize_attrs[0],
             "#[authorize] contradicts #[public]. A public handler must not include authorization.",
         )
         .to_compile_error();
     }
 
     let func_name_str = func.sig.ident.to_string();
-    let item2: proc_macro2::TokenStream = item.into();
     quote! {
-        #item2
+        #item
         rapina::inventory::submit! {
             rapina::discovery::PublicMarker {
                 handler_name: #func_name_str,
