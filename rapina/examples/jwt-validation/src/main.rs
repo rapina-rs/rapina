@@ -29,7 +29,7 @@ async fn pong() -> Result<Json<String>> {
 // Example handler that takes two parameters and is authorized by an authorization handler within another module
 #[get("/email")]
 #[authorize(authz::authorize(JsonWebToken))]
-async fn get_email(token: JsonWebToken<GoogleClaims>, _unused: Headers) -> Result<Json<String>> {
+async fn get_email(token: JsonWebToken<GoogleClaims>) -> Result<Json<String>> {
     tracing::info!(sub = %token.sub, "authenticated request");
     Ok(Json(token.claims.email))
 }
