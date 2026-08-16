@@ -3,13 +3,16 @@ description: Template for maintainers to create beginner-friendly issues for ext
 title: "[Good First Issue]: "
 labels: ["good first issue", "help wanted"]
 body:
-  - type: markdown
+  - type: textarea
+    id: intro
     attributes:
+      label: Welcome
       value: |
         This issue is marked as a **good first issue** — it's a great starting point if you're new to contributing to Rapina.
-
+        
         Before picking this up, please read the [Contributing Guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md).
         Comment `/take` to claim this issue.
+      required: false
 
   - type: textarea
     id: summary
