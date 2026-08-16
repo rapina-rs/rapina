@@ -18,7 +18,7 @@ async fn authorization_handler(token: &JsonWebToken<GoogleClaims>) -> Result<()>
     Err(Error::forbidden("Missing permissions"))
 }
 
-// Example handler that takes no parameter and is authorized by an authorization handler within another module
+// Demonstrates an authorization-only dependency: the policy extracts the JWT, while the handler itself does not need it
 #[get("/example")]
 #[authorize(authorization_handler(JsonWebToken<GoogleClaims>))]
 async fn pong() -> Result<Json<String>> {
@@ -26,7 +26,7 @@ async fn pong() -> Result<Json<String>> {
     Ok(Json("success".to_string()))
 }
 
-// Example handler that takes two parameters and is authorized by an authorization handler within another module
+// Demonstrates dependency reuse: the JWT is extracted once and borrowed by the policy and remains available to the handler
 #[get("/email")]
 #[authorize(authz::authorize(JsonWebToken))]
 async fn get_email(token: JsonWebToken<GoogleClaims>) -> Result<Json<String>> {
