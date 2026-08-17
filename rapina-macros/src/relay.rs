@@ -3,7 +3,7 @@
 use quote::quote;
 use syn::{FnArg, ItemFn, LitStr, Pat};
 
-pub fn relay_macro_impl(
+pub(crate) fn relay_macro_impl(
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
