@@ -3166,7 +3166,7 @@ checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "rapina"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "async-graphql",
  "async-stream",
@@ -3227,7 +3227,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-cli"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "chrono",
  "clap",
@@ -3256,7 +3256,7 @@ dependencies = [
 
 [[package]]
 name = "rapina-macros"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",

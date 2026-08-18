@@ -9,6 +9,11 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-04
+
+### Fixed
+- **Column attributes on composite primary keys**: `#[column = "..."]` was ignored on any field named in `#[primary_key(...)]`, so the generated entity used the field name as the column name. `column_type` was dropped the same way, so a `Text` primary key landed as VARCHAR. If you had `#[column]` on a primary key field your tables were created with the field name, and you need a rename migration after upgrading (#750).
+
 ## [0.13.0] - 2026-06-25
 
 ### Added
@@ -146,7 +151,8 @@ Routine dependency-only updates are intentionally omitted unless they change use
 - Standardized error handling with `trace_id`
 - CLI (`rapina new`, `rapina dev`)
 
-[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/rapina-rs/rapina/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/rapina-rs/rapina/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/rapina-rs/rapina/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/rapina-rs/rapina/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/rapina-rs/rapina/compare/v0.10.0...v0.11.0

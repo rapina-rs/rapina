@@ -15,7 +15,7 @@ pub use generate::generate_schema;
 pub use parse::parse_schema;
 
 /// Entry point for the schema macro implementation.
-pub fn schema_impl(input: TokenStream) -> TokenStream {
+pub(crate) fn schema_impl(input: TokenStream) -> TokenStream {
     let parsed = match parse_schema(input) {
         Ok(schema) => schema,
         Err(err) => return err.to_compile_error(),

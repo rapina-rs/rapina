@@ -95,6 +95,8 @@ Fields use a `name:type` format. Supported types:
 
 `bool`/`boolean` columns always emit `DEFAULT FALSE` in the migration. This avoids requiring every insert to explicitly set the field when `false` is the natural starting state.
 
+If no `id` field is declared and no explicit `#[primary_key(...)]` is set, an auto-increment `id: i32` primary key column is injected automatically into the migration and the entity's `schema!` block. Declaring your own `id` field (e.g. `id:uuid`) opts out of this default — your declared type and column are used as-is instead.
+
 `created_at` and `updated_at` (`TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`) are injected automatically into every generated migration and the entity's `schema!` block. These columns are required for SeaORM's `ActiveModelBehavior` and `before_save` hooks to work correctly.
 
 To skip the timestamp columns (e.g., for a join table or audit log with custom timestamp logic):
@@ -103,32 +105,51 @@ To skip the timestamp columns (e.g., for a join table or audit log with custom t
 rapina add resource user name:string email:string --no-timestamps
 ```
 
-The generated handlers follow Rapina conventions and are ready to wire into your router. The command prints the exact code you need to add to `main.rs`:
+The generated handlers follow Rapina conventions and are ready to wire into your router. The `mod <resource>;` declaration is wired into `src/main.rs` automatically (idempotent — running the command again won't duplicate it). The command's output is just a confirmation:
 
 ```
+Adding resource: User
+
+  ✓ Created src/users/
+  ✓ Created src/users/mod.rs
+  ✓ Created src/users/handlers.rs
+  ✓ Created src/users/dto.rs
+  ✓ Created src/users/error.rs
+  ✓ Updated src/entity.rs
+  ✓ Created src/migrations/
+  ✓ Created src/migrations/m20260723_090145_create_users.rs
+  ✓ Updated src/migrations/mod.rs
+  ✓ Wired mod users; in src/main.rs
+
   Next steps:
 
-  1. Add the module declaration to src/main.rs:
+  1. Run cargo build to verify
 
-     mod users;
-     mod entity;
-     mod migrations;
-
-  2. Register the routes in your Router:
-
-     use users::handlers::{list_users, get_user, create_user, update_user, delete_user};
-
-     let router = Router::new()
-         .get("/users", list_users)
-         .get("/users/:id", get_user)
-         .post("/users", create_user)
-         .put("/users/:id", update_user)
-         .delete("/users/:id", delete_user);
-
-  3. Enable the database feature in Cargo.toml:
-
-     rapina = { version = "...", features = ["postgres"] }
+  Resource Item created successfully!
 ```
+
+Two steps still need to be done manually, since the command doesn't know your router or which database feature you're using:
+
+- Register the routes in your Router, or add `.discover()` in the app struct `Rapina::new()`:
+
+  ```rust
+  use users::handlers::{list_users, get_user, create_user, update_user, delete_user};
+
+  let router = Router::new()
+      .get("/users", list_users)
+      .get("/users/:id", get_user)
+      .post("/users", create_user)
+      .put("/users/:id", update_user)
+      .delete("/users/:id", delete_user);
+  ```
+
+- Add `mod entity` in main.rs, also add `mod migrations` if you wish to use the migrations app methods
+
+- Enable the database feature in `Cargo.toml`:
+
+  ```toml
+  rapina = { version = "...", features = ["postgres"] }
+  ```
 
 The resource name must be lowercase with underscores (e.g., `user`, `blog_post`). Pluralization is automatic. If the resource directory already exists, the command fails with a clear error instead of overwriting.
 

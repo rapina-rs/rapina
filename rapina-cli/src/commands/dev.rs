@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-const JUCA_BANNER: &str = include_str!("../../../juca.txt");
+const JUCA_BANNER: &str = include_str!("../../juca.txt");
 
 /// Configuration for the dev server.
 pub struct DevConfig {

@@ -583,7 +583,7 @@ fn main() {
     }
 }
 
-const JUCA_BANNER: &str = include_str!("../../juca.txt");
+const JUCA_BANNER: &str = include_str!("../juca.txt");
 
 fn print_banner() {
     println!();

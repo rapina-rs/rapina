@@ -13,7 +13,7 @@ Add the database feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rapina = { version = "0.13.0", features = ["postgres"] }
+rapina = { version = "0.13.1", features = ["postgres"] }
 # or "mysql", "sqlite"
 ```
 
@@ -226,6 +226,8 @@ UserRole {
     role_id: Role,     // belongs_to Role
 }
 ```
+
+A relationship field named in `#[primary_key(...)]` keeps its column name **verbatim**. Elsewhere a `belongs_to` field gets an `_id` suffix (`author: User` becomes `author_id`), but a primary key column is referenced by the name you declared, so `user_id: User` stays `user_id` rather than becoming `user_id_id`. Name these fields the way you want the columns to read. The field still resolves to the target's primary key type, and the target must have a single primary key column.
 
 #### Field Attributes
 

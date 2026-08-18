@@ -1,7 +1,7 @@
 //! Code generation for SeaORM entity modules.
 
 use heck::ToSnakeCase;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
 use super::analyze::{AnalyzedEntity, AnalyzedField, AnalyzedSchema};
@@ -81,7 +81,7 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     // Generate primary key fields
     let pk_fields = if let Some(ref pk_cols) = entity.attrs.primary_key {
         // Custom primary key: mark specified fields with #[sea_orm(primary_key, auto_increment = false)]
-        generate_custom_pk_fields(entity, pk_cols)
+        generate_custom_pk_fields(entity, pk_cols, schema)
     } else {
         // Default: auto-increment id
         quote! {
@@ -118,25 +118,112 @@ fn generate_entity_module(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> T
     }
 }
 
-fn generate_custom_pk_fields(entity: &AnalyzedEntity, pk_cols: &[String]) -> TokenStream {
+fn sea_orm_parts(field: &AnalyzedField) -> Vec<TokenStream> {
+    let mut parts = Vec::new();
+    if field.attrs.unique {
+        parts.push(quote! {unique});
+    }
+    if field.attrs.indexed {
+        parts.push(quote! {indexed});
+    }
+    if let Some(ref col_name) = field.attrs.column_name {
+        parts.push(quote! {column_name = #col_name});
+    }
+    parts
+}
+
+fn build_field_attr(parts: &[TokenStream], column_type: Option<TokenStream>) -> TokenStream {
+    match (parts.is_empty(), column_type) {
+        (true, ct) => ct.unwrap_or_default(),
+        (false, Some(ct)) => quote! {#[sea_orm(#(#parts), *)] #ct },
+        (false, None) => quote! {#[sea_orm(#(#parts), *)]},
+    }
+}
+fn generate_custom_pk_fields(
+    entity: &AnalyzedEntity,
+    pk_cols: &[String],
+    schema: &AnalyzedSchema,
+) -> TokenStream {
     let fields: Vec<TokenStream> = pk_cols
         .iter()
         .filter_map(|col_name| {
             let field = entity.fields.iter().find(|f| f.name == col_name)?;
-            if let FieldType::Scalar { scalar, .. } = &field.ty {
-                let field_name = &field.name;
-                let rust_type = scalar.rust_type();
-                Some(quote! {
-                    #[sea_orm(primary_key, auto_increment = false)]
-                    pub #field_name: #rust_type,
-                })
-            } else {
-                None
-            }
+            let field_name = &field.name;
+            // A relationship PK resolves to the target's PK scalar, which carries
+            // no column_type attribute of its own.
+            let (rust_type, column_type) = match &field.ty {
+                FieldType::Scalar { scalar, .. } => (scalar.rust_type(), scalar.column_type_attr()),
+                FieldType::BelongsTo { target, .. } => {
+                    (resolve_target_pk_type(target, schema), None)
+                }
+                FieldType::HasMany { .. } => return None,
+            };
+
+            let mut parts = vec![quote! {primary_key}, quote! {auto_increment = false}];
+            parts.extend(sea_orm_parts(field));
+            let field_attr = build_field_attr(&parts, column_type);
+
+            Some(quote! {
+                #field_attr
+                pub #field_name: #rust_type,
+            })
         })
         .collect();
 
     quote! { #(#fields)* }
+}
+
+fn resolve_target_pk_type(target: &Ident, schema: &AnalyzedSchema) -> TokenStream {
+    let resolved = schema
+        .entities
+        .iter()
+        .find(|e| &e.name == target)
+        .and_then(|e| {
+            if let Some(ref pk_cols) = e.attrs.primary_key {
+                if pk_cols.len() == 1 {
+                    let pk_field = e.fields.iter().find(|f| f.name == pk_cols[0])?;
+                    match &pk_field.ty {
+                        FieldType::Scalar { scalar, .. } => return Some(scalar.rust_type()),
+                        // The target's PK is itself a relationship (a join-table
+                        // style PK). Resolve transitively to the entity it points
+                        // at so the FK column adopts the underlying scalar type.
+                        FieldType::BelongsTo {
+                            target: inner_target,
+                            ..
+                        } => {
+                            return Some(resolve_target_pk_type(inner_target, schema));
+                        }
+                        FieldType::HasMany { .. } => {}
+                    }
+                }
+            } else {
+                // Default PK is i32
+                return Some(quote! { i32 });
+            }
+            None
+        });
+
+    // Fallback to i32 if target not found or complex PK.
+    resolved.unwrap_or_else(|| quote! { i32 })
+}
+
+/// PascalCase name of the target entity's single primary-key column, used for
+/// the `to = "...::Column::X"` side of a generated belongs_to relation.
+/// Defaults to `Id` for entities using the implicit auto-increment primary key.
+fn resolve_target_pk_column(target: &Ident, schema: &AnalyzedSchema) -> String {
+    schema
+        .entities
+        .iter()
+        .find(|e| &e.name == target)
+        .and_then(|e| {
+            let pk_cols = e.attrs.primary_key.as_ref()?;
+            if pk_cols.len() == 1 {
+                Some(to_pascal_case(&pk_cols[0]))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "Id".to_string())
 }
 
 fn generate_model_fields(entity: &AnalyzedEntity, schema: &AnalyzedSchema) -> TokenStream {
@@ -160,51 +247,12 @@ fn generate_model_field(field: &AnalyzedField, schema: &AnalyzedSchema) -> Optio
     match &field.ty {
         FieldType::Scalar { scalar, optional } => {
             let rust_type = scalar.rust_type();
-            let column_type_attr = scalar.column_type_attr();
-
             let final_type = if *optional {
                 quote! { Option<#rust_type> }
             } else {
                 rust_type
             };
-
-            // Build sea_orm attribute parts
-            let mut sea_orm_parts: Vec<TokenStream> = Vec::new();
-
-            // Add unique if specified
-            if field.attrs.unique {
-                sea_orm_parts.push(quote! { unique });
-            }
-
-            // Add indexed if specified
-            if field.attrs.indexed {
-                sea_orm_parts.push(quote! { indexed });
-            }
-
-            // Add custom column name if specified
-            if let Some(ref col_name) = field.attrs.column_name {
-                sea_orm_parts.push(quote! { column_name = #col_name });
-            }
-
-            // Combine column_type_attr with other attributes
-            let field_attr = if sea_orm_parts.is_empty() {
-                column_type_attr.unwrap_or_default()
-            } else if let Some(col_type) = column_type_attr {
-                // Extract the column_type value and combine
-                let col_type_str = col_type.to_string();
-                if col_type_str.contains("column_type") {
-                    // Parse out the column_type value
-                    let combined = quote! {
-                        #[sea_orm(#(#sea_orm_parts),*)]
-                        #col_type
-                    };
-                    combined
-                } else {
-                    quote! { #[sea_orm(#(#sea_orm_parts),*)] }
-                }
-            } else {
-                quote! { #[sea_orm(#(#sea_orm_parts),*)] }
-            };
+            let field_attr = build_field_attr(&sea_orm_parts(field), scalar.column_type_attr());
 
             Some(quote! {
                 #field_attr
@@ -217,28 +265,7 @@ fn generate_model_field(field: &AnalyzedField, schema: &AnalyzedSchema) -> Optio
             let fk_name = format_ident!("{}_id", field_name.to_string().to_snake_case());
 
             // Look up target entity's primary key type
-            let target_pk_type = schema
-                .entities
-                .iter()
-                .find(|e| &e.name == target)
-                .and_then(|e| {
-                    if let Some(ref pk_cols) = e.attrs.primary_key {
-                        if pk_cols.len() == 1 {
-                            let pk_field = e.fields.iter().find(|f| f.name == pk_cols[0])?;
-                            if let FieldType::Scalar { scalar, .. } = &pk_field.ty {
-                                return Some(scalar.rust_type());
-                            }
-                        }
-                    } else {
-                        // Default PK is i32
-                        return Some(quote! { i32 });
-                    }
-                    None
-                })
-                .unwrap_or_else(|| {
-                    // Fallback to i32 if target not found or complex PK
-                    quote! { i32 }
-                });
+            let target_pk_type = resolve_target_pk_type(target, schema);
 
             if *optional {
                 Some(quote! {
@@ -272,8 +299,8 @@ fn generate_relation_variants(entity: &AnalyzedEntity, schema: &AnalyzedSchema) 
 
 fn generate_relation_variant(
     field: &AnalyzedField,
-    _entity: &AnalyzedEntity,
-    _schema: &AnalyzedSchema,
+    entity: &AnalyzedEntity,
+    schema: &AnalyzedSchema,
 ) -> Option<TokenStream> {
     match &field.ty {
         FieldType::HasMany { target } => {
@@ -296,11 +323,23 @@ fn generate_relation_variant(
             let variant_ident = format_ident!("{}", variant_name);
             let target_mod_str = target.to_string().to_snake_case();
             let belongs_to_path = format!("super::{}::Entity", target_mod_str);
-            let fk_column_str = format!(
-                "Column::{}",
-                to_pascal_case(&format!("{}_id", field.name.to_string().to_snake_case()))
+            let field_name = field.name.to_string();
+            let is_pk_column = entity
+                .attrs
+                .primary_key
+                .as_ref()
+                .is_some_and(|pk_cols| pk_cols.iter().any(|pk| pk == &field_name));
+            let fk_column = if is_pk_column {
+                field_name
+            } else {
+                format!("{}_id", field.name.to_string().to_snake_case())
+            };
+            let fk_column_str = format!("Column::{}", to_pascal_case(&fk_column));
+            let to_column_str = format!(
+                "super::{}::Column::{}",
+                target_mod_str,
+                resolve_target_pk_column(target, schema)
             );
-            let to_column_str = format!("super::{}::Column::Id", target_mod_str);
 
             Some(quote! {
                 #[sea_orm(
@@ -677,6 +716,150 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_composite_primary_key_with_belongs_to_fields() {
+        let input = quote! {
+            #[table_name = "transactions"]
+            Tx {
+                name: String,
+            }
+
+            #[table_name = "labels"]
+            Label {
+                #[unique]
+                name: String,
+            }
+
+            #[table_name = "transaction_labels"]
+            #[timestamps(none)]
+            #[primary_key(tx_id, label_id)]
+            TxLabel {
+                tx_id: Tx,
+                label_id: Label,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+        let tx_label_start = output.find("pub mod tx_label").unwrap();
+        let reexports_start = output.find("pub use tx :: Entity").unwrap();
+        let tx_label_module = &output[tx_label_start..reexports_start];
+
+        assert!(tx_label_module.contains("pub tx_id : i32"));
+        assert!(tx_label_module.contains("pub label_id : i32"));
+        assert!(tx_label_module.contains("auto_increment = false"));
+        assert!(!tx_label_module.contains("pub id : i32"));
+        assert!(!tx_label_module.contains("pub tx_id_id"));
+        assert!(!tx_label_module.contains("pub label_id_id"));
+        assert!(tx_label_module.contains("from = \"Column::TxId\""));
+        assert!(tx_label_module.contains("from = \"Column::LabelId\""));
+        assert!(!tx_label_module.contains("Column::TxIdId"));
+        assert!(!tx_label_module.contains("Column::LabelIdId"));
+        // Both targets use the default auto-increment `id` PK, so the relation
+        // points at Column::Id.
+        assert!(tx_label_module.contains("to = \"super::tx::Column::Id\""));
+        assert!(tx_label_module.contains("to = \"super::label::Column::Id\""));
+    }
+
+    #[test]
+    fn test_generate_belongs_to_pk_targets_non_id_pk_column() {
+        // The target's single PK column is not named `id`; the relation `to`
+        // side must reference that actual column, not a nonexistent Column::Id.
+        let input = quote! {
+            #[primary_key(uuid_pk)]
+            Label {
+                uuid_pk: Uuid,
+                name: String,
+            }
+
+            #[timestamps(none)]
+            #[primary_key(label_id)]
+            LabelRef {
+                label_id: Label,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+        let label_ref_start = output.find("pub mod label_ref").unwrap();
+        let reexports_start = output.find("pub use label :: Entity").unwrap();
+        let label_ref_module = &output[label_ref_start..reexports_start];
+
+        // FK column adopts the target PK scalar type and verbatim name.
+        assert!(label_ref_module.contains("pub label_id : rapina :: uuid :: Uuid"));
+        // Relation references the target's real PK column, not Column::Id.
+        assert!(label_ref_module.contains("from = \"Column::LabelId\""));
+        assert!(label_ref_module.contains("to = \"super::label::Column::UuidPk\""));
+        assert!(!label_ref_module.contains("super::label::Column::Id"));
+    }
+
+    #[test]
+    fn test_generate_belongs_to_pk_resolves_transitively() {
+        // A relation to an entity whose own PK is a belongs_to must resolve the
+        // FK scalar type transitively, not fall back to i32.
+        let input = quote! {
+            #[primary_key(id)]
+            Org {
+                id: Uuid,
+                name: String,
+            }
+
+            #[timestamps(none)]
+            #[primary_key(org_id)]
+            Project {
+                org_id: Org,
+            }
+
+            Task {
+                project: Project,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+
+        // Project.org_id resolves to Org's Uuid PK.
+        assert!(output.contains("pub org_id : rapina :: uuid :: Uuid"));
+        // Task.project_id resolves transitively through Project's belongs_to PK.
+        assert!(output.contains("pub project_id : rapina :: uuid :: Uuid"));
+        assert!(!output.contains("pub project_id : i32"));
+    }
+
+    #[test]
+    fn test_generate_belongs_to_primary_key_uses_target_uuid_type() {
+        let input = quote! {
+            #[primary_key(id)]
+            Tx {
+                id: Uuid,
+                name: String,
+            }
+
+            #[timestamps(none)]
+            #[primary_key(tx_id)]
+            TxLabel {
+                tx_id: Tx,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let generated = generate_schema(analyzed);
+        let output = generated.to_string();
+        let tx_label_start = output.find("pub mod tx_label").unwrap();
+        let reexports_start = output.find("pub use tx :: Entity").unwrap();
+        let tx_label_module = &output[tx_label_start..reexports_start];
+
+        assert!(tx_label_module.contains("pub tx_id : rapina :: uuid :: Uuid"));
+        assert!(!tx_label_module.contains("pub tx_id_id"));
+        assert!(tx_label_module.contains("from = \"Column::TxId\""));
+    }
+
+    #[test]
     fn test_generate_composite_pk_with_extra_fields() {
         let input = quote! {
             #[primary_key(user_id, role_id)]
@@ -720,6 +903,23 @@ mod tests {
         assert!(output.contains("auto_increment = false"));
         assert!(output.contains("pub uuid_pk"));
         assert!(output.contains("pub name : String"));
+    }
+
+    #[test]
+    fn test_generate_custom_pk_keeps_column_type() {
+        let input = quote! {
+            #[primary_key(code)]
+            #[timestamps(none)]
+            Region {
+                code: Text,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+        let output = generate_schema(analyzed).to_string();
+
+        assert!(output.contains("column_type = \"Text\""));
     }
 
     #[test]
