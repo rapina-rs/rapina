@@ -147,4 +147,23 @@ mod tests {
         assert!(output_str.contains("\"API_KEY\""));
         assert!(output_str.contains("push"));
     }
+
+    #[test]
+    #[should_panic(expected = "Config derive only supports structs")]
+    fn test_config_rejects_non_struct_input() {
+        derive_config_impl(quote! {
+            enum AppConfig {
+                Dev,
+                Prod,
+            }
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Config derive only supports structs with named fields")]
+    fn test_config_rejects_tuple_struct() {
+        derive_config_impl(quote! {
+            struct AppConfig(String);
+        });
+    }
 }
