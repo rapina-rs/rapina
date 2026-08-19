@@ -768,8 +768,10 @@ pub fn schema(input: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod tests {
-    use super::metric_macro_impl;
-    use super::{AuthorizeArgs, job_macro_impl, join_paths, metric_macro_impl, route_macro_core};
+    use super::{
+        AuthorizeArgs, build_authorize_plan, job_macro_impl, join_paths, metric_macro_impl,
+        public_macro_impl, route_macro_core,
+    };
     use quote::quote;
 
     #[test]
