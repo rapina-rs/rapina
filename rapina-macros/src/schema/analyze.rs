@@ -397,6 +397,9 @@ fn validate_target_relations(
 /// `R::to().rev()`, the *target's* back-edge, so they produce identical
 /// `RelationDef`s regardless of which field wins the nomination. Reject them
 /// rather than emit two differently-named links that run the same query.
+///
+/// Provisional -- see #766, which proposes naming the target field so the two
+/// can be told apart.
 fn validate_has_many_group(
     entity: &Ident,
     target: &str,
@@ -966,6 +969,29 @@ mod tests {
         // The has_many cannot own `Related`: SeaORM derives it as the reverse
         // of the target's own impl, so `children` resolves through `parent`.
         assert_eq!(nominated(&analyzed.entities[0]), vec!["parent"]);
+    }
+
+    #[test]
+    fn test_related_belongs_to_beats_has_many_across_entities() {
+        let input = quote! {
+            User {
+                posts: Vec<Post>,
+                featured: Option<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // Same rule as the self-referential case, with the group spread across
+        // two entities: the belongs_to owns `Related`, the has_many does not.
+        assert_eq!(nominated(&analyzed.entities[0]), vec!["featured"]);
+        assert_eq!(nominated(&analyzed.entities[1]), vec!["author"]);
     }
 
     #[test]

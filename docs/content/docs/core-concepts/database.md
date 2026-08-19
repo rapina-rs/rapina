@@ -283,9 +283,9 @@ let sender = tx.find_linked(transaction::FromLink).one(db.conn()).await?;
 
 Rules:
 
-- Exactly one field per group must be marked. Marking none, or marking two, is a compile error naming the fields involved.
-- `#[related]` only applies to `belongs_to` fields, since those are the ones holding a foreign key column.
-- It is only needed when two or more fields point at the same table. A single relationship needs nothing.
+- When more than one `belongs_to` on an entity points at the same table, exactly one of them must be marked `#[related]`. Marking none, or marking more than one, is a compile error naming the entity, the target, and the fields involved.
+- A single `belongs_to` to a table needs no attribute — it is already the default connector.
+- `#[related]` only applies to `belongs_to` fields, since those hold the foreign key column. Using it on a `has_many` or a scalar field is a compile error.
 
 ## Database Schema
 
