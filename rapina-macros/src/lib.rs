@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -146,8 +146,17 @@ impl Parse for AuthorizeArgs {
 ///
 /// The phases must remain separate because authorization-only dependencies need
 /// request parts, while reused handler dependencies are not in scope until the
-/// route's normal extractor bindings have been created.
+/// route's normal extractor bindings have been created. Reused handler dependencies must be
+/// validated to implement FromRequestParts to reject body-consuming authorization dependencies.
 struct AuthorizePlan {
+    /// Compile-time validation for reused authorization dependencies. Reused dependencies must
+    /// implement FromRequestParts unless they are Header<T>, which is extracted through the
+    /// macro-generated header path.
+    ///
+    /// These checks do not perform runtime extraction and do not require
+    /// request parts.
+    reused_dependency_validation: proc_macro2::TokenStream,
+
     /// Dependencies not present in the handler signature. These are extracted
     /// from request parts before handler extraction consumes the request.
     extracts: proc_macro2::TokenStream,
@@ -191,6 +200,7 @@ fn build_authorize_plan(
 ) -> syn::Result<AuthorizePlan> {
     let auth_fn = &auth.auth_fn;
 
+    let mut reused_dependency_validation = Vec::new();
     let mut extracts = Vec::new();
     let mut arguments = Vec::with_capacity(auth.deps.len());
     let mut needs_request_parts = false;
@@ -214,6 +224,29 @@ fn build_authorize_plan(
 
         if let Some(pattern) = matching_handler_parameter {
             let identifier = extract_ident(pattern)?;
+
+            // Reused authorization dependencies must not be body-consuming. Body-consuming
+            // extractors, e.g. Json<T>, Form<T>, and Validated<T>, are rejected.
+            // Header<T> is a special macro-managed extractor. Its header name comes
+            // from the handler parameter and #[header(...)] attribute, so it cannot use
+            // the generic FromRequestParts implementation. All other reused
+            // authorization dependencies must implement FromRequestParts.
+            if detect_header_type(dependency_type).is_none() {
+                let dependency_span = dependency_type.span();
+
+                reused_dependency_validation.push(quote_spanned! { dependency_span =>
+                    const _: () = {
+                        const fn __rapina_require_from_request_parts<T>()
+                        where
+                            T: rapina::extract::FromRequestParts,
+                        {
+                        }
+
+                        __rapina_require_from_request_parts::<#dependency_type>();
+                    };
+                });
+            }
+
             arguments.push(quote!(&#identifier));
             continue;
         }
@@ -248,6 +281,10 @@ fn build_authorize_plan(
         arguments.push(quote!(&#temporary));
     }
 
+    let reused_dependency_validation = quote! {
+        #(#reused_dependency_validation)*
+    };
+
     let extracts = quote! {
         #(#extracts)*
     };
@@ -264,6 +301,7 @@ fn build_authorize_plan(
     };
 
     Ok(AuthorizePlan {
+        reused_dependency_validation,
         extracts,
         call,
         needs_request_parts,
