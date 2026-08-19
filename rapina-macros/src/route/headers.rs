@@ -172,12 +172,14 @@ mod tests {
 
     #[test]
     fn detects_qualified_header_paths() {
-        for ty in [
+        let cases: [syn::Type; 2] = [
             syn::parse_quote!(extract::Header<u64>),
             syn::parse_quote!(rapina::extract::Header<u64>),
-        ] {
-            let ty: syn::Type = ty;
-            let (inner, required) = detect_header_type(&ty).expect("qualified Header<T>");
+        ];
+
+        for ty in cases {
+            let (inner, required) =
+                detect_header_type(&ty).unwrap_or_else(|| panic!("not detected: {}", quote!(#ty)));
 
             assert!(required);
             assert_eq!(quote!(#inner).to_string(), "u64");
