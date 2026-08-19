@@ -1,3 +1,6 @@
+//! Metadata extraction for route handlers: request and response body schemas,
+//! doc descriptions, and the `#[errors]`, `#[cache]` and `#[public]` attributes.
+
 use quote::quote;
 
 /// Extracts the inner type from Json<T> wrapper for schema generation

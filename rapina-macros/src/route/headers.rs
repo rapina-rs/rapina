@@ -1,3 +1,5 @@
+//! `Header<T>` parameter detection and the extraction code it generates.
+
 use heck::ToKebabCase;
 use quote::quote;
 use syn::{LitStr, Pat};
@@ -148,4 +150,149 @@ pub(crate) fn collect_header_params(
     }
 
     Ok(params)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_header_params, detect_header_type, gen_header_extraction};
+    use quote::quote;
+
+    fn inputs_of(func: syn::ItemFn) -> syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> {
+        func.sig.inputs
+    }
+
+    #[test]
+    fn detects_bare_header() {
+        let ty: syn::Type = syn::parse_quote!(Header<String>);
+        let (inner, required) = detect_header_type(&ty).expect("Header<T> should be detected");
+
+        assert!(required);
+        assert_eq!(quote!(#inner).to_string(), "String");
+    }
+
+    #[test]
+    fn detects_qualified_header_paths() {
+        for ty in [
+            syn::parse_quote!(extract::Header<u64>),
+            syn::parse_quote!(rapina::extract::Header<u64>),
+        ] {
+            let ty: syn::Type = ty;
+            let (inner, required) = detect_header_type(&ty).expect("qualified Header<T>");
+
+            assert!(required);
+            assert_eq!(quote!(#inner).to_string(), "u64");
+        }
+    }
+
+    #[test]
+    fn detects_optional_header() {
+        let ty: syn::Type = syn::parse_quote!(Option<Header<String>>);
+        let (inner, required) = detect_header_type(&ty).expect("Option<Header<T>>");
+
+        assert!(!required);
+        assert_eq!(quote!(#inner).to_string(), "String");
+    }
+
+    #[test]
+    fn ignores_non_header_types() {
+        let ty: syn::Type = syn::parse_quote!(Json<Payload>);
+
+        assert!(detect_header_type(&ty).is_none());
+    }
+
+    #[test]
+    fn ignores_foreign_header_types() {
+        // A user type also named `Header` must fall through to normal handling
+        // instead of producing confusing errors from macro-generated code.
+        let ty: syn::Type = syn::parse_quote!(my_crate::Header<String>);
+
+        assert!(detect_header_type(&ty).is_none());
+    }
+
+    #[test]
+    fn derives_kebab_case_name_from_param() {
+        let mut inputs = inputs_of(syn::parse_quote! {
+            async fn handler(x_request_id: Header<String>) {}
+        });
+
+        let params = collect_header_params(&mut inputs).expect("valid header param");
+
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "x-request-id");
+        assert_eq!(params[0].arg_idx, 0);
+        assert!(params[0].required);
+    }
+
+    #[test]
+    fn explicit_attribute_overrides_derived_name() {
+        let mut inputs = inputs_of(syn::parse_quote! {
+            async fn handler(#[header("X-Api-Key")] api_key: Header<String>) {}
+        });
+
+        let params = collect_header_params(&mut inputs).expect("valid header param");
+
+        assert_eq!(params[0].name, "X-Api-Key");
+        // The attribute is not valid Rust, so it must be stripped before codegen.
+        let syn::FnArg::Typed(pat_type) = &inputs[0] else {
+            panic!("expected a typed argument");
+        };
+        assert!(pat_type.attrs.is_empty());
+    }
+
+    #[test]
+    fn skips_non_header_params_and_tracks_positions() {
+        let mut inputs = inputs_of(syn::parse_quote! {
+            async fn handler(
+                body: Json<Payload>,
+                trace_id: Header<String>,
+                tenant: Option<Header<String>>,
+            ) {
+            }
+        });
+
+        let params = collect_header_params(&mut inputs).expect("valid header params");
+
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].arg_idx, 1);
+        assert!(params[0].required);
+        assert_eq!(params[1].arg_idx, 2);
+        assert!(!params[1].required);
+        assert_eq!(params[1].name, "tenant");
+    }
+
+    #[test]
+    fn destructured_param_without_attribute_is_an_error() {
+        let mut inputs = inputs_of(syn::parse_quote! {
+            async fn handler(Header(id): Header<String>) {}
+        });
+
+        let Err(err) = collect_header_params(&mut inputs) else {
+            panic!("destructured Header<T> without #[header(\"name\")] should be an error");
+        };
+
+        assert!(err.to_string().contains("#[header(\"name\")]"));
+    }
+
+    #[test]
+    fn generates_required_extraction() {
+        let inner: syn::Type = syn::parse_quote!(String);
+        let tmp = syn::Ident::new("__rapina_arg_0", proc_macro2::Span::call_site());
+
+        let output = gen_header_extraction(&inner, true, "x-request-id", &tmp).to_string();
+
+        assert!(output.contains("extract_header :: < String >"));
+        assert!(output.contains("\"x-request-id\""));
+        assert!(!output.contains("extract_optional_header"));
+    }
+
+    #[test]
+    fn generates_optional_extraction() {
+        let inner: syn::Type = syn::parse_quote!(String);
+        let tmp = syn::Ident::new("__rapina_arg_0", proc_macro2::Span::call_site());
+
+        let output = gen_header_extraction(&inner, false, "x-tenant", &tmp).to_string();
+
+        assert!(output.contains("extract_optional_header :: < String >"));
+        assert!(output.contains("Ok (None) => None"));
+    }
 }

@@ -1,3 +1,5 @@
+//! The route attribute macros (`#[get]`, `#[post]`, `#[put]`, `#[patch]`, `#[delete]`).
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, LitStr};
