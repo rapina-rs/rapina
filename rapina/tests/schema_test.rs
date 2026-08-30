@@ -324,6 +324,62 @@ fn test_every_loser_of_a_three_way_group_keeps_its_own_column() {
     );
 }
 
+// `#[related]` is a cross-kind override: marking a has_many lets it win
+// `Related` over a belongs_to targeting the same entity, reversing the
+// default. `items` (has_many) and `highlight` (belongs_to) both target
+// RelItem from RelOwner; `items` is marked, so it owns `Related` and
+// `highlight` falls back to a generated `Linked` instead.
+schema! {
+    #[table_name = "rel_owners"]
+    RelOwner {
+        name: String,
+        #[related]
+        items: Vec<RelItem>,
+        highlight: Option<RelItem>,
+    }
+
+    #[table_name = "rel_items"]
+    RelItem {
+        name: String,
+        owner: RelOwner,
+    }
+}
+
+#[test]
+fn test_related_attr_on_has_many_overrides_belongs_to_default() {
+    // `items` owns Related, so find_also_related joins through RelItem's own
+    // `owner_id` column rather than RelOwner's `highlight_id`.
+    let stmt = rel_owner::Entity::find()
+        .find_also_related(rel_item::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("owner_id"), "{join}");
+    assert!(!join.contains("highlight_id"), "{join}");
+}
+
+#[test]
+fn test_belongs_to_demoted_by_related_on_has_many_reaches_own_column() {
+    let owner = rel_owner::Model {
+        id: 1,
+        name: "Acme".to_string(),
+        highlight_id: Some(2),
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // `highlight` lost the nomination to `items`, so it's only reachable
+    // through the generated Linked, and it must resolve to highlight_id.
+    let stmt = owner
+        .find_linked(rel_owner::HighlightLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("highlight_id"), "{join}");
+}
+
 #[test]
 fn test_self_referential_belongs_to_and_has_many_coexist() {
     let category = rel_category::Model {

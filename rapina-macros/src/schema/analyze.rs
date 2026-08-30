@@ -209,7 +209,7 @@ fn analyze_entity(entity: EntityDef, registry: &EntityRegistry) -> Result<Analyz
         analyzed_fields.push(analyze_field(field, registry)?);
     }
 
-    validate_relation_rules(&entity.name, &mut analyzed_fields)?;
+    pick_related_impl_fields(&entity.name, &mut analyzed_fields)?;
 
     // Validate custom primary key columns exist in the entity
     if let Some(ref pk_cols) = entity.attrs.primary_key {
@@ -321,14 +321,14 @@ fn analyze_field(field: FieldDef, registry: &EntityRegistry) -> Result<AnalyzedF
     })
 }
 
-/// Decide which fields on one entity own a `Related` impl.
-fn validate_relation_rules(entity: &Ident, fields: &mut [AnalyzedField]) -> Result<()> {
+/// Pick which fields on one entity get the `Related` impl.
+fn pick_related_impl_fields(entity: &Ident, fields: &mut [AnalyzedField]) -> Result<()> {
     validate_related_attr_placement(fields)?;
 
     let mut error: Option<syn::Error> = None;
 
     for (target, group) in group_fk_fields_by_target(fields) {
-        match validate_target_relations(entity, &target, &group, fields) {
+        match pick_related_impl_field(entity, &target, &group, fields) {
             Ok(winner) => fields[winner].implement_related = true,
             Err(e) => match error {
                 Some(ref mut acc) => acc.combine(e),
@@ -368,8 +368,24 @@ fn group_fk_fields_by_target(fields: &[AnalyzedField]) -> BTreeMap<String, Vec<u
     groups
 }
 
-/// Decide which field in one target group owns `Related`, returning its index.
-fn validate_target_relations(
+/// Pick which field in one target group gets the `Related` impl, returning
+/// its index.
+///
+/// Two or more `has_many` to this target are indistinguishable -- each
+/// expands to `R::to().rev()`, the target's own back-edge, so they'd produce
+/// identical `RelationDef`s no matter which one wins -- so that stays a
+/// compile error regardless of `#[related]` (provisional; see #766, which
+/// proposes naming the target field so the two can be told apart).
+/// Otherwise, with `belongs_to` (B) and `has_many` (H) totaling at most one
+/// `has_many`:
+///
+/// | B   | H   | `#[related]` marks | Result                        |
+/// |-----|-----|---------------------|--------------------------------|
+/// | 1   | 0/1 | none                | the belongs_to wins (default) |
+/// | any | 0/1 | exactly one         | the marked field wins          |
+/// | ≥2  | 0/1 | none                | error: mark exactly one        |
+/// | any | 0/1 | two or more         | error: only one may be marked  |
+fn pick_related_impl_field(
     entity: &Ident,
     target: &str,
     members: &[usize],
@@ -386,54 +402,20 @@ fn validate_target_relations(
         .copied()
         .partition(|&i| matches!(fields[i].ty, FieldType::BelongsTo { .. }));
 
-    // Well-formedness first: two has_many to one target stay ambiguous whichever
-    // field ends up owning `Related`, so choosing an owner cannot rescue them.
-    validate_has_many_group(entity, target, &has_many, fields)?;
-
-    validate_belongs_to_group(entity, target, &belongs_to, fields)
-}
-
-/// Two `has_many` to one target are indistinguishable: each expands to
-/// `R::to().rev()`, the *target's* back-edge, so they produce identical
-/// `RelationDef`s regardless of which field wins the nomination. Reject them
-/// rather than emit two differently-named links that run the same query.
-///
-/// Provisional -- see #766, which proposes naming the target field so the two
-/// can be told apart.
-fn validate_has_many_group(
-    entity: &Ident,
-    target: &str,
-    has_many: &[usize],
-    fields: &[AnalyzedField],
-) -> Result<()> {
-    if has_many.len() < 2 {
-        return Ok(());
+    if has_many.len() >= 2 {
+        return Err(syn::Error::new(
+            fields[has_many[1]].name.span(),
+            format!(
+                "entity '{}' has {} has_many fields referencing '{}' ({}). This is not supported yet. SeaORM cannot distinguish them without an explicit foreign key.",
+                entity,
+                has_many.len(),
+                target,
+                field_list(&has_many, fields),
+            ),
+        ));
     }
 
-    Err(syn::Error::new(
-        entity.span(),
-        format!(
-            "entity '{}' has {} has_many fields referencing '{}' ({}); this is not supported yet — SeaORM cannot distinguish them without an explicit foreign key",
-            entity,
-            has_many.len(),
-            target,
-            field_list(has_many, fields),
-        ),
-    ))
-}
-
-/// Exactly one `belongs_to` owns `Related` for this target.
-fn validate_belongs_to_group(
-    entity: &Ident,
-    target: &str,
-    belongs_to: &[usize],
-    fields: &[AnalyzedField],
-) -> Result<usize> {
-    if let [only] = belongs_to {
-        return Ok(*only);
-    }
-
-    let marked: Vec<usize> = belongs_to
+    let marked: Vec<usize> = members
         .iter()
         .copied()
         .filter(|&i| fields[i].attrs.related)
@@ -442,21 +424,25 @@ fn validate_belongs_to_group(
     match marked.as_slice() {
         [one] => Ok(*one),
 
-        [] => Err(syn::Error::new(
-            entity.span(),
-            format!(
-                "entity '{}' has {} belongs_to fields referencing '{}' ({}); mark exactly one with #[related] to choose which owns `Related`",
-                entity,
-                belongs_to.len(),
-                target,
-                field_list(belongs_to, fields),
-            ),
-        )),
+        [] => match belongs_to.as_slice() {
+            [only] => Ok(*only),
+
+            _ => Err(syn::Error::new(
+                fields[members[1]].name.span(),
+                format!(
+                    "entity '{}' has {} fields referencing '{}' ({}); mark exactly one with #[related] to choose which owns `Related`",
+                    entity,
+                    members.len(),
+                    target,
+                    field_list(members, fields),
+                ),
+            )),
+        },
 
         [_, second, ..] => Err(syn::Error::new(
             fields[*second].name.span(),
             format!(
-                "entity '{}' marks {} belongs_to fields referencing '{}' with #[related] ({}); only one may be marked",
+                "entity '{}' marks {} fields referencing '{}' with #[related] ({}); only one may be marked",
                 entity,
                 marked.len(),
                 target,
@@ -474,7 +460,8 @@ fn field_list(indices: &[usize], fields: &[AnalyzedField]) -> String {
         .join(", ")
 }
 
-// Validate that #[related] is only used on belongs_to fields, not has_many or scalar fields.
+// Validate that #[related] is only used on a relationship field (belongs_to
+// or has_many), not a scalar field.
 fn validate_related_attr_placement(fields: &[AnalyzedField]) -> Result<()> {
     for field in fields.iter() {
         if !field.attrs.related {
@@ -482,24 +469,13 @@ fn validate_related_attr_placement(fields: &[AnalyzedField]) -> Result<()> {
         }
 
         match &field.ty {
-            FieldType::BelongsTo { .. } => {}
-
-            // For now , we dont support #[related] on has_many fields. TODO for later
-            FieldType::HasMany { .. } => {
-                return Err(syn::Error::new(
-                    field.name.span(),
-                    format!(
-                        "#[related] cannot be used on the has_many field '{}'; mark the belongs_to field that owns the foreign key instead",
-                        field.name
-                    ),
-                ));
-            }
+            FieldType::BelongsTo { .. } | FieldType::HasMany { .. } => {}
 
             FieldType::Scalar { .. } => {
                 return Err(syn::Error::new(
                     field.name.span(),
                     format!(
-                        "#[related] can only be used on a foreign key field (belongs_to), but was used on the scalar field '{}'",
+                        "#[related] can only be used on a relationship field (belongs_to or has_many), but was used on the scalar field '{}'",
                         field.name
                     ),
                 ));
@@ -1133,11 +1109,36 @@ mod tests {
     }
 
     #[test]
-    fn test_related_attr_rejected_on_has_many_field() {
+    fn test_related_attr_on_has_many_overrides_belongs_to_default() {
         let input = quote! {
             User {
                 #[related]
                 posts: Vec<Post>,
+                featured: Option<Post>,
+            }
+
+            Post {
+                title: String,
+                author: User,
+            }
+        };
+
+        let parsed = parse_schema(input).unwrap();
+        let analyzed = analyze_schema(parsed).unwrap();
+
+        // Marking the has_many flips the default: it owns `Related` and the
+        // belongs_to falls back to `Linked` instead.
+        assert_eq!(nominated(&analyzed.entities[0]), vec!["posts"]);
+    }
+
+    #[test]
+    fn test_related_rejects_has_many_and_belongs_to_both_marked() {
+        let input = quote! {
+            User {
+                #[related]
+                posts: Vec<Post>,
+                #[related]
+                featured: Option<Post>,
             }
 
             Post {
@@ -1149,8 +1150,8 @@ mod tests {
         let parsed = parse_schema(input).unwrap();
         let error = analyze_schema(parsed).unwrap_err().to_string();
 
-        assert!(error.contains("cannot be used on the has_many field 'posts'"));
-        assert!(error.contains("mark the belongs_to field that owns the foreign key instead"));
+        assert!(error.contains("only one may be marked"));
+        assert!(error.contains("'posts', 'featured'"));
     }
 
     #[test]
@@ -1165,7 +1166,7 @@ mod tests {
         let parsed = parse_schema(input).unwrap();
         let error = analyze_schema(parsed).unwrap_err().to_string();
 
-        assert!(error.contains("foreign key field (belongs_to)"));
+        assert!(error.contains("relationship field (belongs_to or has_many)"));
         assert!(error.contains("scalar field 'email'"));
     }
 

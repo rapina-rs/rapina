@@ -50,9 +50,9 @@ pub struct FieldAttrs {
     /// Mark field as indexed, e.g., #[index]
     pub indexed: bool,
 
-    // we will impl <Related> based on this value.
-    // This is for hasMany/BelongsTo field. we need explicit marker
-    // in case a table has multiple foreign keys pointing to the same source.
+    /// Mark this field as the one that gets the `Related` impl, e.g., #[related].
+    /// Applies to a `belongs_to` or `has_many` field; only required when
+    /// another field on the same entity targets the same entity too.
     pub related: bool,
 }
 

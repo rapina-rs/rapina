@@ -285,7 +285,9 @@ Rules:
 
 - When more than one `belongs_to` on an entity points at the same table, exactly one of them must be marked `#[related]`. Marking none, or marking more than one, is a compile error naming the entity, the target, and the fields involved.
 - A single `belongs_to` to a table needs no attribute — it is already the default connector.
-- `#[related]` only applies to `belongs_to` fields, since those hold the foreign key column. Using it on a `has_many` or a scalar field is a compile error.
+- If a `belongs_to` and a `has_many` on the same entity both target the same table, the `belongs_to` is the default connector. Mark the `has_many` with `#[related]` instead if you want it to be the connector — the `belongs_to` then falls back to a generated link like the others.
+- Two `has_many` fields to the same table aren't supported yet ([#766](https://github.com/rapina-rs/rapina/issues/766)) — SeaORM can't tell them apart without an explicit foreign key, so this is a compile error regardless of `#[related]`.
+- `#[related]` can only be used on a `belongs_to` or `has_many` field. Using it on a scalar field is a compile error.
 
 ## Database Schema
 
