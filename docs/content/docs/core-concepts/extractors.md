@@ -23,6 +23,7 @@ Extractors automatically parse request data and inject it into your handlers. If
 | [`Validated<T>`](#validation)    | Validated extractor                    |
 | [`Paginate`](#paginate)          | Pagination params (requires feature)   |
 | [`Db`](#db)                      | Database connection (requires feature) |
+| ['Multipart'](#multipart)        | Extractor for Multipart form data(requires feature) |
 
 ## Accessing Extractor Values
 
@@ -335,3 +336,75 @@ async fn create_post(
 Parts-only extractors (`Path`, `Query`, `Headers`, `State`, `Context`, `Cookie`, `CurrentUser`, `Db`) can appear in any order before the last parameter.
 
 > **Note:** Only one body-consuming extractor can be used per handler. If you need both JSON and form data, choose one.
+
+## Multipart
+
+Read `multipart/form-data` request bodies one field at a time:
+
+```rust
+use rapina::prelude::*;
+
+#[post("/upload")]
+async fn upload(mut multipart: Multipart) -> Result<String> {
+    let mut result = String::new();
+
+    while let Some(mut field) = multipart.next_field().await? {
+        // Metadata borrows the field, so copy it out before reading the body.
+        let name = field.name().unwrap_or("unknown").to_string();
+        let file_name = field.file_name().map(|s| s.to_string());
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        match file_name {
+            // No filename: a plain form field, safe to decode as text.
+            None => {
+                let value = field.text().await?;
+                result.push_str(&format!("Field: {name} = {value}\n"));
+            }
+            // A file: stream it so a large upload never lands in memory.
+            Some(file_name) => {
+                let mut total = 0;
+                while let Some(chunk) = field.chunk().await? {
+                    total += chunk.len();
+                }
+                result.push_str(&format!(
+                    "File: {file_name} ({content_type}) = {total} bytes\n"
+                ));
+            }
+        }
+    }
+
+    Ok(result)
+}
+```
+
+The `Multipart` extractor provides:
+
+- `next_field()` - Yields the next `Field`, or `None` at the end of the body
+
+Each `Field` exposes three metadata accessors, available before the body is read:
+
+- `name()` - The field name from `Content-Disposition`
+- `file_name()` - The filename from `Content-Disposition`, or `None` for a plain form field
+- `content_type()` - The field's `Content-Type`, when the client sent one
+
+And three ways to read the body - pick exactly one per field:
+
+- `chunk()` - Yields the next chunk, or `None` when the field is exhausted
+- `bytes()` - Collects the whole field into a `Bytes`
+- `text()` - Collects the whole field into a `String`
+
+Use `file_name()` to tell the two kinds of field apart: a field with a filename is a
+file and should stay opaque bytes, while a field without one is a form value. Do not
+use `text()` to make that call.
+
+`bytes()` and `text()` take the field by value and `chunk()` borrows it mutably
+
+> **Note:** `bytes()` and `text()` buffer the entire field in memory, and
+> `BodyLimitMiddleware` is opt-in, so there is no size ceiling by default. Prefer
+> `chunk()` for uploads whose size you do not control.
+
+> **Note:** This extractor requires the `multipart` feature.
+
