@@ -142,7 +142,7 @@ async fn login(form: Form<LoginForm>) -> Result<Json<TokenResponse>> {
 
 ## Headers
 
-Access request headers:
+Access all request headers with `Headers`:
 
 ```rust
 #[get("/debug")]
@@ -153,6 +153,54 @@ async fn debug(headers: Headers) -> String {
         .unwrap_or("unknown");
 
     format!("User-Agent: {}", user_agent)
+}
+```
+
+When you know the header name upfront, prefer `Header<T>`. The name is derived
+from the parameter name (snake_case to kebab-case) and the value is parsed into
+`T`, so a missing header returns `400 MISSING_HEADER` and an unparseable one
+returns `400 INVALID_HEADER` without any manual checks:
+
+```rust
+#[get("/user-agent")]
+async fn show_user_agent(user_agent: Header<String>) -> String {
+    // `user_agent` reads the `user-agent` header
+    format!("User-Agent: {}", *user_agent)
+}
+```
+
+Parsing happens through the `FromHeaderStr` trait, which always receives the raw
+header value as `&str`. The impl for `String` owns that slice with `to_owned()`,
+so `Header<String>` holds an allocated copy. You can borrow it back as `&str`
+through `Deref` without consuming the extractor, or call `into_inner()` to take
+the owned `String`:
+
+```rust
+#[get("/detect-client")]
+async fn detect_client(user_agent: Header<String>) -> String {
+    // Borrowed as `&str` via `Deref`, no allocation:
+    if user_agent.starts_with("curl/") {
+        return "cli client".to_string();
+    }
+
+    // Or take ownership of the parsed value:
+    user_agent.into_inner()
+}
+```
+
+Besides `String`, `FromHeaderStr` is implemented for `bool`, `uuid::Uuid`, and
+the primitive integer and float types. Override the derived name with
+`#[header("...")]`, and use `Option<Header<T>>` for optional headers:
+
+```rust
+#[get("/whoami")]
+async fn whoami(
+    #[header("x-api-key")] key: Header<String>,
+    x_retry_count: Option<Header<u64>>,
+) -> String {
+    let retries = x_retry_count.map(|h| h.into_inner()).unwrap_or(0);
+
+    format!("{} after {} retries", *key, retries)
 }
 ```
 

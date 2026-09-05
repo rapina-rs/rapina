@@ -6,15 +6,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        This issue is marked as a **good first issue** — it's a great starting point if you're new to contributing to Rapina.
+        Thanks for the contribution!
 
-        Before picking this up, please read the [Contributing Guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md).
-        Comment `/take` to claim this issue.
+        Before creating this issue, consider if it is really appropriated for new contributors
 
   - type: textarea
     id: summary
     attributes:
       label: Summary
+      value: |
+        This issue is marked as a **good first issue** — it's a great starting point if you're new to contributing to Rapina.
+
+        Before picking this up, please read the [Contributing Guide](https://github.com/rapina-rs/rapina/blob/main/CONTRIBUTING.md).
+        Comment `/take` to claim this issue.
       description: A clear and concise description of what needs to be done.
       placeholder: What needs to be done?
     validations:
