@@ -140,7 +140,7 @@ pub fn default_validation() -> Validation {
 /// Creates a HTTP client in Release mode, with strict enforcement for HTTPS connections
 fn build_https_client() -> HttpsClient {
     let builder = HttpsConnectorBuilder::new()
-        .with_native_roots()
+        .with_provider_and_native_roots(rustls::crypto::ring::default_provider())
         .expect("no native root CA certificates found")
         .https_only()
         .enable_all_versions()
@@ -195,7 +195,7 @@ async fn fetch_json_content<T: DeserializeOwned>(
 #[cfg(test)]
 pub(crate) fn direct_for_test(jwks_url: String, refresh_schedule: String) -> JwksClient {
     let connector = HttpsConnectorBuilder::new()
-        .with_native_roots()
+        .with_provider_and_native_roots(rustls::crypto::ring::default_provider())
         .expect("no native root CA certificates found")
         .https_or_http()
         .enable_all_versions()
@@ -213,7 +213,7 @@ pub(crate) fn direct_for_test(jwks_url: String, refresh_schedule: String) -> Jwk
 #[cfg(test)]
 pub(crate) fn oidc_for_test(discovery_url: String, refresh_schedule: String) -> JwksClient {
     let connector = HttpsConnectorBuilder::new()
-        .with_native_roots()
+        .with_provider_and_native_roots(rustls::crypto::ring::default_provider())
         .expect("no native root CA certificates found")
         .https_or_http()
         .enable_all_versions()
