@@ -94,7 +94,7 @@ impl InMemoryCache {
 
     fn maybe_cleanup(&self) {
         let count = self.op_count.fetch_add(1, Ordering::Relaxed);
-        if count > 0 && count % CLEANUP_INTERVAL == 0 {
+        if count > 0 && count.is_multiple_of(CLEANUP_INTERVAL) {
             self.cleanup_expired();
         }
     }

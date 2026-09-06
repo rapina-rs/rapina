@@ -136,6 +136,25 @@ Rapina::new()
 
 See [Authentication](/docs/core-concepts/authentication/) for details.
 
+### Authorized Routes
+
+Attach a route-level authorization policy by placing `#[authorize]` directly below the route macro:
+
+```rust
+#[get("/reports")]
+#[authorize(require_report_access(
+    CurrentUser,
+    State<Permissions>,
+))]
+async fn reports(user: CurrentUser) -> Result<Json<Vec<Report>>> {
+    // ...
+}
+```
+
+`#[authorize]` is processed by the route macro and therefore must appear below it. It cannot be combined with `#[public]`.
+
+See [Authorization](/docs/core-concepts/authorization/) for details.
+
 ### Route Groups
 
 When using auto-discovery, you can nest routes under a common prefix with the `group` parameter:
