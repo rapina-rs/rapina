@@ -535,3 +535,74 @@ Error: Found 2 breaking change(s)
 ```
 
 The command exits with code 1 if breaking changes are detected.
+
+## rapina seed
+
+Database seeding tools for generating, loading, and dumping seed data using JSON files in the `seeds/` directory.
+
+### rapina seed generate
+
+Generate fake seed data based on `schema!` macro definitions in `src/entity.rs`:
+
+```bash
+# Generate 10 records per entity (default)
+rapina seed generate
+
+# Generate 50 records per entity
+rapina seed generate --count 50
+
+# Generate records for a specific entity only
+rapina seed generate --entity user --count 25
+```
+
+This inspects entity fields and generates type-aware fake data (emails, names, URLs, UUIDs, timestamps) saved to `seeds/{table_name}.json`.
+
+Options:
+
+| Flag              | Description                         | Default |
+| ----------------- | ----------------------------------- | ------- |
+| `--count <COUNT>` | Number of records per entity to generate | `10`    |
+| `--entity <NAME>` | Target specific entity only         | all     |
+
+### rapina seed load
+
+Load seed data from JSON files in the `seeds/` directory into the database:
+
+```bash
+# Load all seed files using idempotent insert
+rapina seed load
+
+# Load seed data for a single entity
+rapina seed load --entity users
+
+# Truncate tables before inserting (clean reload)
+rapina seed load --fresh
+```
+
+`rapina seed load` temporarily disables foreign key checks within a transaction and inserts records using `ON CONFLICT DO NOTHING` (Postgres, SQLite) or `INSERT IGNORE` (MySQL). Using `--fresh` truncates target tables before loading records.
+
+Options:
+
+| Flag              | Description                                       | Default |
+| ----------------- | ------------------------------------------------- | ------- |
+| `--entity <NAME>` | Load specific entity only                         | all     |
+| `--fresh`         | Truncate target tables before loading seed data   | `false` |
+
+### rapina seed dump
+
+Dump current database table contents to pretty-printed JSON files in `seeds/`:
+
+```bash
+# Dump all database tables to seeds/
+rapina seed dump
+
+# Dump a specific table only
+rapina seed dump --entity users
+```
+
+Options:
+
+| Flag              | Description                         | Default |
+| ----------------- | ----------------------------------- | ------- |
+| `--entity <NAME>` | Dump specific entity only           | all     |
+
