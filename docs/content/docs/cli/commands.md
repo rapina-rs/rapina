@@ -535,3 +535,101 @@ Error: Found 2 breaking change(s)
 ```
 
 The command exits with code 1 if breaking changes are detected.
+
+## rapina seed
+
+Database seeding commands for loading, dumping, and generating seed data. Requires installing the CLI with a `seed-*` feature flag (see below).
+
+### Installation
+
+The `seed` subcommands are behind a feature flag. Reinstall with the flag matching your database:
+
+```bash
+# PostgreSQL
+cargo install rapina-cli --features seed-postgres
+
+# MySQL
+cargo install rapina-cli --features seed-mysql
+
+# SQLite
+cargo install rapina-cli --features seed-sqlite
+```
+
+### Seed file conventions
+
+Seed data lives in the `seeds/` directory at the project root as JSON files — one per table (`seeds/{table_name}.json`). Each file contains a JSON array of row objects:
+
+```json
+[
+  { "id": 1, "name": "Alice", "email": "alice@example.com" },
+  { "id": 2, "name": "Bob", "email": "bob@example.com" }
+]
+```
+
+### rapina seed load
+
+Load seed data from JSON files in `seeds/` into the database:
+
+```bash
+# Load all seed files
+rapina seed load
+
+# Load only the "users" seed file
+rapina seed load --entity users
+
+# Wipe all target tables before loading (full reset)
+rapina seed load --fresh
+```
+
+Options:
+
+| Flag             | Description                                                       | Default |
+| ---------------- | ----------------------------------------------------------------- | ------- |
+| `--entity <NAME>` | Load a specific entity only (matches `seeds/{NAME}.json`)        | all     |
+| `--fresh`         | Truncate all target tables before loading (destructive)          | false   |
+
+> Without `--fresh`, rows whose primary key already exist are silently skipped (not updated). This makes `rapina seed load` idempotent — safe to run repeatedly in CI and local dev.
+
+### rapina seed dump
+
+Dump live database tables into JSON seed files under `seeds/`:
+
+```bash
+# Dump all tables
+rapina seed dump
+
+# Dump only the "users" table
+rapina seed dump --entity users
+```
+
+Options:
+
+| Flag             | Description                                          | Default |
+| ---------------- | ---------------------------------------------------- | ------- |
+| `--entity <NAME>` | Dump a specific table only                          | all     |
+
+> Creates the `seeds/` directory if it does not exist. Existing seed files are overwritten.
+
+### rapina seed generate
+
+Generate fake seed data from the `schema!` macro blocks in `src/entity.rs`:
+
+```bash
+# Generate 10 records per entity (default)
+rapina seed generate
+
+# Generate 50 records per entity
+rapina seed generate --count 50
+
+# Generate only for "User" entity
+rapina seed generate --entity User
+```
+
+Options:
+
+| Flag             | Description                                          | Default |
+| ---------------- | ---------------------------------------------------- | ------- |
+| `--count <N>`    | Number of fake records per entity                   | 10      |
+| `--entity <NAME>` | Generate for a specific entity only (case-insensitive) | all     |
+
+> Requires a valid `src/entity.rs` with `schema!` macro blocks. Fake values are type-aware (strings, integers, booleans, UUIDs).
