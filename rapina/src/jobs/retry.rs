@@ -143,16 +143,23 @@ pub(crate) async fn apply_failure(
             DbBackend::Postgres => Postgres::build_retry_stmt(job_id, error, delay_secs),
             DbBackend::MySql => Mysql::build_retry_stmt(job_id, error, delay_secs),
             DbBackend::Sqlite => Sqlite::build_retry_stmt(job_id, error, delay_secs),
+            _ => {
+                return Err(sea_orm::error::DbErr::BackendNotSupported {
+                    db: db.get_database_backend().as_str(),
+                    ctx: "Unable to apply_failure: database backend not supported",
+                });
+            }
         }
     } else {
         match db.get_database_backend() {
             DbBackend::Postgres => Postgres::build_fail_stmt(job_id, error),
             DbBackend::MySql => Mysql::build_fail_stmt(job_id, error),
             DbBackend::Sqlite => Sqlite::build_fail_stmt(job_id, error),
+            _ => unreachable!("unsupported database backend"),
         }
     };
 
-    db.execute(stmt).await?;
+    db.execute_raw(stmt).await?;
     Ok(())
 }
 
@@ -165,8 +172,9 @@ pub(crate) async fn apply_success(
         DbBackend::Postgres => Postgres::build_success_stmt(job_id),
         DbBackend::MySql => Mysql::build_success_stmt(job_id),
         DbBackend::Sqlite => Sqlite::build_success_stmt(job_id),
+        _ => unreachable!("unsupported database backend"),
     };
-    db.execute(stmt).await?;
+    db.execute_raw(stmt).await?;
     Ok(())
 }
 

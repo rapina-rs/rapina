@@ -143,6 +143,9 @@ impl MigrationTrait for Migration {
             sea_orm::DbBackend::Sqlite => {
                 // no index needed — SQLite is single-writer
             }
+            _ => {
+                // Other database backends are not supported by Rapina, but we don't want to panic in a migration.
+            }
         }
 
         Ok(())
@@ -167,6 +170,9 @@ impl MigrationTrait for Migration {
             }
             sea_orm::DbBackend::Sqlite => {
                 // no index was created in `up`
+            }
+            _ => {
+                // Other database backends are not supported by Rapina, but we don't want to panic in a migration.
             }
         }
 

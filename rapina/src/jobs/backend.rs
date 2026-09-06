@@ -37,7 +37,7 @@ impl Postgres {
             DbBackend::Postgres,
             &sql,
             [
-                Value::String(Some(Box::new(id.to_string()))),
+                Value::String(Some(id.to_string())),
                 req.job_type.into(),
                 req.queue.into(),
                 req.payload.into(),
@@ -52,7 +52,7 @@ impl Postgres {
         config: &JobConfig,
     ) -> Result<Vec<JobRow>, DbErr> {
         let stmt = Self::build_claim_stmt(config);
-        let rows = db.query_all(stmt).await?;
+        let rows = db.query_all_raw(stmt).await?;
         rows.iter()
             .map(|row| JobRow::from_query_result(row, ""))
             .collect()
@@ -97,7 +97,7 @@ impl Postgres {
         let mut values: Vec<Value> = config
             .queues
             .iter()
-            .map(|q| Value::String(Some(Box::new(q.clone()))))
+            .map(|q| Value::String(Some(q.clone())))
             .collect();
         values.push(Value::Int(Some(config.batch_size)));
         values.push(Value::Double(Some(config.job_timeout.as_secs_f64())));
@@ -130,9 +130,9 @@ impl Postgres {
             DbBackend::Postgres,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
+                Value::String(Some(error.to_owned())),
                 Value::Double(Some(delay_secs)),
-                Value::String(Some(Box::new(job_id.to_string()))),
+                Value::String(Some(job_id.to_string())),
             ],
         )
     }
@@ -158,8 +158,8 @@ impl Postgres {
             DbBackend::Postgres,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
-                Value::String(Some(Box::new(job_id.to_string()))),
+                Value::String(Some(error.to_owned())),
+                Value::String(Some(job_id.to_string())),
             ],
         )
     }
@@ -182,7 +182,7 @@ impl Postgres {
         Statement::from_sql_and_values(
             DbBackend::Postgres,
             &sql,
-            [Value::String(Some(Box::new(job_id.to_string())))],
+            [Value::String(Some(job_id.to_string()))],
         )
     }
 }
@@ -209,7 +209,7 @@ impl Mysql {
             DbBackend::MySql,
             &sql,
             [
-                Value::Uuid(Some(Box::new(id))),
+                Value::Uuid(Some(id)),
                 req.job_type.into(),
                 req.queue.into(),
                 req.payload.into(),
@@ -226,7 +226,7 @@ impl Mysql {
         let txn = db.begin().await?;
 
         let select_sql = Self::build_claim_select(config);
-        let rows = txn.query_all(select_sql).await?;
+        let rows = txn.query_all_raw(select_sql).await?;
         let ids: Vec<Uuid> = rows
             .iter()
             .map(|r| {
@@ -243,10 +243,10 @@ impl Mysql {
         }
 
         let update_sql = Self::build_claim_update(config, &ids);
-        txn.execute(update_sql).await?;
+        txn.execute_raw(update_sql).await?;
 
         let fetch_sql = Self::build_fetch(&ids);
-        let updated = txn.query_all(fetch_sql).await?;
+        let updated = txn.query_all_raw(fetch_sql).await?;
         txn.commit().await?;
 
         updated
@@ -282,7 +282,7 @@ impl Mysql {
         let mut values: Vec<Value> = config
             .queues
             .iter()
-            .map(|q| Value::String(Some(Box::new(q.clone()))))
+            .map(|q| Value::String(Some(q.clone())))
             .collect();
         values.push(Value::Int(Some(config.batch_size)));
 
@@ -309,7 +309,7 @@ impl Mysql {
         let mut values: Vec<Value> = vec![Value::BigInt(Some(
             (config.job_timeout.as_secs_f64() * 1_000_000.0) as i64,
         ))];
-        values.extend(ids.iter().map(|id| Value::Uuid(Some(Box::new(*id)))));
+        values.extend(ids.iter().map(|id| Value::Uuid(Some(*id))));
 
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
     }
@@ -322,10 +322,7 @@ impl Mysql {
 
         let sql = format!(r#"SELECT * FROM {t} WHERE {id} IN ({id_placeholders})"#);
 
-        let values: Vec<Value> = ids
-            .iter()
-            .map(|id| Value::Uuid(Some(Box::new(*id))))
-            .collect();
+        let values: Vec<Value> = ids.iter().map(|id| Value::Uuid(Some(*id))).collect();
 
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
     }
@@ -355,9 +352,9 @@ impl Mysql {
             DbBackend::MySql,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
+                Value::String(Some(error.to_owned())),
                 Value::BigInt(Some((delay_secs * 1_000_000.0) as i64)),
-                Value::Uuid(Some(Box::new(job_id))),
+                Value::Uuid(Some(job_id)),
             ],
         )
     }
@@ -383,8 +380,8 @@ impl Mysql {
             DbBackend::MySql,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
-                Value::Uuid(Some(Box::new(job_id))),
+                Value::String(Some(error.to_owned())),
+                Value::Uuid(Some(job_id)),
             ],
         )
     }
@@ -404,11 +401,7 @@ impl Mysql {
                WHERE {id} = ?"#
         );
 
-        Statement::from_sql_and_values(
-            DbBackend::MySql,
-            &sql,
-            [Value::Uuid(Some(Box::new(job_id)))],
-        )
+        Statement::from_sql_and_values(DbBackend::MySql, &sql, [Value::Uuid(Some(job_id))])
     }
 }
 
@@ -434,7 +427,7 @@ impl Sqlite {
             DbBackend::Sqlite,
             &sql,
             [
-                Value::String(Some(Box::new(id.to_string()))),
+                Value::String(Some(id.to_string())),
                 req.job_type.into(),
                 req.queue.into(),
                 req.payload.into(),
@@ -449,7 +442,7 @@ impl Sqlite {
         config: &JobConfig,
     ) -> Result<Vec<JobRow>, DbErr> {
         let stmt = Self::build_claim_stmt(config);
-        let rows = db.query_all(stmt).await?;
+        let rows = db.query_all_raw(stmt).await?;
         rows.iter()
             .map(|row| JobRow::from_query_result(row, ""))
             .collect()
@@ -488,12 +481,7 @@ impl Sqlite {
         );
 
         let mut values: Vec<Value> = vec![Value::Double(Some(config.job_timeout.as_secs_f64()))];
-        values.extend(
-            config
-                .queues
-                .iter()
-                .map(|q| Value::String(Some(Box::new(q.clone())))),
-        );
+        values.extend(config.queues.iter().map(|q| Value::String(Some(q.clone()))));
         values.push(Value::Int(Some(config.batch_size)));
 
         Statement::from_sql_and_values(DbBackend::Sqlite, &sql, values)
@@ -524,9 +512,9 @@ impl Sqlite {
             DbBackend::Sqlite,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
+                Value::String(Some(error.to_owned())),
                 Value::Double(Some(delay_secs)),
-                Value::String(Some(Box::new(job_id.to_string()))),
+                Value::String(Some(job_id.to_string())),
             ],
         )
     }
@@ -552,8 +540,8 @@ impl Sqlite {
             DbBackend::Sqlite,
             &sql,
             [
-                Value::String(Some(Box::new(error.to_owned()))),
-                Value::String(Some(Box::new(job_id.to_string()))),
+                Value::String(Some(error.to_owned())),
+                Value::String(Some(job_id.to_string())),
             ],
         )
     }
@@ -576,7 +564,7 @@ impl Sqlite {
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             &sql,
-            [Value::String(Some(Box::new(job_id.to_string())))],
+            [Value::String(Some(job_id.to_string()))],
         )
     }
 }
