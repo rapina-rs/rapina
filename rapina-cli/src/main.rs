@@ -474,8 +474,8 @@ fn main() {
                 {
                     let _ = failed;
                     eprintln!(
-                        "{} The jobs list command requires a database feature. \
-                             Reinstall with: cargo install rapina-cli --features jobs-postgres",
+                        "{} The jobs list command requires the jobs feature. \
+                             Reinstall with: cargo install rapina-cli --features jobs",
                         "Error:".red().bold()
                     );
                     std::process::exit(1);

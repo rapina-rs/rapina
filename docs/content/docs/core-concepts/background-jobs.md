@@ -232,6 +232,8 @@ The migration creates a `rapina_jobs` table with the following columns:
 | `trace_id` | VARCHAR(64) | NULL | Distributed trace ID from the enqueuing request |
 | `created_at` | TIMESTAMPTZ | — | Insertion timestamp; supplied by the application |
 
+Types shown are the PostgreSQL mapping; SeaORM emits the corresponding backend types for MySQL and SQLite.
+
 The migration uses portable `JSON` rather than PostgreSQL `JSONB`, so PostgreSQL JSONB indexing is unavailable. PostgreSQL creates a partial index on `(queue, run_at) WHERE status = 'pending'`; MySQL creates a regular `(queue, run_at)` index; SQLite skips this index because it is a single-writer database.
 
 ## Types
@@ -264,23 +266,25 @@ let parsed: JobStatus = "running".parse().unwrap();
 `JobRow` is a plain struct that maps directly to a row in the `rapina_jobs` table. It derives SeaORM's `FromQueryResult` so you can use it with raw queries:
 
 ```rust
+use rapina::database::{Db, DbError};
 use rapina::jobs::JobRow;
-use rapina::sea_orm::{FromQueryResult, Statement, DatabaseBackend};
-use rapina::database::Db;
+use rapina::sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 
-let rows: Vec<JobRow> = JobRow::find_by_statement(
-    Statement::from_string(
-        DatabaseBackend::Postgres,
-        "SELECT * FROM rapina_jobs WHERE queue = 'emails' AND status = 'failed'"
-    )
-)
-.all(db.conn())
-.await
-.map_err(DbError::from)?;
+async fn failed_email_jobs(db: &Db) -> Result<Vec<JobRow>, DbError> {
+    let rows = JobRow::find_by_statement(Statement::from_string(
+        db.conn().get_database_backend(),
+        "SELECT * FROM rapina_jobs WHERE queue = 'emails' AND status = 'failed'",
+    ))
+    .all(db.conn())
+    .await
+    .map_err(DbError::from)?;
 
-for row in &rows {
-    let status = row.parse_status().unwrap();
-    println!("{}: {} (attempts: {})", row.id, status, row.attempts);
+    for row in &rows {
+        let status = row.parse_status().unwrap();
+        println!("{}: {} (attempts: {})", row.id, status, row.attempts);
+    }
+
+    Ok(rows)
 }
 ```
 
