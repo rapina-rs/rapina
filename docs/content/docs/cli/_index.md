@@ -26,3 +26,4 @@ cargo install rapina-cli
 | `rapina openapi export` | Export OpenAPI spec |
 | `rapina openapi check` | Verify spec is up to date |
 | `rapina openapi diff` | Detect breaking changes |
+| `rapina seed` | Database seeding (generate, load, dump) |

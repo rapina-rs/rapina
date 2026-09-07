@@ -566,6 +566,30 @@ Seed data lives in the `seeds/` directory at the project root as JSON files — 
 ]
 ```
 
+### rapina seed generate
+
+Generate fake seed data from the `schema!` macro blocks in `src/entity.rs`:
+
+```bash
+# Generate 10 records per entity (default)
+rapina seed generate
+
+# Generate 50 records per entity
+rapina seed generate --count 50
+
+# Generate only for "User" entity
+rapina seed generate --entity User
+```
+
+Options:
+
+| Flag             | Description                                          | Default |
+| ---------------- | ---------------------------------------------------- | ------- |
+| `--count <N>`    | Number of fake records per entity                   | 10      |
+| `--entity <NAME>` | Generate for a specific entity only (case-insensitive) | all     |
+
+> Requires a valid `src/entity.rs` with `schema!` macro blocks. Fake values are type-aware (strings, integers, booleans, UUIDs).
+
 ### rapina seed load
 
 Load seed data from JSON files in `seeds/` into the database:
@@ -609,27 +633,3 @@ Options:
 | `--entity <NAME>` | Dump a specific table only                          | all     |
 
 > Creates the `seeds/` directory if it does not exist. Existing seed files are overwritten.
-
-### rapina seed generate
-
-Generate fake seed data from the `schema!` macro blocks in `src/entity.rs`:
-
-```bash
-# Generate 10 records per entity (default)
-rapina seed generate
-
-# Generate 50 records per entity
-rapina seed generate --count 50
-
-# Generate only for "User" entity
-rapina seed generate --entity User
-```
-
-Options:
-
-| Flag             | Description                                          | Default |
-| ---------------- | ---------------------------------------------------- | ------- |
-| `--count <N>`    | Number of fake records per entity                   | 10      |
-| `--entity <NAME>` | Generate for a specific entity only (case-insensitive) | all     |
-
-> Requires a valid `src/entity.rs` with `schema!` macro blocks. Fake values are type-aware (strings, integers, booleans, UUIDs).
