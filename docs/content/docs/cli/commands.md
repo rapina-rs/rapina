@@ -590,6 +590,8 @@ Options:
 
 > Requires a valid `src/entity.rs` with `schema!` macro blocks. Fake values are type-aware (strings, integers, booleans, UUIDs).
 
+> Creates the `seeds/` directory if it does not exist. Existing seed files are overwritten.
+
 ### rapina seed load
 
 Load seed data from JSON files in `seeds/` into the database:
