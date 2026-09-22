@@ -9,6 +9,10 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+### Fixed
+- **Expired job leases are now reclaimed**: jobs left `running` by a crashed worker were stranded forever because every claim statement selected only `pending` rows. A reaper now runs before each claim: expired leases with retry budget left return to `pending`, counting the crashed run toward `attempts` exactly like a failure, and rows past `max_retries` are marked `failed`. Recovery latency is bounded by `job_timeout + poll_interval`, and the new `reap_indexes` migration indexes the scan. Retry, failure, and completion writes are fenced to `running` rows, so a worker whose lease was reclaimed mid-execution cannot overwrite the job's state afterwards (#793).
+- **Panicking job handlers no longer kill the worker**: a panic used to unwind through the poll loop and stop all job processing. It is now caught, logged at `error` level, and routed through the same retry path (#793).
+
 ## [0.13.1] - 2026-08-04
 
 ### Fixed
