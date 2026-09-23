@@ -8,13 +8,14 @@
 //!
 //! # Setup
 //!
-//! Add the framework migration to your project's migration list:
+//! Add the framework migrations to your project's migration list:
 //!
 //! ```rust,ignore
-//! use rapina::jobs::create_rapina_jobs;
+//! use rapina::jobs::{create_rapina_jobs, reap_indexes};
 //!
 //! rapina::migrations! {
 //!     create_rapina_jobs,
+//!     reap_indexes,
 //!     m20260315_000001_create_users,
 //! }
 //! ```
@@ -80,6 +81,12 @@
 //! `pending` with exponential backoff or permanently marks the job `failed`
 //! once `max_retries` is exhausted.
 //!
+//! Jobs left `running` by a dead worker are recovered on the poll cycle
+//! after their `locked_until` expires: they return to `pending` (or
+//! `failed` past the retry budget), with the crashed run counted toward
+//! `attempts` like any other failure. A handler panic is handled the same
+//! way and does not stop the worker.
+//!
 //! # DI Limitations
 //!
 //! Job handlers run outside the request cycle with synthetic request context.
@@ -96,6 +103,7 @@
 pub(crate) mod backend;
 pub mod create_rapina_jobs;
 mod model;
+pub mod reap_indexes;
 pub(crate) mod retry;
 pub(crate) mod worker;
 

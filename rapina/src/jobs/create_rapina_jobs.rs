@@ -8,6 +8,7 @@
 //!
 //! rapina::migrations! {
 //!     create_rapina_jobs,   // framework table — sorts first
+//!     reap_indexes,         // reaper index, right after the table
 //!     m20260315_000001_create_users,
 //! }
 //! ```
@@ -231,6 +232,11 @@ impl RapinaJobs {
     /// (`"idx_rapina_jobs_claimable"`).
     pub fn claimable_index() -> &'static str {
         "idx_rapina_jobs_claimable"
+    }
+
+    /// The index used by the lease reaper (`"idx_rapina_jobs_reapable"`).
+    pub fn reapable_index() -> &'static str {
+        "idx_rapina_jobs_reapable"
     }
 
     /// Column name for the primary key (`"id"`).

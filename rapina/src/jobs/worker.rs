@@ -17,6 +17,13 @@
 //! - **MySQL 8.0+:** transaction with `SELECT … FOR UPDATE SKIP LOCKED`, then `UPDATE`
 //! - **SQLite 3.35+:** `UPDATE … WHERE id IN (subquery) … RETURNING`
 //!
+//! # Crash recovery
+//!
+//! Jobs left `running` by a dead worker are reaped on the poll cycle after
+//! their lease expires and rejoin the queue under the same retry budget as
+//! failures. A panicking handler does not stop the worker: the panic is
+//! caught, logged at `error` level, and routed through the same retry path.
+//!
 //! # Graceful shutdown
 //!
 //! The worker installs its own SIGINT/SIGTERM listeners (identical to
@@ -34,12 +41,13 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::FutureExt as _;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use tracing::Instrument;
 
 use crate::jobs::backend::{Mysql, Postgres, Sqlite};
 use crate::jobs::retry::{apply_failure, apply_success};
-use crate::jobs::{JobDescriptor, JobResult, JobRow, RetryPolicy};
+use crate::jobs::{JobDescriptor, JobRow, RetryPolicy};
 use crate::state::AppState;
 
 /// Configuration for the in-process background job worker.
@@ -80,6 +88,12 @@ pub struct JobConfig {
     /// If the worker process crashes the lock expires after this duration,
     /// at which point a new worker can pick up the job.
     /// Default: 30 seconds.
+    ///
+    /// Reclaim happens on the poll cycle after expiry, so recovery latency is
+    /// bounded by `job_timeout + poll_interval`. Set this higher than your
+    /// slowest handler: a handler that outlives its lease can be started a
+    /// second time while the first execution is still running, and there is
+    /// no heartbeat to renew the lease mid-run.
     pub job_timeout: Duration,
 }
 
@@ -190,6 +204,18 @@ impl Worker {
         };
 
         loop {
+            // Recover jobs stranded in `running` by a dead worker before
+            // claiming, so a reaped row is picked up in the same cycle.
+            match reap_expired(db).await {
+                Ok((failed, reclaimed)) if failed + reclaimed > 0 => {
+                    tracing::warn!(failed, reclaimed, "Reaped expired job leases");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to reap expired job leases");
+                }
+            }
+
             // Claim and execute a batch before sleeping so jobs enqueued just
             // before startup are processed without an initial delay.
             match claim_batch(db, &self.config).await {
@@ -262,9 +288,26 @@ impl Worker {
             trace_id = job.trace_id.as_deref().unwrap_or(""),
         );
 
-        let result: JobResult = (descriptor.handle)(job.payload.clone(), self.state.clone())
-            .instrument(span)
-            .await;
+        // catch_unwind keeps a panicking handler from unwinding through the
+        // poll loop and killing the worker. No-op under panic=abort: the
+        // process still dies.
+        let outcome = std::panic::AssertUnwindSafe((descriptor.handle)(
+            job.payload.clone(),
+            self.state.clone(),
+        ))
+        .catch_unwind()
+        .instrument(span)
+        .await;
+        let (result, panicked) = match outcome {
+            Ok(r) => (r, false),
+            Err(p) => (
+                Err(crate::error::Error::internal(format!(
+                    "job handler panicked: {}",
+                    panic_message(&*p)
+                ))),
+                true,
+            ),
+        };
         // Policy type and base delay come from the descriptor (set by `#[job]`
         // attributes at compile time); max_retries comes from the job row.
         let policy = build_policy(
@@ -281,7 +324,11 @@ impl Worker {
                 }
             }
             Err(e) => {
-                tracing::warn!(job_id = %job.id, job_type = %job.job_type, error = %e, "Job failed");
+                if panicked {
+                    tracing::error!(job_id = %job.id, job_type = %job.job_type, error = %e, "Job handler panicked");
+                } else {
+                    tracing::warn!(job_id = %job.id, job_type = %job.job_type, error = %e, "Job failed");
+                }
                 if let Err(db_err) = apply_failure(
                     db,
                     job.id,
@@ -310,6 +357,18 @@ fn build_policy(retry_policy: &str, max_retries: i32, delay_secs: f64) -> RetryP
     }
 }
 
+/// Extracts a readable message from a panic payload, mirroring what the
+/// default hook prints: `&str`/`String` verbatim, anything else a fallback.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
 /// Claims up to `config.batch_size` jobs from the subscribed queues in a
 /// single atomic statement and returns their rows.
 ///
@@ -325,6 +384,22 @@ async fn claim_batch(
         sea_orm::DbBackend::Postgres => Postgres::claim_batch(db, config).await,
         sea_orm::DbBackend::MySql => Mysql::claim_batch(db, config).await,
         sea_orm::DbBackend::Sqlite => Sqlite::claim_batch(db, config).await,
+    }
+}
+
+/// Recovers jobs stranded in `running` by a dead worker.
+///
+/// Returns `(failed, reclaimed)`. A worker that dies mid-execution (crash,
+/// SIGKILL, power loss) leaves its rows in `running` with a stale
+/// `locked_until`; the claim only reads `pending`, so without this pass those
+/// rows are stranded forever. Reaped executions count toward `attempts`
+/// exactly like errored runs in [`apply_failure`], so crash-loops are bounded
+/// by the same `max_retries`.
+async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), sea_orm::DbErr> {
+    match db.get_database_backend() {
+        sea_orm::DbBackend::Postgres => Postgres::reap_expired(db).await,
+        sea_orm::DbBackend::MySql => Mysql::reap_expired(db).await,
+        sea_orm::DbBackend::Sqlite => Sqlite::reap_expired(db).await,
     }
 }
 
@@ -426,5 +501,276 @@ mod tests {
         assert_eq!(config.batch_size, 5);
         assert_eq!(config.queues, vec!["emails", "default"]);
         assert_eq!(config.job_timeout, Duration::from_secs(60));
+    }
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod sqlite_tests {
+    use std::future::Future;
+    use std::pin::Pin;
+
+    use sea_orm::{ConnectionTrait, Database, FromQueryResult, Statement};
+    use uuid::Uuid;
+
+    use crate::jobs::backend::Sqlite;
+    use crate::jobs::retry::{apply_failure, apply_success};
+    use crate::jobs::{JobDescriptor, JobRequest, JobResult, JobRow, RapinaJobs};
+    use crate::jobs::{create_rapina_jobs, reap_indexes};
+    use crate::state::AppState;
+
+    use super::*;
+
+    crate::migrations! {
+        create_rapina_jobs,
+        reap_indexes,
+    }
+
+    async fn jobs_db() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        crate::migration::run_pending::<Migrator>(&db)
+            .await
+            .unwrap();
+        db
+    }
+
+    async fn insert_job(db: &DatabaseConnection, job_type: &'static str, max_retries: i32) -> Uuid {
+        let id = Uuid::new_v4();
+        let stmt = Sqlite::build_insert_stmt(
+            JobRequest {
+                job_type,
+                payload: serde_json::json!({}),
+                queue: "default",
+                max_retries,
+            },
+            None,
+            id,
+        );
+        db.execute(stmt).await.unwrap();
+        id
+    }
+
+    async fn fetch_row(db: &DatabaseConnection, id: Uuid) -> JobRow {
+        let stmt = Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            format!(
+                "SELECT * FROM {} WHERE {} = ?",
+                RapinaJobs::table_name(),
+                RapinaJobs::id()
+            ),
+            [sea_orm::Value::String(Some(Box::new(id.to_string())))],
+        );
+        let row = db.query_one(stmt).await.unwrap().expect("job row missing");
+        JobRow::from_query_result(&row, "").unwrap()
+    }
+
+    /// Puts a row in the exact state a worker killed with SIGKILL leaves
+    /// behind: `running` with a `locked_until` ten seconds in the past.
+    /// Same `datetime('now')` format the claim statements write.
+    async fn simulate_crash(db: &DatabaseConnection, id: Uuid, attempts: i32) {
+        db.execute_unprepared(&format!(
+            "UPDATE {} SET status='running', attempts={}, \
+             started_at=datetime('now'), locked_until=datetime('now','-10 seconds') \
+             WHERE id='{}'",
+            RapinaJobs::table_name(),
+            attempts,
+            id
+        ))
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reaper_reclaims_expired_lease_and_claim_picks_it_up() {
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_job", 3).await;
+        simulate_crash(&db, id, 0).await;
+
+        let (failed, reclaimed) = reap_expired(&db).await.unwrap();
+        assert_eq!((failed, reclaimed), (0, 1));
+
+        let claimed = claim_batch(&db, &JobConfig::default()).await.unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, id);
+        assert_eq!(claimed[0].status, "running");
+        assert_eq!(claimed[0].attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn reaper_fails_expired_job_at_retry_boundary() {
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_job", 3).await;
+        simulate_crash(&db, id, 2).await;
+
+        let (failed, reclaimed) = reap_expired(&db).await.unwrap();
+        assert_eq!((failed, reclaimed), (1, 0));
+
+        let row = fetch_row(&db, id).await;
+        assert_eq!(row.status, "failed");
+        assert_eq!(row.attempts, 3);
+        assert!(row.finished_at.is_some());
+        assert!(row.last_error.as_deref().unwrap_or("").contains("lease"));
+
+        assert!(
+            claim_batch(&db, &JobConfig::default())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn reaper_ignores_live_lease() {
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_job", 3).await;
+        db.execute_unprepared(&format!(
+            "UPDATE {} SET status='running', started_at=datetime('now'), \
+             locked_until=datetime('now','+60 seconds') WHERE id='{}'",
+            RapinaJobs::table_name(),
+            id
+        ))
+        .await
+        .unwrap();
+
+        let (failed, reclaimed) = reap_expired(&db).await.unwrap();
+        assert_eq!((failed, reclaimed), (0, 0));
+
+        let row = fetch_row(&db, id).await;
+        assert_eq!(row.status, "running");
+        assert!(row.locked_until.is_some());
+
+        assert!(
+            claim_batch(&db, &JobConfig::default())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    fn panicking_handler(
+        _payload: serde_json::Value,
+        _state: Arc<AppState>,
+    ) -> Pin<Box<dyn Future<Output = JobResult> + Send>> {
+        Box::pin(async { panic!("boom") })
+    }
+
+    fn healthy_handler(
+        _payload: serde_json::Value,
+        _state: Arc<AppState>,
+    ) -> Pin<Box<dyn Future<Output = JobResult> + Send>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    inventory::submit! {
+        JobDescriptor {
+            job_type: "reap_test_panicking_job",
+            handle: panicking_handler,
+            retry_policy: "exponential",
+            retry_delay_secs: 0.0,
+        }
+    }
+
+    inventory::submit! {
+        JobDescriptor {
+            job_type: "reap_test_healthy_job",
+            handle: healthy_handler,
+            retry_policy: "exponential",
+            retry_delay_secs: 0.0,
+        }
+    }
+
+    /// The panic tests swap the process-global hook, so they must not run
+    /// concurrently or the no-op hook can leak into other tests. Async mutex
+    /// because the guard has to live across the test's awaits.
+    static PANIC_HOOK_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    #[tokio::test]
+    async fn panicking_job_is_retried_and_healthy_job_still_dispatches() {
+        let _hook_guard = PANIC_HOOK_LOCK.lock().await;
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_panicking_job", 3).await;
+
+        let worker = Worker::new(Arc::new(AppState::new()), JobConfig::default());
+        let job = claim_batch(&db, &JobConfig::default())
+            .await
+            .unwrap()
+            .remove(0);
+        worker.dispatch(&db, job).await;
+
+        let row = fetch_row(&db, id).await;
+        assert_eq!(row.status, "pending");
+        assert_eq!(row.attempts, 1);
+        assert!(row.last_error.as_deref().unwrap_or("").contains("panicked"));
+
+        // The loop survived: a healthy job still dispatches to completion.
+        // The panicking row is claimable again too, so dispatch everything
+        // the batch returns and assert on the healthy row only.
+        let healthy_id = insert_job(&db, "reap_test_healthy_job", 3).await;
+        for job in claim_batch(&db, &JobConfig::default()).await.unwrap() {
+            worker.dispatch(&db, job).await;
+        }
+        let row = fetch_row(&db, healthy_id).await;
+        assert_eq!(row.status, "completed");
+
+        std::panic::set_hook(default_hook);
+    }
+
+    #[tokio::test]
+    async fn terminal_writes_are_fenced_to_running_rows() {
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_job", 3).await;
+
+        // Never claimed, so the row is still `pending`: a stale worker's
+        // failure or completion write must be a no-op instead of stomping it.
+        apply_failure(
+            &db,
+            id,
+            "stale write",
+            0,
+            3,
+            &RetryPolicy::exponential(3, Duration::ZERO),
+        )
+        .await
+        .unwrap();
+        apply_success(&db, id).await.unwrap();
+
+        let row = fetch_row(&db, id).await;
+        assert_eq!(row.status, "pending");
+        assert_eq!(row.attempts, 0);
+        assert!(row.finished_at.is_none());
+        assert!(row.last_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn panicking_job_at_retry_boundary_is_failed() {
+        let _hook_guard = PANIC_HOOK_LOCK.lock().await;
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+
+        let db = jobs_db().await;
+        let id = insert_job(&db, "reap_test_panicking_job", 3).await;
+        db.execute_unprepared(&format!(
+            "UPDATE {} SET attempts=2 WHERE id='{}'",
+            RapinaJobs::table_name(),
+            id
+        ))
+        .await
+        .unwrap();
+
+        let worker = Worker::new(Arc::new(AppState::new()), JobConfig::default());
+        let job = claim_batch(&db, &JobConfig::default())
+            .await
+            .unwrap()
+            .remove(0);
+        worker.dispatch(&db, job).await;
+
+        let row = fetch_row(&db, id).await;
+        assert_eq!(row.status, "failed");
+        assert_eq!(row.attempts, 3);
+        assert!(row.finished_at.is_some());
+
+        std::panic::set_hook(default_hook);
     }
 }
