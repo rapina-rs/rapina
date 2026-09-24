@@ -78,7 +78,7 @@ impl Postgres {
         let sql = format!(
             r#"WITH claimed AS (
                    SELECT {id} FROM {t}
-                   WHERE  {st}  = 'pending'
+                   WHERE  ({st} = 'pending' OR ({st} = 'running' AND {lu} < CURRENT_TIMESTAMP))
                      AND  {q}   IN ({placeholders})
                      AND  {r} <= CURRENT_TIMESTAMP
                    ORDER  BY {r} ASC
@@ -271,7 +271,7 @@ impl Mysql {
 
         let sql = format!(
             r#"SELECT {id} FROM {t}
-               WHERE  {st}  = 'pending'
+               WHERE  ({st} = 'pending' OR ({st} = 'running' AND {lu} < CURRENT_TIMESTAMP))
                  AND  {q}   IN ({placeholders})
                  AND  {r} <= CURRENT_TIMESTAMP
                ORDER  BY {r} ASC
@@ -478,7 +478,7 @@ impl Sqlite {
                    {lu} = datetime('now', '+' || ? || ' seconds')
                WHERE {id} IN (
                    SELECT {id} FROM {t}
-                   WHERE {st}  = 'pending'
+                   WHERE ({st} = 'pending' OR ({st} = 'running' AND {lu} < datetime('now')))
                      AND {q}   IN ({placeholders})
                      AND {r} <= datetime('now')
                    ORDER  BY {r} ASC
