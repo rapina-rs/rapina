@@ -9,6 +9,9 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+### Added
+- **Redis Relay backend**: `relay-redis` feature and `.with_relay_redis()` builder for cross-node WebSocket pub/sub; presence remains per-node (#657).
+
 ## [0.13.1] - 2026-08-04
 
 ### Fixed
