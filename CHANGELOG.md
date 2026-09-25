@@ -9,6 +9,9 @@ Routine dependency-only updates are intentionally omitted unless they change use
 
 ## [Unreleased]
 
+### Fixed
+- **Background jobs documentation**: Document supported database backends and schema mappings, clarify MySQL retry timestamp precision, and include the database driver in CLI installation instructions (#797).
+
 ## [0.13.1] - 2026-08-04
 
 ### Fixed
