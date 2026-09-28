@@ -417,7 +417,7 @@ This adds the framework's `create_rapina_jobs` migration to `src/migrations/mod.
 
 The migration creates the `rapina_jobs` table used by the background jobs system. It uses a zero timestamp prefix so it always runs before your application migrations. See [Background Jobs](/docs/core-concepts/background-jobs/) for the full table schema and types.
 
-> **Note:** The jobs migration requires PostgreSQL. It uses `gen_random_uuid()` and partial indexes, which are not available in MySQL or SQLite.
+The jobs migration supports PostgreSQL, MySQL 8.0+, and SQLite 3.35+. Rapina selects the migration implementation for the database backend used by your application.
 
 ## rapina jobs list
 
@@ -454,11 +454,15 @@ rapina jobs list --failed
 
 This appends a table of failed jobs showing ID, queue, job type, attempt count (`attempts/max_retries`), and the last error message.
 
-Requires the `jobs` feature:
+`rapina jobs list` currently supports PostgreSQL and SQLite. It does not yet support MySQL, even though MySQL-backed job storage and workers are supported.
+
+Install the CLI with the `jobs` feature and a matching database driver. For PostgreSQL:
 
 ```bash
-cargo install rapina-cli --features jobs-postgres
+cargo install rapina-cli --features jobs,sea-orm/sqlx-postgres
 ```
+
+For SQLite, use `jobs,sea-orm/sqlx-sqlite`. The `jobs` feature alone does not enable a database driver.
 
 ## rapina llms export
 

@@ -10,6 +10,7 @@ Routine dependency-only updates are intentionally omitted unless they change use
 ## [Unreleased]
 
 ### Fixed
+- **Background jobs documentation**: Document supported database backends and schema mappings, clarify MySQL retry timestamp precision, and include the database driver in CLI installation instructions (#797).
 - **Expired job leases are now reclaimed**: jobs left `running` by a crashed worker were stranded forever because every claim statement selected only `pending` rows. A reaper now runs before each claim: expired leases with retry budget left return to `pending`, counting the crashed run toward `attempts` exactly like a failure, and rows past `max_retries` are marked `failed`. Recovery latency is bounded by `job_timeout + poll_interval`, and the new `reap_indexes` migration indexes the scan. Retry, failure, and completion writes are fenced to `running` rows, so a worker whose lease was reclaimed mid-execution cannot overwrite the job's state afterwards. A job can still be executed twice when `job_timeout` is shorter than the batch's worst case (`batch_size` times the slowest handler), so size the timeout for the batch, not a single job (#793).
 - **Panicking job handlers no longer kill the worker**: a panic used to unwind through the poll loop and stop all job processing. It is now caught, logged at `error` level, and routed through the same retry path (#793).
 
