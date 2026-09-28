@@ -1,8 +1,8 @@
 //! Background jobs support for Rapina applications.
 //!
-//! This module provides the full background jobs system: a migration to create
-//! the `rapina_jobs` table, an in-process worker that polls and dispatches jobs,
-//! and the core types used by the `#[job]` macro.
+//! This module provides the full background jobs system: the migrations for
+//! the `rapina_jobs` table and its reaper index, an in-process worker that
+//! polls and dispatches jobs, and the core types used by the `#[job]` macro.
 //!
 //! **Note:** Supports PostgreSQL, MySQL 8.0+, and SQLite 3.35+.
 //!
