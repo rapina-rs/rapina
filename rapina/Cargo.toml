@@ -93,7 +93,7 @@ prometheus = { version = '0.13', optional = true }
 
 # OpenTelemetry OTLP export (optional)
 opentelemetry = { version = "0.32", optional = true }
-opentelemetry_sdk = { version = "0.32", optional = true }
+opentelemetry_sdk = { version = "0.33", optional = true }
 opentelemetry-otlp = { version = "0.32", optional = true, default-features = false, features = ["grpc-tonic", "trace", "internal-logs"] }
 tracing-opentelemetry = { version = "0.33", optional = true }
 
@@ -122,7 +122,7 @@ insta = "1"
 matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 # In-memory span exporter for the otel propagation/export test.
-opentelemetry_sdk = { version = "0.32", features = ["testing"] }
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
 serial_test = "4"
 tempfile = "3"
 tower = { version = "0.5", features = ["limit"] }
