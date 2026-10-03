@@ -525,7 +525,7 @@ fn generate_fake_value(
         "i32" => serde_json::json!((n % 1000) as i32),
         "i64" => serde_json::json!((n % 100000) as i64),
         "f32" | "f64" => serde_json::json!((n % 10000) as f64 / 100.0),
-        "bool" => serde_json::json!(n % 2 == 0),
+        "bool" => serde_json::json!(n.is_multiple_of(2)),
         "Uuid" => serde_json::json!(uuid::Uuid::new_v4().to_string()),
         "DateTime" => serde_json::json!(format!(
             "2025-01-{:02}T{:02}:{:02}:00Z",
