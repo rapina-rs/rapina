@@ -2,11 +2,13 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{FnArg, ItemFn, LitStr};
+use syn::{Attribute, Error, FnArg, ItemFn, LitStr};
 
+mod authorize;
 mod headers;
 mod metadata;
 
+use crate::route::authorize::{AuthorizeArgs, build_authorize_plan};
 use headers::{HeaderParamMeta, collect_header_params, detect_header_type, gen_header_extraction};
 use metadata::{
     extract_cache_attr, extract_doc_description, extract_errors_attr, extract_json_inner_type,
@@ -76,6 +78,27 @@ fn join_paths(prefix: &str, path: &str) -> String {
     format!("{prefix}{path}")
 }
 
+/// Extracts the group prefix path for the given handler
+fn extract_group_prefix(route_attr: &RouteAttr) -> String {
+    if let Some(ref group) = route_attr.group {
+        let g = group.value();
+        assert!(
+            g.starts_with('/'),
+            "group prefix must start with `/`, got: {g:?}"
+        );
+        join_paths(&g, &route_attr.path.value())
+    } else {
+        route_attr.path.value()
+    }
+}
+
+/// Extracts all #[authorize] attributes from the function attributes, removing them if found.
+pub(crate) fn extract_authorize_attrs(attrs: &mut Vec<syn::Attribute>) -> Vec<Attribute> {
+    attrs
+        .extract_if(.., |attr| attr.path().is_ident("authorize"))
+        .collect::<Vec<_>>()
+}
+
 pub(crate) fn route_macro(method: &str, attr: TokenStream, item: TokenStream) -> TokenStream {
     route_macro_core(method, attr.into(), item.into()).into()
 }
@@ -85,25 +108,44 @@ fn route_macro_core(
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    let route_attr: RouteAttr = syn::parse2(attr).expect("expected path as string literal");
-    let path_str = if let Some(ref group) = route_attr.group {
-        let g = group.value();
-        assert!(
-            g.starts_with('/'),
-            "group prefix must start with `/`, got: {g:?}"
-        );
-        join_paths(&g, &route_attr.path.value())
-    } else {
-        route_attr.path.value()
-    };
     let mut func: ItemFn = syn::parse2(item).expect("expected function");
+    let route_attr: RouteAttr = syn::parse2(attr).expect("expected path as string literal");
 
-    let func_name = &func.sig.ident;
-    let func_name_str = func_name.to_string();
-    let func_vis = &func.vis;
+    // Extract #[group] prefix path
+    let path_str = extract_group_prefix(&route_attr);
 
     // Extract #[public] attribute if present (when #[public] is below the route macro)
     let is_public = extract_public_attr(&mut func.attrs);
+    // Extract #[authorize] attribute if present (when #[authorize] is below the route macro)
+    let authorize_attrs = extract_authorize_attrs(&mut func.attrs);
+
+    // a handler can not include both #[public] and #[authorize] macros at the same time
+    if is_public && !authorize_attrs.is_empty() {
+        let message =
+            "#[authorize] contradicts #[public]. A public handler must not include authorization.";
+
+        let mut error = Error::new_spanned(&authorize_attrs[0], message);
+
+        for attr in &authorize_attrs[1..] {
+            error.combine(Error::new_spanned(attr, message));
+        }
+
+        return error.into_compile_error();
+    }
+
+    // Fail in case multiple #[authorize] macros are present until more than one #[authorize] macro is supported
+    // TODO remove entirely when adding support for multiple #[authorize] macros
+    if authorize_attrs.len() > 1 {
+        let message = "#[authorize] can only be added once per handler.";
+
+        let mut error = Error::new_spanned(&authorize_attrs[0], message);
+
+        for attr in &authorize_attrs[1..] {
+            error.combine(Error::new_spanned(attr, message));
+        }
+
+        return error.into_compile_error();
+    }
 
     // Resolve description: explicit attr wins, then first rustdoc line, then None
     let description_value: Option<String> = route_attr
@@ -114,9 +156,12 @@ fn route_macro_core(
 
     // Extract #[errors(ErrorType)] attribute if present
     let error_type = extract_errors_attr(&mut func.attrs);
-
     // Extract #[cache(ttl = N)] attribute if present
     let cache_ttl = extract_cache_attr(&mut func.attrs);
+
+    let func_name = &func.sig.ident;
+    let func_name_str = func_name.to_string();
+    let func_vis = &func.vis;
 
     let error_responses_impl = if let Some(err_type) = &error_type {
         quote! {
@@ -239,11 +284,76 @@ fn route_macro_core(
         quote! {}
     };
 
+    // parse #[authorize] macro arguments
+    // TODO replace authorize_attrs.first() logic when adding support for multiple #[authorize] macro
+    let authorize_args = match authorize_attrs.first() {
+        Some(attr) => match attr.parse_args::<AuthorizeArgs>() {
+            Ok(args) => Some(args),
+            Err(e) => return e.to_compile_error(),
+        },
+        None => None,
+    };
+
+    let authorize_plan = match authorize_args.as_ref() {
+        Some(arguments) => match build_authorize_plan(&func.sig.inputs, arguments) {
+            Ok(plan) => Some(plan),
+            Err(error) => return error.to_compile_error(),
+        },
+        None => None,
+    };
+
+    // Token stream that contains the compile-time validation for reused handler dependencies
+    let authorization_reused_dependency_validation = authorize_plan
+        .as_ref()
+        .map(|plan| plan.reused_dependency_validation.clone())
+        .unwrap_or_default();
+
+    // Token stream that contains the authorization-only dependency extraction
+    let authorization_extracts = authorize_plan
+        .as_ref()
+        .map(|plan| plan.extracts.clone())
+        .unwrap_or_default();
+
+    // Token stream that contains the authorization handler call
+    let authorization_call = authorize_plan
+        .as_ref()
+        .map(|plan| plan.call.clone())
+        .unwrap_or_default();
+
+    let authorization_needs_request_parts = authorize_plan
+        .as_ref()
+        .is_some_and(|plan| plan.needs_request_parts);
+
     // Build the handler body
     // Use __rapina_ prefix for internal variables to avoid shadowing user's variables
     let handler_body = if args.is_empty() {
         let inner_block = &func.block;
+
+        // No handler bindings need to be reused for a zero-arg handler.
+        // If the policy has dependencies, split the request and perform authorization extraction
+        let authorization_for_zero_args = if authorization_needs_request_parts {
+            quote! {
+                let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+
+                #authorization_reused_dependency_validation
+                #authorization_extracts
+                #authorization_call
+
+                // Keep ownership/lifetime behavior explicit even though this branch
+                // does not otherwise use the request.
+                let _ = (__rapina_parts, __rapina_body);
+            }
+        } else {
+            quote! {
+                #authorization_reused_dependency_validation
+                #authorization_call
+            }
+        };
+
         quote! {
+            // extract authorization dependencies (if necessary) and call authorization handler
+            #authorization_for_zero_args
+
             let __rapina_result #return_type_annotation = (async #inner_block).await;
             let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
             #cache_header_injection
@@ -278,12 +388,38 @@ fn route_macro_core(
                 let pat = &pat_type.pat;
                 let arg_type = &pat_type.ty;
                 let tmp = syn::Ident::new("__rapina_arg_0", proc_macro2::Span::call_site());
+
+                let authorization_dependency_extraction = if authorization_needs_request_parts {
+                    quote! {
+                        let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+
+                        #authorization_reused_dependency_validation
+                        #authorization_extracts
+
+                        let __rapina_req =
+                            rapina::http::Request::from_parts(__rapina_parts, __rapina_body);
+                    }
+                } else {
+                    quote! {
+                        #authorization_reused_dependency_validation
+                    }
+                };
+
                 quote! {
+                    // Extract rapina parts only if necessary, i.e.: the single arg does not match
+                    // the authorization dependency or there are more than one dependency
+                    #authorization_dependency_extraction
+
                     let #tmp = match <#arg_type as rapina::extract::FromRequest>::from_request(__rapina_req, &__rapina_params, &__rapina_state).await {
                         Ok(v) => v,
                         Err(e) => return rapina::response::IntoResponse::into_response(e),
                     };
                     let #pat = #tmp;
+
+
+                    // Call authorization handler
+                    #authorization_call
+
                     let __rapina_result #return_type_annotation = (async #inner_block).await;
                     let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
                     #cache_header_injection
@@ -314,7 +450,19 @@ fn route_macro_core(
             }
             quote! {
                 let (__rapina_parts, _) = __rapina_req.into_parts();
+
+                // all_headers currently validates the promise of the request body being unused but
+                // this compile-time check enforces it once more in case this changes in the future
+                #authorization_reused_dependency_validation
+
+                // Extract authorization dependencies
+                #authorization_extracts
+
                 #(#header_extractions)*
+
+                // Both authorization-only dependencies and reusable handler bindings exist, so authorization handler can be called
+                #authorization_call
+
                 let __rapina_result #return_type_annotation = (async #inner_block).await;
                 let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
                 #cache_header_injection
@@ -390,8 +538,18 @@ fn route_macro_core(
 
             quote! {
                 let (__rapina_parts, __rapina_body) = __rapina_req.into_parts();
+
+                #authorization_reused_dependency_validation
+
+                // Extract authorization dependencies while request parts remain available
+                #authorization_extracts
+
                 #(#parts_extractions)*
                 #last_extraction
+
+                // Reused handler parameters are now bound, authorization handler can be called
+                #authorization_call
+
                 let __rapina_result #return_type_annotation = (async #inner_block).await;
                 let __rapina_response = rapina::response::IntoResponse::into_response(__rapina_result);
                 #cache_header_injection
