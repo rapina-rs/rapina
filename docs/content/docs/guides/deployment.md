@@ -134,7 +134,7 @@ Since there are no runtime dependencies, a multi-stage build produces a minimal 
 
 ```dockerfile
 # Build stage
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.87-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src

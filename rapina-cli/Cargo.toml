@@ -2,7 +2,7 @@
 name = "rapina-cli"
 version = "0.13.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 description = "CLI tool for Rapina web framework - create and run Rapina projects"
 license = "MIT"
 repository = "https://github.com/rapina-rs/rapina"

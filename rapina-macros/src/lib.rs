@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::ItemFn;
+use syn::{Error, ItemFn};
 
 mod config;
 mod job;
@@ -8,7 +8,59 @@ mod relay;
 mod route;
 mod schema;
 
+use crate::route::extract_authorize_attrs;
 use route::route_macro;
+
+/// Marks a route handler as requiring authorization before the handler body runs.
+///
+/// This attribute is only valid when used together with a Rapina route macro
+/// such as `#[get]`, `#[post]`, or `#[put]`, and it must be placed **below**
+/// that route macro so the route macro can read and process it during expansion.
+///
+/// Supported forms:
+/// - `#[authorize(auth_fn)]` for zero-dependency authorization
+/// - `#[authorize(auth_fn(Dep1, Dep2, ...))]` for authorization functions that
+///   require extracted dependencies
+///
+/// Dependencies declared in the authorization function will reuse handler parameters
+/// when the same extractor type is already present on the handler. They may also
+/// be declared as Rapina extractors that are not present on the handler, in which case Rapina extracts them
+/// before invoking the authorization function. Therefore, it is not required to put all dependencies
+/// of the authorization function into the main handler parameter list. Rapina will handle it during compile-time.
+///
+/// The authorization function is invoked before the handler body. If it returns
+/// an error, request handling stops and the error is converted into a response.
+///
+/// This attribute is a marker parsed by Rapina's route macros; using it on its
+/// own always produces a compile error.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[get("/email")]
+/// #[authorize(authz::authorize)]
+/// async fn get_email() -> Result<Json<String>> {
+///     // handler body
+/// }
+/// ```
+///
+/// ```ignore
+/// #[get("/email")]
+/// #[authorize(authz::authorize(JsonWebToken<Claims>, State<AppState>))]
+/// async fn get_email(
+///     token: JsonWebToken<Claims>
+/// ) -> Result<Json<String>> {
+///     // handler body
+/// }
+#[proc_macro_attribute]
+pub fn authorize(_attr: TokenStream, _item: TokenStream) -> TokenStream {
+    syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "#[authorize] must be used together with a route macro like #[get], #[post], #[put], etc., and placed below that route macro",
+        )
+        .to_compile_error()
+        .into()
+}
 
 /// Registers a GET route handler.
 ///
@@ -104,18 +156,32 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Note: Routes starting with `/__rapina` are automatically public.
 #[proc_macro_attribute]
 pub fn public(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let func: ItemFn = syn::parse(item.clone()).expect("#[public] must be applied to a function");
+    public_macro_impl(item.into()).into()
+}
+
+fn public_macro_impl(item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let mut func: ItemFn =
+        syn::parse2(item.clone()).expect("#[public] must be applied to a function");
+
+    // Throw compilation error if the contradicting #[authorize] attributes are placed below the #[public] macro
+    let authorize_attrs = extract_authorize_attrs(&mut func.attrs);
+    if !authorize_attrs.is_empty() {
+        return Error::new_spanned(
+            &authorize_attrs[0],
+            "#[authorize] contradicts #[public]. A public handler must not include authorization.",
+        )
+        .to_compile_error();
+    }
+
     let func_name_str = func.sig.ident.to_string();
-    let item2: proc_macro2::TokenStream = item.into();
     quote! {
-        #item2
+        #item
         rapina::inventory::submit! {
             rapina::discovery::PublicMarker {
                 handler_name: #func_name_str,
             }
         }
     }
-    .into()
 }
 
 /// Registers a channel handler for the relay system.
