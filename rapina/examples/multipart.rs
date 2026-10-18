@@ -9,14 +9,21 @@ use rapina::prelude::*;
 async fn upload(mut form: Multipart) -> Result<String> {
     let mut result = String::new();
     while let Some(field) = form.next_field().await? {
-        let name = field.name().unwrap_or("unknown").to_string();
-        let data = field.bytes().await?;
+        if let Some(filename) = field.file_name().map(|s| s.to_owned()) {
+            let bytes = field.bytes().await?;
+            let file_size = bytes.len();
+            result.push_str(&format!(
+                "Filename: {},\nFile size in bytes: {},\nText:\n\n{}",
+                filename,
+                file_size,
+                String::from_utf8_lossy(&bytes)
+            ));
+        } else {
+            let name = field.name().unwrap_or("unknown").to_string();
+            let text = field.text().await?;
 
-        result.push_str(&format!(
-            "Field: {}, Data: {}",
-            name,
-            String::from_utf8_lossy(&data)
-        ));
+            result.push_str(&format!("Field: {},\nData: {}\n", name, text));
+        }
     }
 
     Ok(result)

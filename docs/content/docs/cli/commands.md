@@ -417,7 +417,7 @@ This adds the framework's `create_rapina_jobs` migration to `src/migrations/mod.
 
 The migration creates the `rapina_jobs` table used by the background jobs system. It uses a zero timestamp prefix so it always runs before your application migrations. See [Background Jobs](/docs/core-concepts/background-jobs/) for the full table schema and types.
 
-> **Note:** The jobs migration requires PostgreSQL. It uses `gen_random_uuid()` and partial indexes, which are not available in MySQL or SQLite.
+The jobs migration supports PostgreSQL, MySQL 8.0+, and SQLite 3.35+. Rapina selects the migration implementation for the database backend used by your application.
 
 ## rapina jobs list
 
@@ -454,11 +454,15 @@ rapina jobs list --failed
 
 This appends a table of failed jobs showing ID, queue, job type, attempt count (`attempts/max_retries`), and the last error message.
 
-Requires the `jobs` feature:
+`rapina jobs list` currently supports PostgreSQL and SQLite. It does not yet support MySQL, even though MySQL-backed job storage and workers are supported.
+
+Install the CLI with the `jobs` feature and a matching database driver. For PostgreSQL:
 
 ```bash
-cargo install rapina-cli --features jobs-postgres
+cargo install rapina-cli --features jobs,sea-orm/sqlx-postgres
 ```
+
+For SQLite, use `jobs,sea-orm/sqlx-sqlite`. The `jobs` feature alone does not enable a database driver.
 
 ## rapina llms export
 
@@ -535,3 +539,107 @@ Error: Found 2 breaking change(s)
 ```
 
 The command exits with code 1 if breaking changes are detected.
+
+## rapina seed
+
+Database seeding commands for loading, dumping, and generating seed data. Requires installing the CLI with a `seed-*` feature flag matching your database:
+
+```bash
+# PostgreSQL
+cargo install rapina-cli --features seed-postgres
+
+# MySQL
+cargo install rapina-cli --features seed-mysql
+
+# SQLite
+cargo install rapina-cli --features seed-sqlite
+```
+
+Commands that interact with the database (`load` and `dump`) require the `DATABASE_URL` environment variable to be set.
+
+### Seed file conventions
+
+Seed data lives in the `seeds/` directory at the project root as JSON files — one per table (`seeds/{table_name}.json`). Each file contains a JSON array of row objects:
+
+```json
+[
+  { "id": 1, "name": "Alice", "email": "alice@example.com" },
+  { "id": 2, "name": "Bob", "email": "bob@example.com" }
+]
+```
+
+### rapina seed generate
+
+Generate fake seed data from the `schema!` macro blocks in `src/entity.rs`:
+
+```bash
+# Generate 10 records per entity (default)
+rapina seed generate
+
+# Generate 50 records per entity
+rapina seed generate --count 50
+
+# Generate only for "User" entity
+rapina seed generate --entity User
+```
+
+This inspects entity definitions in `src/entity.rs` and produces type-aware fake values (emails, names, URLs, UUIDs, timestamps, booleans) written to `seeds/{table_name}.json`, with automatic pluralization of table names (e.g. `User` -> `seeds/users.json`). Does not require a database connection.
+
+Options:
+
+| Flag              | Description                                            | Default |
+| ----------------- | ------------------------------------------------------ | ------- |
+| `--count <COUNT>` | Number of records to generate per entity               | 10      |
+| `--entity <NAME>` | Generate for a specific entity only (case-insensitive) | all     |
+
+> Requires a valid `src/entity.rs` with `schema!` macro blocks. Fake values are type-aware (strings, integers, booleans, UUIDs).
+
+> Creates the `seeds/` directory if it does not exist. Existing seed files are overwritten.
+
+### rapina seed load
+
+Load seed data from JSON files in the `seeds/` directory into the database:
+
+```bash
+# Load all seed files
+rapina seed load
+
+# Load only the "users" seed file
+rapina seed load --entity users
+
+# Wipe all target tables before loading (full reset)
+rapina seed load --fresh
+```
+
+Options:
+
+| Flag              | Description                                               | Default |
+| ----------------- | --------------------------------------------------------- | ------- |
+| `--entity <NAME>` | Load a specific entity only (matches `seeds/{NAME}.json`) | all     |
+| `--fresh`         | Truncate target tables before loading (destructive)       | false   |
+
+`rapina seed load` disables foreign key checks within a single transaction and inserts records using `ON CONFLICT DO NOTHING` (PostgreSQL, SQLite) or `INSERT IGNORE` (MySQL).
+
+> **Note:** Without `--fresh`, rows whose primary key already exists are silently skipped (not updated). This makes `rapina seed load` idempotent and safe to run repeatedly in development and CI.
+
+### rapina seed dump
+
+Dump live database tables into JSON seed files under `seeds/`:
+
+```bash
+# Dump all tables
+rapina seed dump
+
+# Dump only the "users" table
+rapina seed dump --entity users
+```
+
+Options:
+
+| Flag              | Description                | Default |
+| ----------------- | -------------------------- | ------- |
+| `--entity <NAME>` | Dump a specific table only | all     |
+
+The command automatically discovers tables in the database (excluding internal migration tables like `seaql_%` and `sqlite_sequence`) and exports each row as a pretty-printed JSON array.
+
+> Creates the `seeds/` directory if it does not exist. Existing seed files are overwritten.

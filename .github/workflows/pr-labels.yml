@@ -1,0 +1,259 @@
+name: PR Status Labels
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+      - ready_for_review
+      - converted_to_draft
+  pull_request_review:
+    types:
+      - submitted
+  issue_comment:
+    types:
+      - created
+  pull_request_review_comment:
+    types:
+      - created
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  pr-labels:
+    name: Update PR Status Labels
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Update PR status labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          REPO="${GITHUB_REPOSITORY}"
+          EVENT_NAME="${GITHUB_EVENT_NAME}"
+          EVENT_PATH="${GITHUB_EVENT_PATH}"
+
+          update_pr_status() {
+            local pr="$1"
+            local target_status="$2"
+
+            echo "Evaluating PR #$pr (target status: $target_status)..."
+
+            local labels_json
+            labels_json=$(gh api graphql -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$pr" -f query='
+              query($owner: String!, $repo: String!, $pr: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $pr) {
+                    labels(first: 50) {
+                      nodes { name }
+                    }
+                  }
+                }
+              }
+            ' --jq '.data.repository.pullRequest.labels.nodes[].name')
+
+            # Never touch PRs with needs: direction (judgment call)
+            if echo "$labels_json" | grep -qx "needs: direction"; then
+              echo "PR #$pr has 'needs: direction'. Judgment call, skipping automatic update."
+              return 0
+            fi
+
+            local managed_labels=("needs: review" "needs: author" "stale")
+            local to_add=()
+            local to_remove=()
+
+            for label in "${managed_labels[@]}"; do
+              local is_present=false
+              if echo "$labels_json" | grep -qx "$label"; then
+                is_present=true
+              fi
+
+              if [ "$label" = "$target_status" ]; then
+                if [ "$is_present" = false ]; then
+                  to_add+=("$label")
+                fi
+              else
+                if [ "$is_present" = true ]; then
+                  to_remove+=("$label")
+                fi
+              fi
+            done
+
+            if [ ${#to_add[@]} -eq 0 ] && [ ${#to_remove[@]} -eq 0 ]; then
+              echo "PR #$pr labels are already up to date."
+              return 0
+            fi
+
+            local edit_args=()
+            for label in "${to_add[@]}"; do
+              edit_args+=(--add-label "$label")
+            done
+            for label in "${to_remove[@]}"; do
+              edit_args+=(--remove-label "$label")
+            done
+
+            echo "Updating PR #$pr: adding [${to_add[*]:-none}], removing [${to_remove[*]:-none}]"
+            gh pr edit "$pr" --repo "$REPO" "${edit_args[@]}"
+          }
+
+          if [ "$EVENT_NAME" = "pull_request_target" ]; then
+            ACTION=$(jq -r '.action' "$EVENT_PATH")
+            PR_NUMBER=$(jq -r '.pull_request.number' "$EVENT_PATH")
+            IS_DRAFT=$(jq -r '.pull_request.draft' "$EVENT_PATH")
+
+            case "$ACTION" in
+              closed|converted_to_draft)
+                update_pr_status "$PR_NUMBER" "clear"
+                ;;
+              opened|reopened|ready_for_review|synchronize)
+                if [ "$IS_DRAFT" = "true" ]; then
+                  echo "PR #$PR_NUMBER is a draft, clearing status labels."
+                  update_pr_status "$PR_NUMBER" "clear"
+                else
+                  update_pr_status "$PR_NUMBER" "needs: review"
+                fi
+                ;;
+              *)
+                echo "Ignoring pull_request_target action: $ACTION"
+                ;;
+            esac
+
+          elif [ "$EVENT_NAME" = "pull_request_review" ]; then
+            ACTION=$(jq -r '.action' "$EVENT_PATH")
+            if [ "$ACTION" != "submitted" ]; then
+              echo "Ignoring review action: $ACTION"
+              exit 0
+            fi
+
+            PR_NUMBER=$(jq -r '.pull_request.number' "$EVENT_PATH")
+            PR_AUTHOR=$(jq -r '.pull_request.user.login' "$EVENT_PATH")
+            REVIEWER=$(jq -r '.review.user.login' "$EVENT_PATH")
+            REVIEW_STATE=$(jq -r '.review.state // ""' "$EVENT_PATH" | tr '[:upper:]' '[:lower:]')
+            REVIEW_BODY=$(jq -r '.review.body // ""' "$EVENT_PATH")
+
+            if [ "$REVIEWER" = "$PR_AUTHOR" ]; then
+              echo "Review was submitted by PR author. Ignoring."
+              exit 0
+            fi
+
+            if [ "$REVIEW_STATE" = "changes_requested" ]; then
+              update_pr_status "$PR_NUMBER" "needs: author"
+            elif [ "$REVIEW_STATE" = "approved" ]; then
+              update_pr_status "$PR_NUMBER" "needs: review"
+            else
+              clean_body=$(echo "$REVIEW_BODY" | sed -E 's|https?://[^ ]+||g')
+              if echo "$clean_body" | grep -F -q '?'; then
+                update_pr_status "$PR_NUMBER" "needs: author"
+              fi
+            fi
+
+          elif [ "$EVENT_NAME" = "issue_comment" ] || [ "$EVENT_NAME" = "pull_request_review_comment" ]; then
+            ACTION=$(jq -r '.action' "$EVENT_PATH")
+            if [ "$ACTION" != "created" ]; then
+              echo "Ignoring comment action: $ACTION"
+              exit 0
+            fi
+
+            if [ "$EVENT_NAME" = "issue_comment" ]; then
+              IS_PR=$(jq -r '.issue.pull_request // empty' "$EVENT_PATH")
+              if [ -z "$IS_PR" ]; then
+                echo "Comment is on an issue, not a PR. Ignoring."
+                exit 0
+              fi
+              PR_NUMBER=$(jq -r '.issue.number' "$EVENT_PATH")
+              PR_AUTHOR=$(jq -r '.issue.user.login' "$EVENT_PATH")
+            else
+              PR_NUMBER=$(jq -r '.pull_request.number' "$EVENT_PATH")
+              PR_AUTHOR=$(jq -r '.pull_request.user.login' "$EVENT_PATH")
+            fi
+
+            COMMENTER=$(jq -r '.comment.user.login' "$EVENT_PATH")
+            USER_TYPE=$(jq -r '.comment.user.type // ""' "$EVENT_PATH")
+            COMMENT_BODY=$(jq -r '.comment.body // ""' "$EVENT_PATH")
+
+            if [ "$USER_TYPE" = "Bot" ] || [[ "$COMMENTER" =~ \[bot\]$ ]]; then
+              echo "Comment by bot $COMMENTER. Ignoring."
+              exit 0
+            fi
+
+            if [ "$COMMENTER" = "$PR_AUTHOR" ]; then
+              # Author commented, PR now waiting on review
+              update_pr_status "$PR_NUMBER" "needs: review"
+            else
+              clean_body=$(echo "$COMMENT_BODY" | sed -E 's|https?://[^ ]+||g')
+              if echo "$clean_body" | grep -F -q '?'; then
+                update_pr_status "$PR_NUMBER" "needs: author"
+              fi
+            fi
+
+          elif [ "$EVENT_NAME" = "schedule" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Running scheduled/manual PR check..."
+            OWNER="${REPO%/*}"
+            NAME="${REPO#*/}"
+
+            PRS_JSON=$(gh api graphql -F owner="$OWNER" -F repo="$NAME" -f query='
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequests(states: OPEN, first: 100) {
+                    nodes {
+                      number
+                      isDraft
+                      updatedAt
+                      labels(first: 50) {
+                        nodes { name }
+                      }
+                    }
+                  }
+                }
+              }
+            ' --jq '.data.repository.pullRequests.nodes[] | @json')
+
+            NOW_EPOCH=$(date +%s)
+
+            while IFS= read -r pr_json; do
+              [ -z "$pr_json" ] && continue
+              pr_num=$(echo "$pr_json" | jq -r '.number')
+              is_draft=$(echo "$pr_json" | jq -r '.isDraft')
+              updated_at=$(echo "$pr_json" | jq -r '.updatedAt')
+              labels=$(echo "$pr_json" | jq -r '.labels.nodes[].name')
+
+              if [ "$is_draft" = "true" ]; then
+                continue
+              fi
+
+              if echo "$labels" | grep -qx "needs: direction"; then
+                continue
+              fi
+
+              updated_epoch=$(date -d "$updated_at" +%s)
+              diff_days=$(( (NOW_EPOCH - updated_epoch) / 86400 ))
+
+              if [ "$diff_days" -ge 30 ]; then
+                echo "PR #$pr_num has been inactive for $diff_days days. Marking stale."
+                update_pr_status "$pr_num" "stale"
+              else
+                has_status=false
+                for l in "needs: review" "needs: author" "stale"; do
+                  if echo "$labels" | grep -qx "$l"; then
+                    has_status=true
+                    break
+                  fi
+                done
+
+                if [ "$has_status" = false ]; then
+                  echo "PR #$pr_num has no status label. Assigning needs: review."
+                  update_pr_status "$pr_num" "needs: review"
+                fi
+              fi
+            done <<< "$PRS_JSON"
+          fi

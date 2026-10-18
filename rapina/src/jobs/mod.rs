@@ -1,20 +1,21 @@
 //! Background jobs support for Rapina applications.
 //!
-//! This module provides the full background jobs system: a migration to create
-//! the `rapina_jobs` table, an in-process worker that polls and dispatches jobs,
-//! and the core types used by the `#[job]` macro.
+//! This module provides the full background jobs system: the migrations for
+//! the `rapina_jobs` table and its reaper index, an in-process worker that
+//! polls and dispatches jobs, and the core types used by the `#[job]` macro.
 //!
 //! **Note:** Supports PostgreSQL, MySQL 8.0+, and SQLite 3.35+.
 //!
 //! # Setup
 //!
-//! Add the framework migration to your project's migration list:
+//! Add the framework migrations to your project's migration list:
 //!
 //! ```rust,ignore
-//! use rapina::jobs::create_rapina_jobs;
+//! use rapina::jobs::{create_rapina_jobs, reap_indexes};
 //!
 //! rapina::migrations! {
 //!     create_rapina_jobs,
+//!     reap_indexes,
 //!     m20260315_000001_create_users,
 //! }
 //! ```
@@ -80,6 +81,12 @@
 //! `pending` with exponential backoff or permanently marks the job `failed`
 //! once `max_retries` is exhausted.
 //!
+//! Jobs left `running` by a dead worker are recovered on the poll cycle
+//! after their `locked_until` expires: they return to `pending` (or
+//! `failed` past the retry budget), with the crashed run counted toward
+//! `attempts` like any other failure. A handler panic is handled the same
+//! way and does not stop the worker.
+//!
 //! # DI Limitations
 //!
 //! Job handlers run outside the request cycle with synthetic request context.
@@ -96,6 +103,7 @@
 pub(crate) mod backend;
 pub mod create_rapina_jobs;
 mod model;
+pub mod reap_indexes;
 pub(crate) mod retry;
 pub(crate) mod worker;
 

@@ -14,6 +14,113 @@
         <div class="timeline-item">
             <div class="timeline-marker"></div>
             <div class="timeline-content">
+                <div class="timeline-date">August 4, 2026</div>
+                <h2>v0.13.1</h2>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Column attributes on composite primary keys: respect <code>#[column = "..."]</code> and <code>column_type</code> on composite primary key fields in <code>schema!</code> macro</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/Isvane">@Isvane</a>, <a href="https://github.com/CapThunder19">@CapThunder19</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">June 25, 2026</div>
+                <h2>v0.13.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Database import relationships: <code>rapina import database</code> turns foreign keys into <code>BelongsTo</code> and <code>HasMany</code> relationships in <code>schema!</code> blocks</li>
+                    <li>Handler descriptions in discovery output: route macros carry explicit descriptions into <code>llms.txt</code> and OpenAPI output</li>
+                    <li>OpenTelemetry OTLP tracing exporter via <code>with_telemetry</code> behind <code>otel</code> and <code>otel-tls</code> features</li>
+                    <li>Redis TLS certificate support with <code>CacheConfig::redis_with_tls</code> and <code>RedisTlsConfig</code></li>
+                    <li><code>rapina doctor</code> check for <code>/__rapina/llms.txt</code> reachability</li>
+                    <li>Multi-database background jobs: persistence support for MySQL and SQLite alongside PostgreSQL</li>
+                    <li><code>rapina import database --diff</code>: schema drift detection against live database</li>
+                    <li>Native CLI HTTP client using internal <code>ureq</code> instead of <code>curl</code></li>
+                    <li>Metrics route labels preserving route parameter names in Prometheus metrics</li>
+                    <li>Workspace-inherited Rapina features support in <code>AGENTS.md</code> drift detection</li>
+                    <li>Validation error serialization logging for <code>Validated&lt;Json&lt;T&gt;&gt;</code> and <code>Validated&lt;Form&lt;T&gt;&gt;</code></li>
+                    <li>Build-time duplicate OpenAPI operation ID validation</li>
+                    <li>Fast-fail JWT audience validation when <code>validate_aud = true</code></li>
+                    <li><code>with_tracing</code> now installs the tracing subscriber when the server starts (in <code>listen</code>) rather than at call time, so it composes with the OTLP export layer on a single global subscriber</li>
+                    <li>AGENTS.md and bundled agent docs now mention the llms.txt endpoint</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/richasdev">@richasdev</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/Kkkakania">@Kkkakania</a>, <a href="https://github.com/RodrigoSikoski">@RodrigoSikoski</a>, <a href="https://github.com/mvanhorn">@mvanhorn</a>, <a href="https://github.com/haider855">@haider855</a>, <a href="https://github.com/GHX5T-SOL">@GHX5T-SOL</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">May 15, 2026</div>
+                <h2>v0.12.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <span class="timeline-tag tag-fix">Fix</span>
+                <ul>
+                    <li>Cursor-based pagination with <code>CursorPaginate&lt;V&gt;</code> extractor and <code>CursorPaginated&lt;T&gt;</code> response</li>
+                    <li>First-class streaming response types and Server-Sent Events (SSE) support</li>
+                    <li><code>llms.txt</code> endpoint and CLI export via <code>rapina llms</code></li>
+                    <li><code>Header&lt;T&gt;</code> strongly-typed header extractor with structured 400 errors</li>
+                    <li>Custom Prometheus collectors with <code>MetricsBuilder::add_metric()</code></li>
+                    <li>Opt-in auto-migrations via <code>DatabaseConfig::auto_migrate(true)</code> and <code>DATABASE_AUTO_MIGRATE=true</code></li>
+                    <li>Bundled AI docs with <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and <code>.rapina-docs/</code></li>
+                    <li>Unified type system across codegen, schema, and OpenAPI layers</li>
+                    <li>Cache invalidation for all ancestor collection prefixes on mutation</li>
+                    <li>Fixed <code>schema!</code> macro rejecting unsigned integer types with clear compile-time error</li>
+                    <li><code>schema!</code> now rejects unsigned integer types (<code>u8</code>–<code>u64</code>) at compile time instead of silently mapping them to signed columns, use <code>i32</code>/<code>i64</code>, or <code>Decimal</code> for the full unsigned range</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/richasdev">@richasdev</a>, <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/juv">@juv</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/mvanhorn">@mvanhorn</a>, <a href="https://github.com/josemoura212">@josemoura212</a>, <a href="https://github.com/CapThunder19">@CapThunder19</a>, <a href="https://github.com/chiucchi">@chiucchi</a>, <a href="https://github.com/apetrovic6">@apetrovic6</a>, <a href="https://github.com/xingzihai">@xingzihai</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">April 1, 2026</div>
+                <h2>v0.11.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Tower compatibility layer behind <code>tower</code> feature with <code>TowerLayerMiddleware</code>, <code>RapinaService</code>, and <code>.layer()</code> builder</li>
+                    <li><code>NextService</code> Clone support for Tower layers requiring Clone on the inner service</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/lucaserm">@lucaserm</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/richasdev">@richasdev</a>, <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/sarpedondev">@sarpedondev</a>, <a href="https://github.com/juv">@juv</a>, <a href="https://github.com/Judel777">@Judel777</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/warwickmei">@warwickmei</a>, <a href="https://github.com/chiucchi">@chiucchi</a>, <a href="https://github.com/Spartan09">@Spartan09</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
+                <div class="timeline-date">March 16, 2026</div>
+                <h2>v0.10.0</h2>
+                <span class="timeline-tag tag-feature">Feature</span>
+                <ul>
+                    <li>Serde-based <code>Path&lt;T&gt;</code> extraction supporting primitives, tuples, and structs</li>
+                    <li>Database seeding commands: <code>rapina seed load</code>, <code>dump</code>, and <code>generate</code></li>
+                    <li>Snapshot testing with <code>assert_snapshot</code> and automatic redaction</li>
+                    <li>RFC 7807 Problem Details standardized error responses</li>
+                    <li>Three-layer router architecture with static map, hot cache, and frozen radix trie</li>
+                    <li>Router Criterion performance benchmarks</li>
+                    <li>Configurable request logging with header redaction</li>
+                    <li><code>--force</code> flag for <code>rapina import database</code></li>
+                    <li>UUID primary key support in <code>schema!</code> macro</li>
+                    <li><code>State&lt;T&gt;</code> wrapped in <code>Arc&lt;T&gt;</code> removing Clone bound</li>
+                    <li>Compression gated behind <code>compression</code> feature flag</li>
+                    <li>Macro preserves <code>mut</code> on handler arguments</li>
+                    <li>URL shortener full example with database, migrations, and tests</li>
+                    <li>body-consuming extractors (<code>Json</code>, <code>Form</code>, <code>Validated</code>) must now be the last handler parameter enforced by the compiler; all other arguments use <code>FromRequestParts</code></li>
+                    <li><code>put_named</code> and <code>delete_named</code> convenience methods on Router</li>
+                    <li>PathParams backed by SmallVec, no heap allocation up to 4 params</li>
+                </ul>
+                <p class="timeline-contributors">Contributors: <a href="https://github.com/lucaserm">@lucaserm</a>, <a href="https://github.com/arferreira">@arferreira</a>, <a href="https://github.com/richasdev">@richasdev</a>, <a href="https://github.com/ShiraiEd">@ShiraiEd</a>, <a href="https://github.com/juv">@juv</a>, <a href="https://github.com/Ismaellima4">@Ismaellima4</a>, <a href="https://github.com/yan-pi">@yan-pi</a>, <a href="https://github.com/tjweir">@tjweir</a>, <a href="https://github.com/chiucchi">@chiucchi</a></p>
+            </div>
+        </div>
+
+        <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-content">
                 <div class="timeline-date">March 6, 2026</div>
                 <h2>v0.9.0</h2>
                 <span class="timeline-tag tag-feature">Feature</span>

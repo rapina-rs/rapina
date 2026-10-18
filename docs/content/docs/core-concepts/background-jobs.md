@@ -1,13 +1,13 @@
 +++
 title = "Background Jobs"
-description = "Persistent job queue backed by PostgreSQL"
+description = "Persistent job queue backed by PostgreSQL, MySQL, or SQLite"
 weight = 9
 date = 2026-03-17
 +++
 
 Background jobs let you defer work to run outside the request cycle. Sending emails, processing uploads, generating reports — anything that shouldn't block an HTTP response.
 
-Rapina's job system uses your existing PostgreSQL database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table, claimed by in-process workers with `FOR UPDATE SKIP LOCKED` for safe concurrent processing.
+Rapina's job system uses your existing PostgreSQL, MySQL, or SQLite database as the queue. No Redis, no RabbitMQ, no extra infrastructure. Jobs are rows in a `rapina_jobs` table and are claimed by in-process workers using a strategy suited to each database.
 
 This page covers setup, defining jobs, enqueuing, running the worker, and the retry system.
 
@@ -18,19 +18,20 @@ tl;dr: Use Background Jobs for durable, transactional work that must complete re
 | | Cron Scheduler                               | Background Jobs                                                |
 |---|----------------------------------------------|----------------------------------------------------------------|
 | **Trigger** | Time-based (cron expression)                 | Event-based (enqueued from code)                               |
-| **Persistence** | None, in-memory only                         | PostgreSQL-backed                                              |
+| **Persistence** | None, in-memory only                         | Database-backed                                                |
 | **Retries** | None built-in                                | Configurable (exponential, fixed, none)                        |
 | **Survives restarts** | No. Schedule restarts with the process       | Yes. Pending jobs persist in the database                      |
 | **Use case** | Periodic maintenance, polling, cache refresh | Durable, transactional deferred work: emails, uploads, reports |
-| **Infrastructure** | No extra dependencies                        | Requires PostgreSQL                                            |
+| **Infrastructure** | No extra dependencies                        | Uses PostgreSQL, MySQL, or SQLite                              |
 
 ## Prerequisites
 
-You need the `database` feature with PostgreSQL. The jobs migration uses PostgreSQL-specific features (`gen_random_uuid()`, partial indexes) and does not support MySQL or SQLite.
+Enable one of Rapina's database features. Background jobs support PostgreSQL, MySQL 8.0+, and SQLite 3.35+:
 
 ```toml
 [dependencies]
 rapina = { version = "0.13.1", features = ["postgres"] }
+# Or use `features = ["mysql"]` or `features = ["sqlite"]`.
 ```
 
 You also need a database connection configured in your app — see the [Database](/docs/core-concepts/database/) page.
@@ -150,7 +151,7 @@ JobConfig::default()
 | `poll_interval` | 5s | How often the worker wakes up to claim jobs |
 | `batch_size` | 10 | Maximum jobs claimed per poll cycle |
 | `queues` | `["default"]` | Queue names to subscribe to |
-| `job_timeout` | 30s | How long a job lock is held — expired locks can be reclaimed after a worker crash |
+| `job_timeout` | 30s | How long a job lock is held; expired locks can be reclaimed after a worker crash, on the next poll cycle |
 
 ## Job Lifecycle
 
@@ -159,7 +160,13 @@ pending → running → completed
                   ↘ failed   (or back to pending if retries remain)
 ```
 
-The worker atomically transitions each job from `pending` to `running` in a single SQL statement. On completion the job moves to `completed` or `failed`.
+The worker transitions each claimed job from `pending` to `running` while preventing duplicate claims. PostgreSQL uses a CTE with `FOR UPDATE SKIP LOCKED`. MySQL uses a transaction that selects rows with `FOR UPDATE SKIP LOCKED`, updates them, and then fetches the updated rows because MySQL does not support `UPDATE ... RETURNING`. SQLite uses one `UPDATE ... WHERE id IN (...) ... RETURNING` statement and relies on its single-writer model.
+
+On completion the job moves to `completed` or `failed`.
+
+A worker that dies mid-job (crash, `SIGKILL`, power loss) leaves the row in `running` with a stale `locked_until`. On each poll cycle the worker reaps expired leases: jobs with retry budget left return to `pending` and are claimed again on the next cycle (immediately, with no backoff delay), with the crashed run counted toward `attempts` exactly like an errored run, and jobs past `max_retries` are marked `failed` with a lease-expired `last_error`. Recovery latency is bounded by `job_timeout + poll_interval`. A panicking handler does not stop the worker: the panic is caught, logged at `error` level, and processed through the same retry path as an error. Under `panic = abort` there is nothing to catch, the process dies and the job is recovered like any other crash.
+
+Size `job_timeout` for the batch's worst case, `batch_size` times your slowest handler, or keep batches small. The lease is stamped for the whole batch when it is claimed, but jobs run one at a time, so a job near the end of a large batch can start with its lease already gone and run a second time on another worker. There is no heartbeat to renew the lease mid-run.
 
 Failed jobs are retried according to the `retry_policy` set on the handler.
 
@@ -188,6 +195,8 @@ async fn sync_inventory(payload: SyncPayload) -> JobResult { ... }
 
 Every retry waits the same `retry_delay_secs`. The first retry is always immediate regardless of the configured delay.
 
+MySQL expresses retry intervals in microseconds. Stored scheduling precision still depends on the column definition: the supplied migration uses `TIMESTAMP` without fractional-second precision, so it does not guarantee subsecond retry timing.
+
 ### No retries
 
 ```rust
@@ -212,22 +221,24 @@ The migration creates a `rapina_jobs` table with the following columns:
 
 | Column | Type | Default | Description |
 |--------|------|---------|-------------|
-| `id` | UUID | `gen_random_uuid()` | Primary key |
+| `id` | UUID | — | Application-generated primary key |
 | `queue` | VARCHAR(255) | `'default'` | Logical queue name |
 | `job_type` | VARCHAR(255) | — | Fully-qualified type name for dispatch |
-| `payload` | JSONB | `'{}'` | Arbitrary data passed to the handler |
+| `payload` | JSON | — | Arbitrary data passed to the handler |
 | `status` | VARCHAR(32) | `'pending'` | Lifecycle state |
 | `attempts` | INTEGER | `0` | Number of times this job has been attempted |
 | `max_retries` | INTEGER | `3` | Maximum retry count before permanent failure |
-| `run_at` | TIMESTAMPTZ | `now()` | Earliest time to execute |
+| `run_at` | TIMESTAMPTZ | — | Earliest time to execute; supplied by the application |
 | `started_at` | TIMESTAMPTZ | NULL | When a worker started processing |
 | `locked_until` | TIMESTAMPTZ | NULL | Lease expiry for crash recovery |
 | `finished_at` | TIMESTAMPTZ | NULL | When the job completed or permanently failed |
 | `last_error` | TEXT | NULL | Error from the most recent failed attempt |
 | `trace_id` | VARCHAR(64) | NULL | Distributed trace ID from the enqueuing request |
-| `created_at` | TIMESTAMPTZ | `now()` | Insertion timestamp |
+| `created_at` | TIMESTAMPTZ | — | Insertion timestamp; supplied by the application |
 
-A partial index on `(queue, run_at) WHERE status = 'pending'` optimizes the worker's claim query.
+Types shown are the PostgreSQL mapping; SeaORM emits the corresponding backend types for MySQL and SQLite.
+
+The migration uses portable `JSON` rather than PostgreSQL `JSONB`, so PostgreSQL JSONB indexing is unavailable. PostgreSQL creates a partial index on `(queue, run_at) WHERE status = 'pending'`; MySQL creates a regular `(queue, run_at)` index; SQLite skips this index because it is a single-writer database.
 
 ## Types
 
@@ -256,26 +267,28 @@ let parsed: JobStatus = "running".parse().unwrap();
 
 ### JobRow
 
-`JobRow` is a plain struct that maps directly to a row in the `rapina_jobs` table. It derives SeaORM's `FromQueryResult` so you can use it with raw queries:
+`JobRow` is a plain struct that maps directly to a row in the `rapina_jobs` table. It implements SeaORM's `FromQueryResult` so you can use it with raw queries:
 
 ```rust
+use rapina::database::{Db, DbError};
 use rapina::jobs::JobRow;
-use rapina::sea_orm::{FromQueryResult, Statement, DatabaseBackend};
-use rapina::database::Db;
+use rapina::sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 
-let rows: Vec<JobRow> = JobRow::find_by_statement(
-    Statement::from_string(
-        DatabaseBackend::Postgres,
-        "SELECT * FROM rapina_jobs WHERE queue = 'emails' AND status = 'failed'"
-    )
-)
-.all(db.conn())
-.await
-.map_err(DbError::from)?;
+async fn failed_email_jobs(db: &Db) -> Result<Vec<JobRow>, DbError> {
+    let rows = JobRow::find_by_statement(Statement::from_string(
+        db.conn().get_database_backend(),
+        "SELECT * FROM rapina_jobs WHERE queue = 'emails' AND status = 'failed'",
+    ))
+    .all(db.conn())
+    .await
+    .map_err(DbError::from)?;
 
-for row in &rows {
-    let status = row.parse_status().unwrap();
-    println!("{}: {} (attempts: {})", row.id, status, row.attempts);
+    for row in &rows {
+        let status = row.parse_status().unwrap();
+        println!("{}: {} (attempts: {})", row.id, status, row.attempts);
+    }
+
+    Ok(rows)
 }
 ```
 

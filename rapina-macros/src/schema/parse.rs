@@ -49,6 +49,11 @@ pub struct FieldAttrs {
     pub column_name: Option<String>,
     /// Mark field as indexed, e.g., #[index]
     pub indexed: bool,
+
+    /// Mark this field as the one that gets the `Related` impl, e.g., #[related].
+    /// Applies to a `belongs_to` or `has_many` field; only required when
+    /// another field on the same entity targets the same entity too.
+    pub related: bool,
 }
 
 /// A single entity definition.
@@ -274,11 +279,14 @@ fn parse_field_attrs(input: ParseStream) -> Result<FieldAttrs> {
                 let value: syn::LitStr = content.parse()?;
                 attrs.column_name = Some(value.value());
             }
+            "related" => {
+                attrs.related = true;
+            }
             _ => {
                 return Err(syn::Error::new(
                     attr_name.span(),
                     format!(
-                        "unknown field attribute '{}'. Supported: unique, index, column",
+                        "unknown field attribute '{}'. Supported: unique, index, related, column",
                         attr_name_str
                     ),
                 ));
@@ -634,12 +642,10 @@ mod tests {
 
         let result = parse_schema(input);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown field attribute")
-        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("unknown field attribute"));
+        assert!(error.contains("related"));
     }
 
     #[test]

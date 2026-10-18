@@ -16,11 +16,11 @@ tl;dr: Use the cron scheduler for lightweight, periodic tasks that are safe to m
 | | Cron Scheduler                               | Background Jobs                                                |
 |---|----------------------------------------------|----------------------------------------------------------------|
 | **Trigger** | Time-based (cron expression)                 | Event-based (enqueued from code)                               |
-| **Persistence** | None, in-memory only                         | PostgreSQL-backed                                              |
+| **Persistence** | None, in-memory only                         | Database-backed                                                |
 | **Retries** | None built-in                                | Configurable (exponential, fixed, none)                        |
 | **Survives restarts** | No. Schedule restarts with the process       | Yes. Pending jobs persist in the database                      |
 | **Use case** | Periodic maintenance, polling, cache refresh | Durable, transactional deferred work: emails, uploads, reports |
-| **Infrastructure** | No extra dependencies                        | Requires PostgreSQL                                            |
+| **Infrastructure** | No extra dependencies                        | Uses PostgreSQL, MySQL, or SQLite                              |
 
 ## Prerequisites
 

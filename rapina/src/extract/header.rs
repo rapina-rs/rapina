@@ -40,6 +40,31 @@ use crate::state::AppState;
 ///
 /// Wraps the parsed header value and carries the header name used during
 /// extraction.  The name is set by the proc-macro at compile time.
+///
+/// # Distinction from `Headers`
+///
+/// Prefer `Header<T>` when the header name is known upfront: the name is
+/// derived from the parameter name (snake_case to kebab-case) and the raw
+/// `&str` value is parsed into `T` via [`FromHeaderStr`], returning `400`
+/// automatically when the header is missing or malformed.  Use [`Headers`]
+/// when the names are only known at runtime.
+///
+/// # Examples
+///
+/// ```ignore
+/// use rapina::prelude::*;
+///
+/// #[get("/auth")]
+/// async fn check_auth(authorization: Header<String>) -> Result<String> {
+///     // Borrowed as `&str` via `Deref`:
+///     if !authorization.starts_with("Bearer ") {
+///         return Err(Error::unauthorized("expected a bearer token"));
+///     }
+///
+///     // Or take ownership of the parsed value:
+///     Ok(authorization.into_inner())
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct Header<T> {
     value: T,

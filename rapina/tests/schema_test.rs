@@ -6,6 +6,7 @@
 
 use rapina::prelude::*;
 use rapina::sea_orm::entity::prelude::*;
+use rapina::sea_orm::{DbBackend, QueryTrait};
 
 // Define a test schema with various relationship types
 schema! {
@@ -193,4 +194,219 @@ fn test_join_table_entity_typed_primary_key_compiles() {
     let _ = tx_label::Relation::LabelId;
 
     let _ = tx_label::Entity::table_name(&tx_label::Entity);
+}
+
+/// The tail of a statement from its first JOIN.
+///
+/// Asserting on the whole statement is useless here: a foreign key column
+/// appears in the SELECT list whether or not the JOIN used it, so
+/// `contains("from_id")` cannot fail. Only the join condition is evidence.
+fn join_clause(sql: &str) -> &str {
+    &sql[sql.find("JOIN").expect("expected a JOIN")..]
+}
+
+// Issue #678: an entity with two fields aimed at the same target needs exactly
+// one `impl Related<Target>`, since a second is a conflicting implementation
+// (E0119). Every entity below has such a pair, so a regression here shows up as
+// this file failing to compile rather than as a failing assertion.
+schema! {
+    #[table_name = "rel_accounts"]
+    RelAccount {
+        name: String,
+    }
+
+    // The #678 repro: two belongs_to to one target.
+    #[table_name = "rel_txs"]
+    RelTx {
+        from: Option<RelAccount>,
+        #[related]
+        to: Option<RelAccount>,
+        amount: i64,
+    }
+
+    #[table_name = "rel_warehouses"]
+    RelWarehouse {
+        name: String,
+    }
+
+    // Three belongs_to to one target: one owns Related, two need a Linked each.
+    #[table_name = "rel_shipments"]
+    RelShipment {
+        origin: RelWarehouse,
+        destination: RelWarehouse,
+        #[related]
+        backup: Option<RelWarehouse>,
+    }
+
+    // Self-referential: `parent` and `children` both target RelCategory.
+    #[table_name = "rel_categories"]
+    RelCategory {
+        name: String,
+        parent: Option<RelCategory>,
+        children: Vec<RelCategory>,
+    }
+}
+
+#[test]
+fn test_related_attr_decides_which_column_find_related_joins() {
+    let stmt = rel_tx::Entity::find()
+        .find_also_related(rel_account::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("to_id"), "{join}");
+    assert!(!join.contains("from_id"), "{join}");
+}
+
+#[test]
+fn test_unmarked_field_reaches_its_own_column_through_linked() {
+    let tx = rel_tx::Model {
+        id: 1,
+        from_id: Some(1),
+        to_id: Some(2),
+        amount: 500,
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // No Related covers `from`, so the generated Linked is the only route --
+    // and it must resolve to from_id rather than collapsing onto to_id.
+    let stmt = tx
+        .find_linked(rel_tx::FromLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("from_id"), "{join}");
+    assert!(!join.contains("to_id"), "{join}");
+}
+
+#[test]
+fn test_every_loser_of_a_three_way_group_keeps_its_own_column() {
+    let shipment = rel_shipment::Model {
+        id: 1,
+        origin_id: 1,
+        destination_id: 2,
+        backup_id: Some(3),
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    let related = rel_shipment::Entity::find()
+        .find_also_related(rel_warehouse::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+    assert!(join_clause(&related).contains("backup_id"));
+
+    // Two unmarked fields, two links: each keeps its own column rather than
+    // both resolving to backup_id or to each other's.
+    let origin = shipment
+        .find_linked(rel_shipment::OriginLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+    let origin_join = join_clause(&origin);
+    assert!(origin_join.contains("origin_id"), "{origin_join}");
+    assert!(!origin_join.contains("destination_id"), "{origin_join}");
+
+    let destination = shipment
+        .find_linked(rel_shipment::DestinationLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+    let destination_join = join_clause(&destination);
+    assert!(
+        destination_join.contains("destination_id"),
+        "{destination_join}"
+    );
+    assert!(
+        !destination_join.contains("origin_id"),
+        "{destination_join}"
+    );
+}
+
+// `#[related]` is a cross-kind override: marking a has_many lets it win
+// `Related` over a belongs_to targeting the same entity, reversing the
+// default. `items` (has_many) and `highlight` (belongs_to) both target
+// RelItem from RelOwner; `items` is marked, so it owns `Related` and
+// `highlight` falls back to a generated `Linked` instead.
+schema! {
+    #[table_name = "rel_owners"]
+    RelOwner {
+        name: String,
+        #[related]
+        items: Vec<RelItem>,
+        highlight: Option<RelItem>,
+    }
+
+    #[table_name = "rel_items"]
+    RelItem {
+        name: String,
+        owner: RelOwner,
+    }
+}
+
+#[test]
+fn test_related_attr_on_has_many_overrides_belongs_to_default() {
+    // `items` owns Related, so find_also_related joins through RelItem's own
+    // `owner_id` column rather than RelOwner's `highlight_id`.
+    let stmt = rel_owner::Entity::find()
+        .find_also_related(rel_item::Entity)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("owner_id"), "{join}");
+    assert!(!join.contains("highlight_id"), "{join}");
+}
+
+#[test]
+fn test_belongs_to_demoted_by_related_on_has_many_reaches_own_column() {
+    let owner = rel_owner::Model {
+        id: 1,
+        name: "Acme".to_string(),
+        highlight_id: Some(2),
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // `highlight` lost the nomination to `items`, so it's only reachable
+    // through the generated Linked, and it must resolve to highlight_id.
+    let stmt = owner
+        .find_linked(rel_owner::HighlightLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&stmt);
+    assert!(join.contains("highlight_id"), "{join}");
+}
+
+#[test]
+fn test_self_referential_belongs_to_and_has_many_coexist() {
+    let category = rel_category::Model {
+        id: 1,
+        name: "Books".to_string(),
+        parent_id: Some(2),
+        created_at: DateTimeUtc::default(),
+        updated_at: DateTimeUtc::default(),
+    };
+
+    // `parent` owns Related for RelCategory; `children` reverses that same
+    // edge through Linked rather than declaring a second Related.
+    let _ = rel_category::Relation::Parent;
+    let _ = rel_category::Relation::Children;
+
+    // Only the Linked route is asserted on. find_also_related joins a
+    // self-relation without aliasing the second table, which is a sea-orm
+    // limitation rather than something this schema controls -- Linked aliases
+    // it as r0 and is the supported way to walk a self-relation.
+    let children = category
+        .find_linked(rel_category::ChildrenLink)
+        .build(DbBackend::Sqlite)
+        .to_string();
+
+    let join = join_clause(&children);
+    assert!(
+        join.contains(r#""r0"."id" = "rel_categories"."parent_id""#),
+        "{join}"
+    );
 }

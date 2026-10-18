@@ -15,6 +15,10 @@ use crate::jobs::RapinaJobs;
 use crate::jobs::model::JobRow;
 use crate::jobs::worker::JobConfig;
 
+/// `last_error` recorded by the reaper on a reclaimed or failed row.
+pub(crate) const LEASE_EXPIRED_ERROR: &str =
+    "job lease expired before completion (worker crashed or job_timeout exceeded)";
+
 pub struct Postgres;
 
 impl Postgres {
@@ -105,6 +109,71 @@ impl Postgres {
         Statement::from_sql_and_values(DbBackend::Postgres, &sql, values)
     }
 
+    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+        Ok((fail.rows_affected(), reclaim.rows_affected()))
+    }
+
+    fn build_fail_expired_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let fa = RapinaJobs::finished_at();
+        let lu = RapinaJobs::locked_until();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = $1,
+                   {st} = 'failed',
+                   {fa} = CURRENT_TIMESTAMP
+               WHERE {st} = 'running'
+                 AND {lu} <= CURRENT_TIMESTAMP
+                 AND {att} + 1 >= {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
+    fn build_reclaim_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let lu = RapinaJobs::locked_until();
+        let sa = RapinaJobs::started_at();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = $1,
+                   {st} = 'pending',
+                   {lu} = NULL,
+                   {sa} = NULL
+               WHERE {st} = 'running'
+                 AND {lu} <= CURRENT_TIMESTAMP
+                 AND {att} + 1 < {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
     pub fn build_retry_stmt(job_id: Uuid, error: &str, delay_secs: f64) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
@@ -123,7 +192,7 @@ impl Postgres {
                    {r}  = CURRENT_TIMESTAMP + make_interval(secs => $2),
                    {lu} = NULL,
                    {sa} = NULL
-               WHERE {id} = $3::uuid"#
+               WHERE {id} = $3::uuid AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -151,7 +220,7 @@ impl Postgres {
                    {le} = $1,
                    {st} = 'failed',
                    {fa} = CURRENT_TIMESTAMP
-               WHERE {id} = $2::uuid"#
+               WHERE {id} = $2::uuid AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -176,7 +245,7 @@ impl Postgres {
                SET {st} = 'completed',
                    {fa} = CURRENT_TIMESTAMP,
                    {lu} = NULL
-               WHERE {id} = $1::uuid"#
+               WHERE {id} = $1::uuid AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -330,6 +399,71 @@ impl Mysql {
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
     }
 
+    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+        Ok((fail.rows_affected(), reclaim.rows_affected()))
+    }
+
+    fn build_fail_expired_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let fa = RapinaJobs::finished_at();
+        let lu = RapinaJobs::locked_until();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = ?,
+                   {st} = 'failed',
+                   {fa} = CURRENT_TIMESTAMP
+               WHERE {st} = 'running'
+                 AND {lu} <= CURRENT_TIMESTAMP
+                 AND {att} + 1 >= {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::MySql,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
+    fn build_reclaim_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let lu = RapinaJobs::locked_until();
+        let sa = RapinaJobs::started_at();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = ?,
+                   {st} = 'pending',
+                   {lu} = NULL,
+                   {sa} = NULL
+               WHERE {st} = 'running'
+                 AND {lu} <= CURRENT_TIMESTAMP
+                 AND {att} + 1 < {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::MySql,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
     pub fn build_retry_stmt(job_id: Uuid, error: &str, delay_secs: f64) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
@@ -348,7 +482,7 @@ impl Mysql {
                    {r}  = CURRENT_TIMESTAMP + INTERVAL ? MICROSECOND,
                    {lu} = NULL,
                    {sa} = NULL
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -376,7 +510,7 @@ impl Mysql {
                    {le} = ?,
                    {st} = 'failed',
                    {fa} = CURRENT_TIMESTAMP
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -401,7 +535,7 @@ impl Mysql {
                SET {st} = 'completed',
                    {fa} = CURRENT_TIMESTAMP,
                    {lu} = NULL
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -499,6 +633,73 @@ impl Sqlite {
         Statement::from_sql_and_values(DbBackend::Sqlite, &sql, values)
     }
 
+    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+        Ok((fail.rows_affected(), reclaim.rows_affected()))
+    }
+
+    // datetime('now') writes fixed-width TEXT timestamps, so `<=` compares
+    // chronologically; the claim statements rely on the same property.
+    fn build_fail_expired_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let fa = RapinaJobs::finished_at();
+        let lu = RapinaJobs::locked_until();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = ?,
+                   {st} = 'failed',
+                   {fa} = datetime('now')
+               WHERE {st} = 'running'
+                 AND {lu} <= datetime('now')
+                 AND {att} + 1 >= {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
+    fn build_reclaim_stmt() -> Statement {
+        let t = RapinaJobs::table_name();
+        let att = RapinaJobs::attempts();
+        let le = RapinaJobs::last_error();
+        let st = RapinaJobs::status();
+        let lu = RapinaJobs::locked_until();
+        let sa = RapinaJobs::started_at();
+        let mr = RapinaJobs::max_retries();
+
+        let sql = format!(
+            r#"UPDATE {t}
+               SET {att} = {att} + 1,
+                   {le} = ?,
+                   {st} = 'pending',
+                   {lu} = NULL,
+                   {sa} = NULL
+               WHERE {st} = 'running'
+                 AND {lu} <= datetime('now')
+                 AND {att} + 1 < {mr}"#
+        );
+
+        Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            &sql,
+            [Value::String(Some(Box::new(
+                LEASE_EXPIRED_ERROR.to_owned(),
+            )))],
+        )
+    }
+
     pub fn build_retry_stmt(job_id: Uuid, error: &str, delay_secs: f64) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
@@ -517,7 +718,7 @@ impl Sqlite {
                    {r}  = datetime('now', '+' || ? || ' seconds'),
                    {lu} = NULL,
                    {sa} = NULL
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -545,7 +746,7 @@ impl Sqlite {
                    {le} = ?,
                    {st} = 'failed',
                    {fa} = datetime('now')
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -570,7 +771,7 @@ impl Sqlite {
                SET {st} = 'completed',
                    {fa} = datetime('now'),
                    {lu} = NULL
-               WHERE {id} = ?"#
+               WHERE {id} = ? AND {st} = 'running'"#
         );
 
         Statement::from_sql_and_values(
@@ -578,5 +779,64 @@ impl Sqlite {
             &sql,
             [Value::String(Some(Box::new(job_id.to_string())))],
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn postgres_fail_expired_stmt_fails_at_error_path_boundary() {
+        let stmt = Postgres::build_fail_expired_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
+        assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
+        assert!(stmt.sql.contains("last_error = $1"));
+    }
+
+    #[test]
+    fn postgres_reclaim_stmt_uses_opposite_boundary() {
+        let stmt = Postgres::build_reclaim_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
+        assert!(stmt.sql.contains("attempts + 1 < max_retries"));
+        assert!(stmt.sql.contains("locked_until = NULL"));
+    }
+
+    #[test]
+    fn mysql_fail_expired_stmt_fails_at_error_path_boundary() {
+        let stmt = Mysql::build_fail_expired_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
+        assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
+        assert!(stmt.sql.contains("last_error = ?"));
+    }
+
+    #[test]
+    fn mysql_reclaim_stmt_uses_opposite_boundary() {
+        let stmt = Mysql::build_reclaim_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
+        assert!(stmt.sql.contains("attempts + 1 < max_retries"));
+        assert!(stmt.sql.contains("locked_until = NULL"));
+    }
+
+    #[test]
+    fn sqlite_fail_expired_stmt_fails_at_error_path_boundary() {
+        let stmt = Sqlite::build_fail_expired_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= datetime('now')"));
+        assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
+        assert!(stmt.sql.contains("last_error = ?"));
+    }
+
+    #[test]
+    fn sqlite_reclaim_stmt_uses_opposite_boundary() {
+        let stmt = Sqlite::build_reclaim_stmt();
+        assert!(stmt.sql.contains("status = 'running'"));
+        assert!(stmt.sql.contains("locked_until <= datetime('now')"));
+        assert!(stmt.sql.contains("attempts + 1 < max_retries"));
+        assert!(stmt.sql.contains("locked_until = NULL"));
     }
 }
