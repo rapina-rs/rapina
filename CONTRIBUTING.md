@@ -19,7 +19,7 @@ Thanks for your interest in contributing to Rapina. This document outlines the p
 
 ### Prerequisites
 
-- Rust 1.85 or later
+- Rust 1.87 or later
 - Cargo
 
 ### Building

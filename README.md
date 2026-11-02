@@ -77,7 +77,7 @@ schema! {
 }
 ```
 
-**Auth that works** — JWT authentication, protected by default. Mark public routes with `#[public]`. Access the current user with the `CurrentUser` extractor.
+**AuthN and AuthZ that works** — JWT authentication, protected by default. Mark public routes with `#[public]`. Access the current user with the `CurrentUser` extractor.
 
 ```rust
 #[public]
@@ -89,6 +89,30 @@ async fn login(body: Json<LoginRequest>, auth: State<AuthConfig>) -> Result<Json
 
 #[get("/me")]
 async fn me(user: CurrentUser) -> Json<UserResponse> {
+    Json(UserResponse { id: user.id })
+}
+```
+
+Need fine-granular, flexible authorization? Attach route-level permission policies with `#[authorize]`:
+
+```rust
+async fn require_admin(
+    user: &CurrentUser,
+    permissions: &State<Permissions>,
+) -> Result<()> {
+    if permissions.is_admin(&user.id) {
+        Ok(())
+    } else {
+        Err(Error::forbidden("admin role required"))
+    }
+}
+
+#[get("/admin")]
+#[authorize(require_admin(
+    CurrentUser,
+    State<Permissions>,
+))]
+async fn admin(user: CurrentUser) -> Json<UserResponse> {
     Json(UserResponse { id: user.id })
 }
 ```
