@@ -29,10 +29,14 @@ pub mod backend;
 pub mod channel;
 mod hub;
 pub mod protocol;
+#[cfg(feature = "relay-redis")]
+pub mod redis;
 
 pub use backend::{InMemoryBackend, RelayBackend, TopicReceiver};
 pub use channel::{ChannelDescriptor, PresenceEntry, RelayEvent};
 pub use hub::{Relay, RelayHub};
+#[cfg(feature = "relay-redis")]
+pub use redis::RedisRelayBackend;
 
 /// Configuration for the relay system.
 ///
