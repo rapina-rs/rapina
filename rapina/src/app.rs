@@ -21,8 +21,9 @@ use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 #[cfg(feature = "jwks")]
 use crate::prelude::JwksClient;
 use crate::router::Router;
-use crate::server::{ShutdownHook, serve};
+use crate::server::{ShutdownHook, StartupHook, serve};
 use crate::state::AppState;
+use futures_util::FutureExt;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -88,6 +89,8 @@ pub struct Rapina {
     pub(crate) shutdown_timeout: Duration,
     /// Hooks to run during graceful shutdown
     pub(crate) shutdown_hooks: Vec<ShutdownHook>,
+    /// Hooks to run once before the server starts accepting traffic
+    pub(crate) startup_hooks: Vec<StartupHook>,
     /// Relay configuration (if enabled)
     #[cfg(feature = "websocket")]
     pub(crate) relay_config: Option<crate::relay::RelayConfig>,
@@ -123,6 +126,18 @@ pub(crate) fn resolve_listen_addr(addr: &str) -> SocketAddr {
     }
 }
 
+/// Extracts a readable message from a panic payload, mirroring the default hook:
+/// `&str`/`String` verbatim, anything else a fallback.
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
 impl Rapina {
     /// Creates a new Rapina application builder.
     ///
@@ -148,6 +163,7 @@ impl Rapina {
             auto_discover: false,
             shutdown_timeout: Duration::from_secs(30),
             shutdown_hooks: Vec::new(),
+            startup_hooks: Vec::new(),
             #[cfg(feature = "websocket")]
             relay_config: None,
             rfc7807_errors: false,
@@ -604,6 +620,38 @@ impl Rapina {
         self
     }
 
+    /// Runs the registered startup hooks in order, stopping at the first failure.
+    async fn run_startup_hooks(&mut self) -> std::io::Result<()> {
+        // `take` makes each hook run at most once per `listen` call, even if the
+        // runner is somehow reached twice.
+        for (index, hook) in std::mem::take(&mut self.startup_hooks)
+            .into_iter()
+            .enumerate()
+        {
+            // User code only runs once the future is polled, so a single
+            // catch_unwind covers both a panic before the first await and one
+            // mid-poll.
+            match std::panic::AssertUnwindSafe(hook()).catch_unwind().await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    return Err(std::io::Error::other(format!(
+                        "startup hook {} failed: {}",
+                        index + 1,
+                        error
+                    )));
+                }
+                Err(payload) => {
+                    return Err(std::io::Error::other(format!(
+                        "startup hook {} panicked: {}",
+                        index + 1,
+                        panic_payload_message(&*payload)
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Warms up the JWKS cache immediately without waiting for the next cronjob tick
     #[cfg(feature = "jwks")]
     async fn warmup_jwks_cache(&self) -> () {
@@ -731,6 +779,56 @@ impl Rapina {
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.shutdown_hooks.push(Box::new(move || Box::pin(hook())));
+        self
+    }
+
+    /// Registers an async hook to run once before the server accepts traffic.
+    ///
+    /// Hooks run after `prepare()` has applied deferred setup and before
+    /// [`listen`](Self::listen) binds the listener, so a warm-up failure
+    /// aborts startup instead of surfacing on the first request. Multiple hooks
+    /// run sequentially in registration order, each exactly once per `listen`
+    /// call.
+    ///
+    /// The first hook that returns an error or panics stops startup: the
+    /// remaining hooks do not run and `listen` returns the failure as an
+    /// [`std::io::Error`]. Panics are caught rather than unwinding out of the
+    /// server (under `panic = "abort"` the process still aborts).
+    ///
+    /// Because the hook output is generic, an `Ok(())` literal needs a type
+    /// annotation, e.g. `Ok::<(), std::io::Error>(())`.
+    ///
+    /// Note: [`TestClient`](crate::testing::TestClient) does not run startup
+    /// hooks; they are part of the real server lifecycle only.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use rapina::prelude::*;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> std::io::Result<()> {
+    ///     Rapina::new()
+    ///         .on_startup(|| async {
+    ///             tracing::info!("warming cache");
+    ///             Ok::<(), std::io::Error>(())
+    ///         })
+    ///         .listen("127.0.0.1:3000")
+    ///         .await
+    /// }
+    /// ```
+    pub fn on_startup<F, Fut, E>(mut self, hook: F) -> Self
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), E>> + Send + 'static,
+        E: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
+    {
+        self.startup_hooks.push(Box::new(move || {
+            Box::pin(async move {
+                let result: Result<(), E> = hook().await;
+                result.map_err(Into::into)
+            })
+        }));
         self
     }
 
@@ -936,7 +1034,9 @@ impl Rapina {
     /// Applies all deferred setup (auth middleware, introspection, metrics, openapi).
     ///
     /// Both [`listen`](Self::listen) and [`TestClient::new`](crate::testing::TestClient::new)
-    /// call this so the app behaves identically in tests and production.
+    /// call this, so deferred setup is identical in tests and production. Lifecycle
+    /// hooks are the exception: [`TestClient`](crate::testing::TestClient) does not
+    /// run [`on_startup`](Self::on_startup) or [`on_shutdown`](Self::on_shutdown).
     pub(crate) fn prepare(mut self) -> Self {
         self.state = self.state.with(crate::error::ErrorConfig {
             use_rfc7807: self.rfc7807_errors,
@@ -1157,7 +1257,13 @@ impl Rapina {
         #[cfg(not(feature = "otel"))]
         let _ = crate::observability::init_subscriber(tracing_config, None);
 
-        let app = self.prepare();
+        let mut app = self.prepare();
+
+        // Fail fast: run startup hooks once, after deferred setup and before the
+        // listener is bound or any job worker, cron scheduler, or JWKS warmup is
+        // started. (The tracing subscriber is installed above, so hook logs and
+        // panics are captured.)
+        app.run_startup_hooks().await?;
 
         // Flush exported spans during graceful shutdown so in-flight traces are
         // not dropped. The hook runs after connections drain.
@@ -1656,5 +1762,62 @@ mod tests {
     fn test_rapina_cron_broken_cronjob_panics() {
         let broken_schedule = "";
         Rapina::new().cron(broken_schedule, || async { Ok::<(), Error>(()) });
+    }
+
+    // ── startup hooks ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_rapina_startup_hooks_empty_by_default() {
+        let app = Rapina::new();
+        assert!(app.startup_hooks.is_empty());
+    }
+
+    #[test]
+    fn test_rapina_on_startup_registers_hooks() {
+        let app = Rapina::new()
+            .on_startup(|| async { Ok::<(), std::io::Error>(()) })
+            .on_startup(|| async { Ok::<(), std::io::Error>(()) });
+        assert_eq!(app.startup_hooks.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_run_startup_hooks_empty_is_ok() {
+        // Backward compatibility: an app that never registers a hook must keep
+        // starting exactly as before, with the runner doing nothing.
+        let mut app = Rapina::new();
+        assert!(app.run_startup_hooks().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_startup_hooks_runs_each_hook_exactly_once() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let first = Arc::clone(&counter);
+        let second = Arc::clone(&counter);
+
+        let mut app = Rapina::new()
+            .on_startup(move || {
+                let first = Arc::clone(&first);
+                async move {
+                    first.fetch_add(1, Ordering::SeqCst);
+                    Ok::<(), std::io::Error>(())
+                }
+            })
+            .on_startup(move || {
+                let second = Arc::clone(&second);
+                async move {
+                    second.fetch_add(1, Ordering::SeqCst);
+                    Ok::<(), std::io::Error>(())
+                }
+            });
+
+        // `run_startup_hooks` takes the registered hooks out of the app, so a
+        // second invocation must not run them again.
+        assert!(app.run_startup_hooks().await.is_ok());
+        assert!(app.run_startup_hooks().await.is_ok());
+
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 }
