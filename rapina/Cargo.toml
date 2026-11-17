@@ -2,7 +2,7 @@
 name = "rapina"
 version = "0.13.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
 license = "MIT"
 repository = "https://github.com/rapina-rs/rapina"

@@ -2,7 +2,7 @@
 name = "rapina-macros"
 version = "0.13.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 description = "Procedural macros for the Rapina web framework"
 license = "MIT"
 repository = "https://github.com/rapina-rs/rapina"

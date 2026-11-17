@@ -1,15 +1,37 @@
+mod authz;
+
 use rapina::jwt;
 use rapina::jwt::{JsonWebToken, JwksClient};
 use rapina::prelude::*;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct GoogleClaims {
     pub email: String,
 }
+
+// Example authorization handler that compares the token subject field (.sub) to a hardcoded string
+async fn authorization_handler(token: &JsonWebToken<GoogleClaims>) -> Result<()> {
+    tracing::info!(sub = %token.sub, "authorizing request before it hits the handler");
+    if "{YOUR GOOGLE USER ID HERE TO PASS THE AUTHORIZATION LOGIC}" == token.sub.as_str() {
+        return Ok(());
+    }
+    Err(Error::forbidden("Missing permissions"))
+}
+
+// Demonstrates an authorization-only dependency: the policy extracts the JWT, while the handler itself does not need it
+#[get("/example")]
+#[authorize(authorization_handler(JsonWebToken<GoogleClaims>))]
+async fn pong() -> Result<Json<String>> {
+    tracing::info!("this is called within the handler body");
+    Ok(Json("success".to_string()))
+}
+
+// Demonstrates dependency reuse: the JWT is extracted once and borrowed by the policy and remains available to the handler
 #[get("/email")]
-async fn get_email(token: JsonWebToken<GoogleClaims>) -> Json<String> {
+#[authorize(authz::authorize(JsonWebToken))]
+async fn get_email(token: JsonWebToken<GoogleClaims>) -> Result<Json<String>> {
     tracing::info!(sub = %token.sub, "authenticated request");
-    Json(token.claims.email)
+    Ok(Json(token.claims.email))
 }
 
 #[tokio::main]
@@ -27,8 +49,6 @@ async fn main() -> std::io::Result<()> {
     6) The webserver should respond with the email address after parsing and validating the JWT
      */
     tracing_subscriber::fmt().init();
-
-    let router = Router::new().get("/email", get_email);
 
     // OIDC Discovery endpoint of Google Accounts API
     let discovery_url = "https://accounts.google.com/.well-known/openid-configuration";
@@ -60,7 +80,7 @@ async fn main() -> std::io::Result<()> {
     Rapina::new()
         .state(jwks_client)
         .state(jwks_validation)
-        .router(router)
+        .discover()
         .listen("127.0.0.1:3000")
         .await
 }
