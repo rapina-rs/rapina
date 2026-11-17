@@ -124,7 +124,7 @@ If the transaction rolls back, the job is never created.
 
 ## Starting the Worker
 
-Call `.jobs()` on the application builder before `.listen()`. The worker spawns in-process alongside the HTTP server and shuts down gracefully on SIGINT/SIGTERM — it finishes its current batch before stopping.
+Call `.jobs()` on the application builder before `.listen()`. One worker spawns per subscribed queue, in-process alongside the HTTP server, and each shuts down gracefully on SIGINT/SIGTERM, finishing its current batch before stopping.
 
 ```rust
 use rapina::jobs::JobConfig;
@@ -153,6 +153,85 @@ JobConfig::default()
 | `queues` | `["default"]` | Queue names to subscribe to |
 | `job_timeout` | 30s | How long a job lock is held; expired locks can be reclaimed after a worker crash, on the next poll cycle |
 
+### Per-queue overrides
+
+The options above apply to every queue. When one queue needs different pacing, register a `QueueConfig` for it. Any field you leave unset inherits the global value:
+
+```rust
+use rapina::jobs::{JobConfig, QueueConfig};
+
+JobConfig::default()
+    .batch_size(20)
+    .queues(["default", "emails"])
+    .queue_configs([
+        QueueConfig::new("browser")
+            .batch_size(1)
+            .job_timeout(Duration::from_secs(300)),
+    ])
+```
+
+That spawns three workers. `default` and `emails` claim up to 20 jobs per cycle with a 30s lease; `browser` claims one at a time with a five-minute lease, while still polling on the global 5s interval because `poll_interval` was not overridden.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `QueueConfig::new(name)` | — | The queue these overrides apply to. Subscribes it if `queues` does not already list it |
+| `poll_interval` | inherits | How often this queue's worker wakes up |
+| `batch_size` | inherits | Maximum jobs this queue claims per poll cycle |
+| `job_timeout` | inherits | How long this queue's job lock is held |
+
+This is the knob for the `job_timeout` sizing problem described below: rather than raising the global timeout to cover your slowest handler, give the slow queue `batch_size(1)` and a long lease, and leave everything else fast.
+
+Each worker polls, claims and reaps only its own queue, so queues are isolated: a backlog on one does not delay another, and a worker never touches a lease belonging to a queue it does not subscribe to. That last property is what makes it safe to run workers for different queues as separate processes against the same database.
+
+Registering a config for a queue that `queues` does not list is harmless. The entry is simply unused, which lets one `JobConfig` be narrowed per process with different `queues()` calls.
+
+## Running Workers as a Separate Process
+
+The worker above runs inside the HTTP app. To scale workers independently, or to give one queue a process of its own, call `run_worker` from a second binary. It shares nothing with the API but the database: no listener, no port, no healthcheck.
+
+```rust
+// src/bin/worker.rs
+use rapina::database::DatabaseConfig;
+use rapina::jobs::{JobConfig, QueueConfig, run_worker};
+use rapina::prelude::*;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    load_dotenv();
+    TracingConfig::new().init();
+
+    let db = DatabaseConfig::from_env()?.connect().await?;
+
+    run_worker(
+        db,
+        JobConfig::default()
+            .queues(["browser"])
+            .queue_configs([QueueConfig::new("browser")
+                .batch_size(1)
+                .job_timeout(Duration::from_secs(300))]),
+    )
+    .await;
+
+    Ok(())
+}
+```
+
+```bash
+cargo run --bin worker        # locally
+cargo build --bin worker      # for a worker service image
+```
+
+`run_worker` returns once every worker has drained, so SIGINT/SIGTERM behaves exactly as it does in-process: each worker finishes the batch it is executing, then stops.
+
+Because each worker claims and reaps only its own queue, the API and any number of worker processes can point at the same database without contending over leases. A typical split gives the API the fast queues through `.jobs()` and one process per heavy queue.
+
+Two constraints are worth knowing before you deploy this:
+
+**Handlers must be linked into the binary that runs them.** `#[job]` registers handlers with `inventory` at link time, so the dispatch table is whatever the *final executable* contains, not whatever the crate declares. A binary that does not compile your `#[job]` functions finds no handler for any `job_type` and permanently fails every job it claims. In a project whose jobs live in modules of `main.rs`, a file under `src/bin/` is its own crate root and sees none of them; expose them through a `src/lib.rs` (or a workspace crate) that both binaries use, which is also what lets your HTTP handlers keep calling the typed enqueue helpers.
+
+**Only `Db` resolves in handler arguments.** `run_worker` builds its state from the connection you pass it, so a handler taking `State<T>` has nothing to receive and fails every attempt until its retries are exhausted. Keep those jobs on the in-process worker started by `.jobs()`, where the full `AppState` is available.
+
 ## Job Lifecycle
 
 ```
@@ -164,9 +243,9 @@ The worker transitions each claimed job from `pending` to `running` while preven
 
 On completion the job moves to `completed` or `failed`.
 
-A worker that dies mid-job (crash, `SIGKILL`, power loss) leaves the row in `running` with a stale `locked_until`. On each poll cycle the worker reaps expired leases: jobs with retry budget left return to `pending` and are claimed again on the next cycle (immediately, with no backoff delay), with the crashed run counted toward `attempts` exactly like an errored run, and jobs past `max_retries` are marked `failed` with a lease-expired `last_error`. Recovery latency is bounded by `job_timeout + poll_interval`. A panicking handler does not stop the worker: the panic is caught, logged at `error` level, and processed through the same retry path as an error. Under `panic = abort` there is nothing to catch, the process dies and the job is recovered like any other crash.
+A worker that dies mid-job (crash, `SIGKILL`, power loss) leaves the row in `running` with a stale `locked_until`. On each poll cycle the worker reaps expired leases **in its own queue only**: jobs with retry budget left return to `pending` and are claimed again on the next cycle (immediately, with no backoff delay), with the crashed run counted toward `attempts` exactly like an errored run, and jobs past `max_retries` are marked `failed` with a lease-expired `last_error`. Recovery latency is bounded by `job_timeout + poll_interval`. A panicking handler does not stop the worker: the panic is caught, logged at `error` level, and processed through the same retry path as an error. Under `panic = abort` there is nothing to catch, the process dies and the job is recovered like any other crash.
 
-Size `job_timeout` for the batch's worst case, `batch_size` times your slowest handler, or keep batches small. The lease is stamped for the whole batch when it is claimed, but jobs run one at a time, so a job near the end of a large batch can start with its lease already gone and run a second time on another worker. There is no heartbeat to renew the lease mid-run.
+Size `job_timeout` for the batch's worst case, `batch_size` times your slowest handler, or keep batches small. You can also set both per queue with a [`QueueConfig`](#per-queue-overrides) so one slow queue does not force a long lease on the rest. The lease is stamped for the whole batch when it is claimed, but jobs run one at a time, so a job near the end of a large batch can start with its lease already gone and run a second time on another worker. There is no heartbeat to renew the lease mid-run.
 
 Failed jobs are retried according to the `retry_policy` set on the handler.
 
@@ -210,6 +289,8 @@ The job is permanently marked `failed` on the first error. Use this for operatio
 ## DI Limitations
 
 Job handlers run outside the request cycle. Only `State<T>` and `Db` work — they source data from `AppState` directly. Request-bound extractors (`Context`, `Headers`, `Path`, `Query`, `CurrentUser`) will fail at runtime and must not be used in job handlers.
+
+In a worker started by [`run_worker`](#running-workers-as-a-separate-process) the list is narrower still: that process builds no `AppState`, so only `Db` resolves and a handler taking `State<T>` fails every attempt.
 
 ## Trace Propagation
 

@@ -416,25 +416,35 @@ impl Rapina {
         self
     }
 
-    /// Enables the in-process background job worker with the given configuration.
+    /// Enables the in-process background job workers with the given configuration.
     ///
-    /// The worker spawns alongside the HTTP server during [`listen`](Self::listen)
-    /// and polls `rapina_jobs` on the configured interval. It shuts down
-    /// gracefully when the server receives SIGINT or SIGTERM, finishing the
-    /// current job batch before exiting.
+    /// One worker spawns per subscribed queue during [`listen`](Self::listen),
+    /// each polling `rapina_jobs` for its own queue on its own interval. They
+    /// share the application state and database pool, and shut down gracefully
+    /// when the server receives SIGINT or SIGTERM, finishing the current job
+    /// batch before exiting.
     ///
     /// Requires [`with_database`](Self::with_database) to be called first —
-    /// the worker uses the same `DatabaseConnection` stored in `AppState`.
+    /// the workers use the same `DatabaseConnection` stored in `AppState`.
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// use rapina::jobs::JobConfig;
+    /// use rapina::jobs::{JobConfig, QueueConfig};
     /// use std::time::Duration;
     ///
     /// Rapina::new()
     ///     .with_database(db_config).await?
-    ///     .jobs(JobConfig::default().queues(["default", "emails"]))
+    ///     .jobs(
+    ///         JobConfig::default()
+    ///             .batch_size(20)
+    ///             .queues(["default", "emails"])
+    ///             // `browser` claims one job at a time with a longer lease;
+    ///             // the other two keep the global settings.
+    ///             .queue_configs([QueueConfig::new("browser")
+    ///                 .batch_size(1)
+    ///                 .job_timeout(Duration::from_secs(300))]),
+    ///     )
     ///     .listen("127.0.0.1:3000")
     ///     .await
     /// ```
@@ -1172,8 +1182,10 @@ impl Rapina {
         #[cfg(feature = "database")]
         if let Some(config) = app.jobs_config.clone() {
             let state = std::sync::Arc::new(app.state.clone());
-            let worker = crate::jobs::worker::Worker::new(state, config);
-            tokio::spawn(worker.run());
+            for queue in config.resolved_queues() {
+                let worker = crate::jobs::worker::Worker::new(state.clone(), queue);
+                tokio::spawn(worker.run());
+            }
         }
 
         #[cfg(feature = "jwks")]

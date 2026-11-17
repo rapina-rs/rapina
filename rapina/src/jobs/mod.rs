@@ -53,9 +53,10 @@
 //!
 //! # Starting the Worker
 //!
-//! Call `.jobs()` on the application builder before `.listen()`. The worker
-//! spawns in-process alongside the HTTP server and shuts down gracefully on
-//! SIGINT/SIGTERM — it finishes its current batch before stopping.
+//! Call `.jobs()` on the application builder before `.listen()`. One worker
+//! spawns per subscribed queue, in-process alongside the HTTP server, and each
+//! shuts down gracefully on SIGINT/SIGTERM — finishing its current batch before
+//! stopping.
 //!
 //! ```rust,ignore
 //! use rapina::jobs::JobConfig;
@@ -65,6 +66,25 @@
 //!     .jobs(JobConfig::default().queues(["default", "emails"]))
 //!     .listen("127.0.0.1:3000")
 //!     .await
+//! ```
+//!
+//! Every queue uses the global [`JobConfig`] settings. To give one queue its own
+//! pacing, register a [`QueueConfig`] — unset fields inherit the global value,
+//! and each worker claims and reaps only its own queue:
+//!
+//! ```rust,ignore
+//! use rapina::jobs::{JobConfig, QueueConfig};
+//! use std::time::Duration;
+//!
+//! // `browser` runs one job at a time with a five-minute lease;
+//! // every other queue keeps the global pacing.
+//! .jobs(
+//!     JobConfig::default()
+//!         .batch_size(20)
+//!         .queue_configs([QueueConfig::new("browser")
+//!             .batch_size(1)
+//!             .job_timeout(Duration::from_secs(300))]),
+//! )
 //! ```
 //!
 //! # Job Lifecycle
@@ -110,7 +130,7 @@ pub(crate) mod worker;
 pub(crate) use create_rapina_jobs::RapinaJobs;
 pub use model::{JobRow, JobStatus};
 pub use retry::RetryPolicy;
-pub use worker::JobConfig;
+pub use worker::{JobConfig, QueueConfig, run_worker};
 
 use std::future::Future;
 use std::pin::Pin;

@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::jobs::JobRequest;
 use crate::jobs::RapinaJobs;
 use crate::jobs::model::JobRow;
-use crate::jobs::worker::JobConfig;
+use crate::jobs::worker::ResolvedQueueConfig;
 
 /// `last_error` recorded by the reaper on a reclaimed or failed row.
 pub(crate) const LEASE_EXPIRED_ERROR: &str =
@@ -53,7 +53,7 @@ impl Postgres {
 
     pub async fn claim_batch(
         db: &DatabaseConnection,
-        config: &JobConfig,
+        config: &ResolvedQueueConfig,
     ) -> Result<Vec<JobRow>, DbErr> {
         let stmt = Self::build_claim_stmt(config);
         let rows = db.query_all(stmt).await?;
@@ -62,15 +62,7 @@ impl Postgres {
             .collect()
     }
 
-    fn build_claim_stmt(config: &JobConfig) -> Statement {
-        let n = config.queues.len();
-        let placeholders = (1..=n)
-            .map(|i| format!("${i}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let batch_param = n + 1;
-        let timeout_param = batch_param + 1;
-
+    fn build_claim_stmt(config: &ResolvedQueueConfig) -> Statement {
         let t = RapinaJobs::table_name();
         let id = RapinaJobs::id();
         let st = RapinaJobs::status();
@@ -83,39 +75,37 @@ impl Postgres {
             r#"WITH claimed AS (
                    SELECT {id} FROM {t}
                    WHERE  {st}  = 'pending'
-                     AND  {q}   IN ({placeholders})
+                     AND  {q}   = $1
                      AND  {r} <= CURRENT_TIMESTAMP
                    ORDER  BY {r} ASC
-                   LIMIT  ${batch_param}
+                   LIMIT  $2
                    FOR UPDATE SKIP LOCKED
                )
                UPDATE {t}
                SET {st}   = 'running',
                    {sa}   = CURRENT_TIMESTAMP,
-                   {lu} = CURRENT_TIMESTAMP + make_interval(secs => ${timeout_param})
+                   {lu} = CURRENT_TIMESTAMP + make_interval(secs => $3)
                FROM claimed
                WHERE {t}.{id} = claimed.{id}
                RETURNING {t}.*"#
         );
 
-        let mut values: Vec<Value> = config
-            .queues
-            .iter()
-            .map(|q| Value::String(Some(Box::new(q.clone()))))
-            .collect();
-        values.push(Value::Int(Some(config.batch_size)));
-        values.push(Value::Double(Some(config.job_timeout.as_secs_f64())));
+        let values = [
+            Value::String(Some(Box::new(config.queue.clone()))),
+            Value::Int(Some(config.batch_size)),
+            Value::Double(Some(config.job_timeout.as_secs_f64())),
+        ];
 
         Statement::from_sql_and_values(DbBackend::Postgres, &sql, values)
     }
 
-    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
-        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
-        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+    pub async fn reap_expired(db: &DatabaseConnection, queue: &str) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt(queue)).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt(queue)).await?;
         Ok((fail.rows_affected(), reclaim.rows_affected()))
     }
 
-    fn build_fail_expired_stmt() -> Statement {
+    fn build_fail_expired_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -123,6 +113,7 @@ impl Postgres {
         let fa = RapinaJobs::finished_at();
         let lu = RapinaJobs::locked_until();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -132,19 +123,21 @@ impl Postgres {
                    {fa} = CURRENT_TIMESTAMP
                WHERE {st} = 'running'
                  AND {lu} <= CURRENT_TIMESTAMP
+                 AND {q} = $2
                  AND {att} + 1 >= {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::Postgres,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
-    fn build_reclaim_stmt() -> Statement {
+    fn build_reclaim_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -152,6 +145,7 @@ impl Postgres {
         let lu = RapinaJobs::locked_until();
         let sa = RapinaJobs::started_at();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -162,15 +156,17 @@ impl Postgres {
                    {sa} = NULL
                WHERE {st} = 'running'
                  AND {lu} <= CURRENT_TIMESTAMP
+                 AND {q} = $2
                  AND {att} + 1 < {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::Postgres,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
@@ -290,7 +286,7 @@ impl Mysql {
 
     pub async fn claim_batch(
         db: &DatabaseConnection,
-        config: &JobConfig,
+        config: &ResolvedQueueConfig,
     ) -> Result<Vec<JobRow>, DbErr> {
         let txn = db.begin().await?;
 
@@ -324,14 +320,7 @@ impl Mysql {
             .collect()
     }
 
-    fn build_claim_select(config: &JobConfig) -> Statement {
-        let placeholders = config
-            .queues
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
-
+    fn build_claim_select(config: &ResolvedQueueConfig) -> Statement {
         let t = RapinaJobs::table_name();
         let st = RapinaJobs::status();
         let q = RapinaJobs::queue();
@@ -341,24 +330,22 @@ impl Mysql {
         let sql = format!(
             r#"SELECT {id} FROM {t}
                WHERE  {st}  = 'pending'
-                 AND  {q}   IN ({placeholders})
+                 AND  {q}   = ?
                  AND  {r} <= CURRENT_TIMESTAMP
                ORDER  BY {r} ASC
                LIMIT  ?
                FOR UPDATE SKIP LOCKED"#
         );
 
-        let mut values: Vec<Value> = config
-            .queues
-            .iter()
-            .map(|q| Value::String(Some(Box::new(q.clone()))))
-            .collect();
-        values.push(Value::Int(Some(config.batch_size)));
+        let values = [
+            Value::String(Some(Box::new(config.queue.clone()))),
+            Value::Int(Some(config.batch_size)),
+        ];
 
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
     }
 
-    fn build_claim_update(config: &JobConfig, ids: &[Uuid]) -> Statement {
+    fn build_claim_update(config: &ResolvedQueueConfig, ids: &[Uuid]) -> Statement {
         let id_placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 
         let t = RapinaJobs::table_name();
@@ -399,13 +386,13 @@ impl Mysql {
         Statement::from_sql_and_values(DbBackend::MySql, &sql, values)
     }
 
-    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
-        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
-        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+    pub async fn reap_expired(db: &DatabaseConnection, queue: &str) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt(queue)).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt(queue)).await?;
         Ok((fail.rows_affected(), reclaim.rows_affected()))
     }
 
-    fn build_fail_expired_stmt() -> Statement {
+    fn build_fail_expired_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -413,6 +400,7 @@ impl Mysql {
         let fa = RapinaJobs::finished_at();
         let lu = RapinaJobs::locked_until();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -422,19 +410,21 @@ impl Mysql {
                    {fa} = CURRENT_TIMESTAMP
                WHERE {st} = 'running'
                  AND {lu} <= CURRENT_TIMESTAMP
+                 AND {q} = ?
                  AND {att} + 1 >= {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::MySql,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
-    fn build_reclaim_stmt() -> Statement {
+    fn build_reclaim_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -442,6 +432,7 @@ impl Mysql {
         let lu = RapinaJobs::locked_until();
         let sa = RapinaJobs::started_at();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -452,15 +443,17 @@ impl Mysql {
                    {sa} = NULL
                WHERE {st} = 'running'
                  AND {lu} <= CURRENT_TIMESTAMP
+                 AND {q} = ?
                  AND {att} + 1 < {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::MySql,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
@@ -580,7 +573,7 @@ impl Sqlite {
 
     pub async fn claim_batch(
         db: &DatabaseConnection,
-        config: &JobConfig,
+        config: &ResolvedQueueConfig,
     ) -> Result<Vec<JobRow>, DbErr> {
         let stmt = Self::build_claim_stmt(config);
         let rows = db.query_all(stmt).await?;
@@ -589,14 +582,7 @@ impl Sqlite {
             .collect()
     }
 
-    fn build_claim_stmt(config: &JobConfig) -> Statement {
-        let placeholders = config
-            .queues
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
-
+    fn build_claim_stmt(config: &ResolvedQueueConfig) -> Statement {
         let t = RapinaJobs::table_name();
         let id = RapinaJobs::id();
         let st = RapinaJobs::status();
@@ -613,7 +599,7 @@ impl Sqlite {
                WHERE {id} IN (
                    SELECT {id} FROM {t}
                    WHERE {st}  = 'pending'
-                     AND {q}   IN ({placeholders})
+                     AND {q}   = ?
                      AND {r} <= datetime('now')
                    ORDER  BY {r} ASC
                    LIMIT  ?
@@ -621,27 +607,24 @@ impl Sqlite {
                RETURNING *"#,
         );
 
-        let mut values: Vec<Value> = vec![Value::Double(Some(config.job_timeout.as_secs_f64()))];
-        values.extend(
-            config
-                .queues
-                .iter()
-                .map(|q| Value::String(Some(Box::new(q.clone())))),
-        );
-        values.push(Value::Int(Some(config.batch_size)));
+        let values = [
+            Value::Double(Some(config.job_timeout.as_secs_f64())),
+            Value::String(Some(Box::new(config.queue.clone()))),
+            Value::Int(Some(config.batch_size)),
+        ];
 
         Statement::from_sql_and_values(DbBackend::Sqlite, &sql, values)
     }
 
-    pub async fn reap_expired(db: &DatabaseConnection) -> Result<(u64, u64), DbErr> {
-        let fail = db.execute(Self::build_fail_expired_stmt()).await?;
-        let reclaim = db.execute(Self::build_reclaim_stmt()).await?;
+    pub async fn reap_expired(db: &DatabaseConnection, queue: &str) -> Result<(u64, u64), DbErr> {
+        let fail = db.execute(Self::build_fail_expired_stmt(queue)).await?;
+        let reclaim = db.execute(Self::build_reclaim_stmt(queue)).await?;
         Ok((fail.rows_affected(), reclaim.rows_affected()))
     }
 
     // datetime('now') writes fixed-width TEXT timestamps, so `<=` compares
     // chronologically; the claim statements rely on the same property.
-    fn build_fail_expired_stmt() -> Statement {
+    fn build_fail_expired_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -649,6 +632,7 @@ impl Sqlite {
         let fa = RapinaJobs::finished_at();
         let lu = RapinaJobs::locked_until();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -658,19 +642,21 @@ impl Sqlite {
                    {fa} = datetime('now')
                WHERE {st} = 'running'
                  AND {lu} <= datetime('now')
+                 AND {q} = ?
                  AND {att} + 1 >= {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
-    fn build_reclaim_stmt() -> Statement {
+    fn build_reclaim_stmt(queue: &str) -> Statement {
         let t = RapinaJobs::table_name();
         let att = RapinaJobs::attempts();
         let le = RapinaJobs::last_error();
@@ -678,6 +664,7 @@ impl Sqlite {
         let lu = RapinaJobs::locked_until();
         let sa = RapinaJobs::started_at();
         let mr = RapinaJobs::max_retries();
+        let q = RapinaJobs::queue();
 
         let sql = format!(
             r#"UPDATE {t}
@@ -688,15 +675,17 @@ impl Sqlite {
                    {sa} = NULL
                WHERE {st} = 'running'
                  AND {lu} <= datetime('now')
+                 AND {q} = ?
                  AND {att} + 1 < {mr}"#
         );
 
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
             &sql,
-            [Value::String(Some(Box::new(
-                LEASE_EXPIRED_ERROR.to_owned(),
-            )))],
+            [
+                Value::String(Some(Box::new(LEASE_EXPIRED_ERROR.to_owned()))),
+                Value::String(Some(Box::new(queue.to_owned()))),
+            ],
         )
     }
 
@@ -784,59 +773,130 @@ impl Sqlite {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
+    fn resolved(queue: &str, batch_size: i32) -> ResolvedQueueConfig {
+        ResolvedQueueConfig {
+            queue: queue.to_string(),
+            poll_interval: Duration::from_secs(5),
+            batch_size,
+            job_timeout: Duration::from_secs(30),
+        }
+    }
+
+    // ── claim statements are scoped to one queue ─────────────────────────────
+
+    #[test]
+    fn postgres_claim_stmt_scopes_to_a_single_queue() {
+        let stmt = Postgres::build_claim_stmt(&resolved("browser", 7));
+        assert!(stmt.sql.contains("queue   = $1"));
+        assert!(
+            !stmt.sql.contains("IN ("),
+            "must not reintroduce multi-queue claiming"
+        );
+
+        let values = &stmt.values.as_ref().unwrap().0;
+        assert_eq!(values.len(), 3, "queue, batch size, lease timeout");
+        assert!(matches!(&values[0], Value::String(Some(s)) if s.as_str() == "browser"));
+        assert!(matches!(values[1], Value::Int(Some(7))));
+        assert!(matches!(values[2], Value::Double(_)));
+    }
+
+    #[test]
+    fn mysql_claim_select_scopes_to_a_single_queue() {
+        let stmt = Mysql::build_claim_select(&resolved("browser", 7));
+        assert!(stmt.sql.contains("queue   = ?"));
+        assert!(
+            !stmt.sql.contains("IN ("),
+            "must not reintroduce multi-queue claiming"
+        );
+
+        let values = &stmt.values.as_ref().unwrap().0;
+        assert_eq!(values.len(), 2, "queue, batch size");
+        assert!(matches!(&values[0], Value::String(Some(s)) if s.as_str() == "browser"));
+        assert!(matches!(values[1], Value::Int(Some(7))));
+    }
+
+    #[test]
+    fn sqlite_claim_stmt_scopes_to_a_single_queue() {
+        let stmt = Sqlite::build_claim_stmt(&resolved("browser", 7));
+        assert!(stmt.sql.contains("queue   = ?"));
+
+        // `IN (` legitimately appears here as `WHERE id IN (SELECT ...)`, so the
+        // anti-regression check is on the bindings. Their order is not the same
+        // as the other two backends: the lease timeout sits in the SET clause,
+        // above the queue in the subquery, above the LIMIT.
+        let values = &stmt.values.as_ref().unwrap().0;
+        assert_eq!(values.len(), 3, "lease timeout, queue, batch size");
+        assert!(
+            matches!(values[0], Value::Double(_)),
+            "job_timeout binds first, from the SET clause"
+        );
+        assert!(matches!(&values[1], Value::String(Some(s)) if s.as_str() == "browser"));
+        assert!(matches!(values[2], Value::Int(Some(7))));
+    }
+
+    // ── reaper statements are scoped to one queue ────────────────────────────
 
     #[test]
     fn postgres_fail_expired_stmt_fails_at_error_path_boundary() {
-        let stmt = Postgres::build_fail_expired_stmt();
+        let stmt = Postgres::build_fail_expired_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
         assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
         assert!(stmt.sql.contains("last_error = $1"));
+        assert!(stmt.sql.contains("queue = $2"));
     }
 
     #[test]
     fn postgres_reclaim_stmt_uses_opposite_boundary() {
-        let stmt = Postgres::build_reclaim_stmt();
+        let stmt = Postgres::build_reclaim_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
         assert!(stmt.sql.contains("attempts + 1 < max_retries"));
         assert!(stmt.sql.contains("locked_until = NULL"));
+        assert!(stmt.sql.contains("queue = $2"));
     }
 
     #[test]
     fn mysql_fail_expired_stmt_fails_at_error_path_boundary() {
-        let stmt = Mysql::build_fail_expired_stmt();
+        let stmt = Mysql::build_fail_expired_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
         assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
         assert!(stmt.sql.contains("last_error = ?"));
+        assert!(stmt.sql.contains("queue = ?"));
     }
 
     #[test]
     fn mysql_reclaim_stmt_uses_opposite_boundary() {
-        let stmt = Mysql::build_reclaim_stmt();
+        let stmt = Mysql::build_reclaim_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= CURRENT_TIMESTAMP"));
         assert!(stmt.sql.contains("attempts + 1 < max_retries"));
         assert!(stmt.sql.contains("locked_until = NULL"));
+        assert!(stmt.sql.contains("queue = ?"));
     }
 
     #[test]
     fn sqlite_fail_expired_stmt_fails_at_error_path_boundary() {
-        let stmt = Sqlite::build_fail_expired_stmt();
+        let stmt = Sqlite::build_fail_expired_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= datetime('now')"));
         assert!(stmt.sql.contains("attempts + 1 >= max_retries"));
         assert!(stmt.sql.contains("last_error = ?"));
+        assert!(stmt.sql.contains("queue = ?"));
     }
 
     #[test]
     fn sqlite_reclaim_stmt_uses_opposite_boundary() {
-        let stmt = Sqlite::build_reclaim_stmt();
+        let stmt = Sqlite::build_reclaim_stmt("browser");
         assert!(stmt.sql.contains("status = 'running'"));
         assert!(stmt.sql.contains("locked_until <= datetime('now')"));
         assert!(stmt.sql.contains("attempts + 1 < max_retries"));
         assert!(stmt.sql.contains("locked_until = NULL"));
+        assert!(stmt.sql.contains("queue = ?"));
     }
 }
