@@ -46,6 +46,10 @@ TracingConfig::new()
 
 When the `RUST_LOG` environment variable is set, it takes precedence over `level` and supports the full [EnvFilter](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) syntax (`RUST_LOG=info,my_api=debug`).
 
+## Trace IDs
+
+Every request carries a trace ID that shows up in logs and error bodies. `TraceIdMiddleware` keeps an incoming `x-trace-id`, or `x-request-id` when the first is absent, but only when the value is at most 128 bytes of `A-Z a-z 0-9 - _ . :`; otherwise the request keeps the UUID that `RequestContext` generated. The ID is echoed back in the `x-trace-id` response header.
+
 ## OpenTelemetry trace export
 
 Enable the `otel` feature flag:

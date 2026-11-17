@@ -240,8 +240,15 @@ BodyLimitMiddleware::new(5 * 1024 * 1024)  // 5 MB
 
 Assigns a unique identifier to every request for distributed tracing.
 
-- Accepts an incoming `x-trace-id` header from upstream; otherwise generates a UUID v4
-- Echoes the trace ID back in the response header `x-trace-id`
+- Accepts an incoming `x-trace-id` header from upstream; otherwise falls back to
+  `x-request-id`, which is what nginx, Heroku and most API gateways send
+- Only accepts a value that is non-empty, at most 128 bytes long and made of
+  `A-Z a-z 0-9 - _ . :`. Anything else is ignored and the request keeps its
+  generated UUID v4, so a client cannot put arbitrary text into every log line
+- An `x-trace-id` that is present but invalid does not fall back to
+  `x-request-id`: the header is treated as authoritative and the generated ID wins
+- Echoes the trace ID back in the response header `x-trace-id`; the response
+  header name never changes
 
 Access it in a handler via the `Context` extractor:
 

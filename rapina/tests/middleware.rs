@@ -6,7 +6,8 @@ use rapina::middleware::CompressionConfig;
 #[cfg(feature = "tower")]
 use rapina::middleware::TowerLayerMiddleware;
 use rapina::middleware::{
-    BodyLimitMiddleware, CorsConfig, TRACE_ID_HEADER, TimeoutMiddleware, TraceIdMiddleware,
+    BodyLimitMiddleware, CorsConfig, REQUEST_ID_HEADER, TRACE_ID_HEADER, TimeoutMiddleware,
+    TraceIdMiddleware,
 };
 #[cfg(feature = "rate-limit")]
 use rapina::middleware::{RateLimitConfig, RateLimitMiddleware};
@@ -703,4 +704,110 @@ async fn test_tower_concurrency_limit_integration() {
     assert_eq!(r1.status(), StatusCode::OK);
     assert_eq!(r2.status(), StatusCode::OK);
     assert_eq!(max_concurrent.load(Ordering::SeqCst), 1);
+}
+
+fn trace_app() -> Rapina {
+    Rapina::new()
+        .with_introspection(false)
+        .middleware(TraceIdMiddleware::new())
+        .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }))
+}
+
+#[tokio::test]
+async fn test_trace_id_header_is_echoed() {
+    let client = TestClient::new(trace_app()).await;
+
+    let response = client
+        .get("/")
+        .header(TRACE_ID_HEADER, "custom-trace-123")
+        .send()
+        .await;
+
+    assert_eq!(
+        response.headers().get(TRACE_ID_HEADER).unwrap(),
+        "custom-trace-123"
+    );
+}
+
+#[tokio::test]
+async fn test_too_long_trace_id_falls_back_to_generated() {
+    let client = TestClient::new(trace_app()).await;
+    let long_id = "a".repeat(129);
+
+    let response = client
+        .get("/")
+        .header(TRACE_ID_HEADER, &long_id)
+        .send()
+        .await;
+
+    let echoed = response.headers().get(TRACE_ID_HEADER).unwrap();
+    assert_ne!(echoed, long_id.as_str());
+    assert_eq!(
+        echoed.to_str().unwrap().len(),
+        36,
+        "generated UUID expected"
+    );
+}
+
+#[tokio::test]
+async fn test_trace_id_with_spaces_falls_back_to_generated() {
+    let client = TestClient::new(trace_app()).await;
+
+    let response = client
+        .get("/")
+        .header(TRACE_ID_HEADER, "not a trace id")
+        .send()
+        .await;
+
+    assert_eq!(
+        response
+            .headers()
+            .get(TRACE_ID_HEADER)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .len(),
+        36
+    );
+}
+
+#[tokio::test]
+async fn test_request_id_used_when_trace_id_absent() {
+    let client = TestClient::new(trace_app()).await;
+
+    let response = client
+        .get("/")
+        .header(REQUEST_ID_HEADER, "proxy-request-42")
+        .send()
+        .await;
+
+    assert_eq!(
+        response.headers().get(TRACE_ID_HEADER).unwrap(),
+        "proxy-request-42"
+    );
+}
+
+#[tokio::test]
+async fn test_invalid_trace_id_does_not_fall_back_to_request_id() {
+    let client = TestClient::new(trace_app()).await;
+
+    let response = client
+        .get("/")
+        .header(TRACE_ID_HEADER, "bad id")
+        .header(REQUEST_ID_HEADER, "proxy-request-42")
+        .send()
+        .await;
+
+    // x-trace-id was present, so x-request-id is not consulted: the invalid
+    // value is dropped in favour of the generated UUID.
+    assert_eq!(
+        response
+            .headers()
+            .get(TRACE_ID_HEADER)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .len(),
+        36
+    );
 }

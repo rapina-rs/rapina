@@ -40,7 +40,7 @@ pub use tower::{RapinaService, TowerLayerMiddleware};
 // Users interact through .layer() and never need to name NextService directly.
 #[cfg(feature = "tower")]
 pub(crate) use tower::NextService;
-pub use trace_id::{TRACE_ID_HEADER, TraceIdMiddleware};
+pub use trace_id::{REQUEST_ID_HEADER, TRACE_ID_HEADER, TraceIdMiddleware, is_valid_trace_id};
 
 use std::future::Future;
 use std::pin::Pin;
