@@ -79,6 +79,40 @@ pub fn generate_gitignore(extras: &[&str]) -> String {
     content
 }
 
+/// Write container packaging shared by all starter templates.
+pub fn write_docker_files(name: &str, project_path: &Path) -> Result<(), String> {
+    write_file(
+        &project_path.join("Dockerfile"),
+        &generate_dockerfile(name),
+        "Dockerfile",
+    )?;
+    write_file(
+        &project_path.join(".dockerignore"),
+        "target/\n.git/\n.env\n.env.*\n*.db\n*.db-*\n",
+        ".dockerignore",
+    )
+}
+
+/// Build only the application binary, even when a migration binary is present.
+pub fn generate_dockerfile(name: &str) -> String {
+    format!(
+        r#"FROM rust:bookworm AS builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release --bin {name}
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /app/target/release/{name} /usr/local/bin/app
+ENV RAPINA_HOST=0.0.0.0 RAPINA_PORT=3000
+EXPOSE 3000
+CMD ["app"]
+"#
+    )
+}
+
 /// Generate the rapina dependency line for Cargo.toml.
 ///
 /// Returns the full right-hand side of the `rapina = …` entry.
@@ -178,6 +212,42 @@ pub fn generate_gitignore_extras(db_type: Option<&DatabaseType>) -> Vec<&'static
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_templates_include_container_packaging() {
+        for db in [
+            None,
+            Some(DatabaseType::Sqlite),
+            Some(DatabaseType::Postgres),
+            Some(DatabaseType::Mysql),
+        ] {
+            for template in ["rest-api", "auth", "crud"] {
+                if template == "crud" && db.is_none() {
+                    continue;
+                }
+                let dir = tempfile::tempdir().unwrap();
+                let src = dir.path().join("src");
+                fs::create_dir_all(&src).unwrap();
+                match template {
+                    "rest-api" => rest_api::generate("my-app", dir.path(), &src, db.as_ref()),
+                    "auth" => auth::generate("my-app", dir.path(), &src, db.as_ref()),
+                    _ => crud::generate("my-app", dir.path(), &src, db.as_ref().unwrap()),
+                }
+                .unwrap();
+                let dockerfile = fs::read_to_string(dir.path().join("Dockerfile")).unwrap();
+                assert!(dockerfile.contains("cargo build --release --bin my-app"));
+                assert!(dockerfile.contains("COPY . ."));
+                assert!(!dockerfile.contains("COPY Cargo.toml Cargo.lock"));
+                assert!(dockerfile.contains("/app/target/release/my-app /usr/local/bin/app"));
+                assert!(dockerfile.contains("RAPINA_HOST=0.0.0.0 RAPINA_PORT=3000"));
+                let ignore = fs::read_to_string(dir.path().join(".dockerignore")).unwrap();
+                for excluded in ["target/", ".git/", ".env", ".env.*", "*.db", "*.db-*"] {
+                    assert!(ignore.lines().any(|line| line == excluded));
+                }
+                assert!(!ignore.lines().any(|line| line == "Cargo.lock"));
+            }
+        }
+    }
 
     #[test]
     fn test_generate_migrate_bin_rs_content() {

@@ -132,26 +132,29 @@ Since there are no runtime dependencies, a multi-stage build produces a minimal 
 
 ### Dockerfile
 
+`rapina new` generates a `Dockerfile` and `.dockerignore` for every template.
+The generated build works before a `Cargo.lock` exists, and includes it when
+present. Commit your lockfile for repeatable application builds. Only the named
+application binary is packaged, not the optional migration CLI.
+
 ```dockerfile
 # Build stage
-FROM rust:1.85-bookworm AS builder
+FROM rust:bookworm AS builder
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-
-# If you have migrations:
-# COPY migrations ./migrations
-
-RUN cargo build --release
+COPY . .
+RUN cargo build --release --bin myapp
 
 # Runtime stage
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/myapp /usr/local/bin/myapp
+WORKDIR /app
+COPY --from=builder /app/target/release/myapp /usr/local/bin/app
 
+ENV RAPINA_HOST=0.0.0.0 RAPINA_PORT=3000
 EXPOSE 3000
-CMD ["myapp"]
+CMD ["app"]
 ```
 
 ### .dockerignore
@@ -160,10 +163,20 @@ CMD ["myapp"]
 target/
 .git/
 .env
+.env.*
 *.db
+*.db-*
 ```
 
 ### Build and run
+
+The generated image excludes local environment files and SQLite databases.
+Supply database configuration and authentication secrets at runtime, never in
+the image. Database-backed starters need a reachable database; `localhost` in
+`DATABASE_URL` refers to the container itself. For SQLite, mount persistent
+storage and set `DATABASE_URL` to a path within that mount.
+Both `RAPINA_HOST` and `RAPINA_PORT` are set so the generated application's
+loopback default does not prevent access through the published port.
 
 ```bash
 docker build -t myapp .
