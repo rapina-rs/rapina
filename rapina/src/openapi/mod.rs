@@ -5,6 +5,10 @@
 
 mod endpoint;
 mod spec;
+#[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+mod ui;
+#[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+pub use ui::OpenApiUi;
 
 pub use endpoint::*;
 pub use spec::*;

@@ -81,9 +81,7 @@ pub fn generate_gitignore(extras: &[&str]) -> String {
 
 /// Generate the rapina dependency line for Cargo.toml.
 ///
-/// Returns the full right-hand side of the `rapina = …` entry.
-/// - Without database: `"\"0.1.0\""`
-/// - With database: `"{ version = \"0.1.0\", features = [\"sqlite\"] }"`
+/// Enables Scalar and the selected database driver in generated applications.
 pub fn generate_rapina_dep(version: &str, db_type: Option<&DatabaseType>) -> String {
     if let Some(db) = db_type {
         let feature = match db {
@@ -92,11 +90,11 @@ pub fn generate_rapina_dep(version: &str, db_type: Option<&DatabaseType>) -> Str
             DatabaseType::Mysql => "mysql",
         };
         format!(
-            "{{ version = \"{}\", features = [\"{}\"] }}",
+            "{{ version = \"{}\", features = [\"openapi-scalar\", \"{}\"] }}",
             version, feature
         )
     } else {
-        format!("\"{}\"", version)
+        format!(r#"{{ version = "{version}", features = ["openapi-scalar"] }}"#)
     }
 }
 
@@ -191,7 +189,7 @@ mod tests {
     #[test]
     fn test_generate_rapina_dep_without_db() {
         let dep = generate_rapina_dep("0.1.0", None);
-        assert_eq!(dep, "\"0.1.0\"");
+        assert!(dep.contains("openapi-scalar"));
     }
 
     #[test]

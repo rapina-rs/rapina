@@ -17,6 +17,8 @@ use crate::middleware::{
 #[cfg(feature = "rate-limit")]
 use crate::middleware::{RateLimitConfig, RateLimitMiddleware};
 use crate::observability::TracingConfig;
+#[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+use crate::openapi::OpenApiUi;
 use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 #[cfg(feature = "jwks")]
 use crate::prelude::JwksClient;
@@ -75,6 +77,8 @@ pub struct Rapina {
     #[cfg(feature = "metrics")]
     pub(crate) custom_metrics: Vec<Box<dyn prometheus::core::Collector>>,
     /// Whether OpenAPI is enabled
+    #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+    openapi_ui: Option<OpenApiUi>,
     pub(crate) openapi: bool,
     pub(crate) openapi_title: String,
     pub(crate) openapi_version: String,
@@ -140,6 +144,8 @@ impl Rapina {
             llms_txt: cfg!(debug_assertions),
             #[cfg(feature = "metrics")]
             custom_metrics: Vec::new(),
+            #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+            openapi_ui: None,
             openapi: false,
             openapi_title: "API".to_string(),
             openapi_version: "1.0.0".to_string(),
@@ -806,6 +812,13 @@ impl Rapina {
         self
     }
 
+    /// Serves interactive documentation at `/docs` when OpenAPI is enabled.
+    #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+    pub fn openapi_ui(mut self, ui: OpenApiUi) -> Self {
+        self.openapi_ui = Some(ui);
+        self
+    }
+
     /// Enables or disables openapi endpoint
     ///
     /// When enabled, a get `/__rapina/openapi.json` endpoint is registered
@@ -1006,6 +1019,16 @@ impl Rapina {
                     .get_named(&path, "relay_ws", crate::relay::RelayHub::ws_handler);
         }
 
+        #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+        if let Some(ui) = self.openapi_ui.filter(|_| self.openapi) {
+            if let Some(path) = ui.conflicting_path(&self.router) {
+                tracing::warn!("OpenAPI UI disabled because GET {path} is already registered");
+                self.openapi_ui = None;
+            } else {
+                self.public_routes.add("GET", "/docs");
+            }
+        }
+
         // Add auth middleware if configured
         if let Some(auth_config) = self.auth_config.take() {
             let auth_middleware =
@@ -1096,6 +1119,10 @@ impl Rapina {
             self.router =
                 self.router
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
+            #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+            if let Some(ui) = self.openapi_ui {
+                self.router = ui.mount(self.router);
+            }
         }
 
         // Sort routes so static segments take priority over parameterized ones.

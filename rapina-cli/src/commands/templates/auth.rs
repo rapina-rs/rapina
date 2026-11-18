@@ -82,6 +82,8 @@ async fn main() -> std::io::Result<()> {{
 
     {}
     Rapina::new()
+        .openapi(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .openapi_ui(OpenApiUi::Scalar)
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
         .with_auth(auth_config.clone())
