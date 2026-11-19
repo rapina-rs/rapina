@@ -79,11 +79,10 @@ async fn protected_twin_requires_token() {
 #[tokio::test]
 async fn protected_twin_accepts_valid_token() {
     let client = client().await;
-    let token = AuthConfig::new(SECRET, 3600).create_token("u1").unwrap();
 
     let resp = client
         .get("/admin/things")
-        .header("authorization", &format!("Bearer {token}"))
+        .as_user(&AuthConfig::new(SECRET, 3600), "u1")
         .send()
         .await;
     assert_eq!(resp.status(), StatusCode::OK);
