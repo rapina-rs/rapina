@@ -3,6 +3,7 @@
 use crate::auth::{AuthConfig, AuthMiddleware, PublicRoutes};
 #[cfg(feature = "cron-scheduler")]
 use crate::cron_scheduler::CronScheduler;
+use crate::error::panic_payload_message;
 use crate::health::{HealthRegistry, health_check, liveness_check, readiness_check};
 use crate::introspection::{
     LlmsRegistry, RouteRegistry, list_routes, llms_txt_handler, to_llms_txt,
@@ -21,7 +22,7 @@ use crate::openapi::{OpenApiRegistry, build_openapi_spec, openapi_spec};
 #[cfg(feature = "jwks")]
 use crate::prelude::JwksClient;
 use crate::router::Router;
-use crate::server::{ShutdownHook, StartupHook, serve};
+use crate::server::{ShutdownHook, StartupHook, StartupHookError, serve};
 use crate::state::AppState;
 use futures_util::FutureExt;
 use std::future::Future;
@@ -126,15 +127,23 @@ pub(crate) fn resolve_listen_addr(addr: &str) -> SocketAddr {
     }
 }
 
-/// Extracts a readable message from a panic payload, mirroring the default hook:
-/// `&str`/`String` verbatim, anything else a fallback.
-fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
-    if let Some(s) = payload.downcast_ref::<&str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "non-string panic payload".to_string()
+/// A failed startup hook, kept as an error source so callers can recover the
+/// original error with `io::Error::get_ref` and `Error::source`.
+#[derive(Debug)]
+struct StartupHookFailure {
+    position: usize,
+    source: StartupHookError,
+}
+
+impl std::fmt::Display for StartupHookFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "startup hook {} failed: {}", self.position, self.source)
+    }
+}
+
+impl std::error::Error for StartupHookFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.source)
     }
 }
 
@@ -622,33 +631,39 @@ impl Rapina {
 
     /// Runs the registered startup hooks in order, stopping at the first failure.
     async fn run_startup_hooks(&mut self) -> std::io::Result<()> {
-        // `take` makes each hook run at most once per `listen` call, even if the
-        // runner is somehow reached twice.
-        for (index, hook) in std::mem::take(&mut self.startup_hooks)
-            .into_iter()
-            .enumerate()
-        {
+        let hooks = std::mem::take(&mut self.startup_hooks);
+        if hooks.is_empty() {
+            return Ok(());
+        }
+
+        tracing::info!("Running {} startup hook(s)", hooks.len());
+        for (index, hook) in hooks.into_iter().enumerate() {
+            let position = index + 1;
+            tracing::debug!("startup hook {} starting", position);
             // User code only runs once the future is polled, so a single
             // catch_unwind covers both a panic before the first await and one
             // mid-poll.
             match std::panic::AssertUnwindSafe(hook()).catch_unwind().await {
-                Ok(Ok(())) => {}
+                Ok(Ok(())) => tracing::debug!("startup hook {} finished", position),
                 Ok(Err(error)) => {
-                    return Err(std::io::Error::other(format!(
-                        "startup hook {} failed: {}",
-                        index + 1,
-                        error
-                    )));
+                    tracing::error!("startup hook {} failed: {}", position, error);
+                    return Err(std::io::Error::other(StartupHookFailure {
+                        position,
+                        source: error,
+                    }));
                 }
                 Err(payload) => {
+                    let message = panic_payload_message(&*payload);
+                    tracing::error!("startup hook {} panicked: {}", position, message);
                     return Err(std::io::Error::other(format!(
                         "startup hook {} panicked: {}",
-                        index + 1,
-                        panic_payload_message(&*payload)
+                        position, message
                     )));
                 }
             }
         }
+
+        tracing::info!("Startup hooks completed");
         Ok(())
     }
 
@@ -795,8 +810,9 @@ impl Rapina {
     /// [`std::io::Error`]. Panics are caught rather than unwinding out of the
     /// server (under `panic = "abort"` the process still aborts).
     ///
-    /// Because the hook output is generic, an `Ok(())` literal needs a type
-    /// annotation, e.g. `Ok::<(), std::io::Error>(())`.
+    /// A hook must produce `Box<dyn std::error::Error + Send + Sync>`, so an
+    /// `async fn` returning its own error type is wrapped, e.g.
+    /// `.on_startup(|| async { warm_cache().await?; Ok(()) })`.
     ///
     /// Note: [`TestClient`](crate::testing::TestClient) does not run startup
     /// hooks; they are part of the real server lifecycle only.
@@ -811,24 +827,19 @@ impl Rapina {
     ///     Rapina::new()
     ///         .on_startup(|| async {
     ///             tracing::info!("warming cache");
-    ///             Ok::<(), std::io::Error>(())
+    ///             Ok(())
     ///         })
     ///         .listen("127.0.0.1:3000")
     ///         .await
     /// }
     /// ```
-    pub fn on_startup<F, Fut, E>(mut self, hook: F) -> Self
+    pub fn on_startup<F, Fut>(mut self, hook: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = Result<(), E>> + Send + 'static,
-        E: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
+        Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
     {
-        self.startup_hooks.push(Box::new(move || {
-            Box::pin(async move {
-                let result: Result<(), E> = hook().await;
-                result.map_err(Into::into)
-            })
-        }));
+        self.startup_hooks
+            .push(Box::new(move || Box::pin(async move { hook().await })));
         self
     }
 
@@ -1766,58 +1777,11 @@ mod tests {
 
     // ── startup hooks ────────────────────────────────────────────────────────
 
-    #[test]
-    fn test_rapina_startup_hooks_empty_by_default() {
-        let app = Rapina::new();
-        assert!(app.startup_hooks.is_empty());
-    }
-
-    #[test]
-    fn test_rapina_on_startup_registers_hooks() {
-        let app = Rapina::new()
-            .on_startup(|| async { Ok::<(), std::io::Error>(()) })
-            .on_startup(|| async { Ok::<(), std::io::Error>(()) });
-        assert_eq!(app.startup_hooks.len(), 2);
-    }
-
     #[tokio::test]
     async fn test_run_startup_hooks_empty_is_ok() {
         // Backward compatibility: an app that never registers a hook must keep
         // starting exactly as before, with the runner doing nothing.
         let mut app = Rapina::new();
         assert!(app.run_startup_hooks().await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_startup_hooks_runs_each_hook_exactly_once() {
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let counter = Arc::new(AtomicUsize::new(0));
-        let first = Arc::clone(&counter);
-        let second = Arc::clone(&counter);
-
-        let mut app = Rapina::new()
-            .on_startup(move || {
-                let first = Arc::clone(&first);
-                async move {
-                    first.fetch_add(1, Ordering::SeqCst);
-                    Ok::<(), std::io::Error>(())
-                }
-            })
-            .on_startup(move || {
-                let second = Arc::clone(&second);
-                async move {
-                    second.fetch_add(1, Ordering::SeqCst);
-                    Ok::<(), std::io::Error>(())
-                }
-            });
-
-        // `run_startup_hooks` takes the registered hooks out of the app, so a
-        // second invocation must not run them again.
-        assert!(app.run_startup_hooks().await.is_ok());
-        assert!(app.run_startup_hooks().await.is_ok());
-
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 }

@@ -96,7 +96,7 @@ The endpoint returns `200 OK` and is automatically public (no authentication req
 
 ## Startup Hooks
 
-`on_startup` registers async hooks that run once, at boot, before the server accepts any traffic. Use it for warm-up work that must succeed before the application is considered ready: opening a connection pool, preloading a cache, validating configuration, or failing fast when an upstream dependency is unreachable.
+`on_startup` registers async hooks that run once, at boot, before the server accepts any traffic. Use it for warm-up work that must succeed before the application is considered ready: preloading a cache, validating configuration, or failing fast when an upstream dependency is unreachable.
 
 ### Register hooks
 
@@ -107,21 +107,21 @@ use rapina::prelude::*;
 async fn main() -> std::io::Result<()> {
     Rapina::new()
         .on_startup(|| async {
-            tracing::info!("Warming up the connection pool...");
-            Ok::<(), std::io::Error>(())
+            tracing::info!("Preloading feature flags...");
+            Ok(())
         })
         .on_startup(|| async {
-            tracing::info!("Preloading feature flags...");
-            Ok::<(), std::io::Error>(())
+            tracing::info!("Validating configuration...");
+            Ok(())
         })
         .listen("0.0.0.0:3000")
         .await
 }
 ```
 
-Hooks are ordinary async blocks or functions, so any error type works as long as it converts into `Box<dyn std::error::Error + Send + Sync>` — `std::io::Error`, a `thiserror` enum, a database error, or an already-boxed trait object. Both the hook and the future it returns must be `Send + 'static`.
+Hooks return `Result<(), Box<dyn std::error::Error + Send + Sync>>`, so any error that converts into that box works, either through `?` or with `.into()`: `std::io::Error`, a `thiserror` enum, a database error, or an already-boxed trait object. Both the hook and the future it returns must be `Send + 'static`.
 
-A hook only gets what it captures, so it cannot reach the app state through `Rapina`. Register the resource before `.on_startup()` and clone a handle into the closure, exactly as described in [Graceful Shutdown](@/docs/core-concepts/state.md) for shutdown hooks:
+A hook only gets what it captures, so it cannot reach the app state through `Rapina`. Register the resource before `.on_startup()` and clone a handle into the closure, exactly as described in [Graceful Shutdown](@/docs/core-concepts/state.md#graceful-shutdown):
 
 ```rust
 let pool = MyPool::connect().await?;
@@ -132,40 +132,27 @@ Rapina::new()
         let pool = pool.clone();
         async move {
             pool.warm_up().await?;
-            Ok::<(), MyError>(())
+            Ok(())
         }
     })
     .listen("0.0.0.0:3000")
     .await
 ```
 
-### Why the `Ok` annotation
-
-The error type is generic, so `Ok(())` on its own leaves `E` unconstrained and the call does not compile. Name the error type explicitly even when the hook cannot fail:
-
-```rust
-Rapina::new()
-    .on_startup(|| async {
-        tracing::info!("no failure possible");
-        // Without the annotation, `E` cannot be inferred from this hook.
-        Ok::<(), std::io::Error>(())
-    })
-```
-
 ### Execution order and timing
 
 Hooks run sequentially in the order they were registered, and exactly once per `listen()` call.
 
-1. Deferred setup is applied (`prepare()`) — discovered routes, middleware, auth
+1. Deferred setup is applied (`prepare()`): discovered routes, middleware, auth
 2. Startup hooks run, in registration order
 3. The TCP listener binds
 4. Requests are accepted
 
-Steps 1–2 happen before the socket exists, so if a hook fails, no request ever reaches your application. This is the difference between a failed deploy and a process that comes up healthy and then returns `500` on the first real request.
+Both steps 1 and 2 happen before the socket exists, so if a hook fails, no request ever reaches your application. This is the difference between a failed deploy and a process that comes up healthy and then returns `500` on the first real request.
 
 ### Failure behaviour
 
-The first hook that returns `Err` aborts startup. Remaining hooks do not run, and `listen()` returns `std::io::Error` whose message identifies the hook by 1-based index, for example `startup hook 2 failed: connection refused`.
+The first hook that returns `Err` aborts startup. Remaining hooks do not run, and `listen()` returns `std::io::Error` whose message identifies the hook by 1-based index, for example `startup hook 2 failed: connection refused`. The original error is kept inside that `io::Error`, reachable through `get_ref()` and `source()`, so callers can inspect or downcast it.
 
 Propagate the error from `main` so the process exits non-zero and your orchestrator sees a failed boot:
 
@@ -175,7 +162,7 @@ async fn main() -> std::io::Result<()> {
     Rapina::new()
         .on_startup(|| async {
             // Any `Err` here aborts startup with `startup hook 1 failed: ...`.
-            Err::<(), std::io::Error>(std::io::Error::other("database unreachable"))
+            Err(std::io::Error::other("database unreachable").into())
         })
         .listen("0.0.0.0:3000")
         .await
@@ -186,26 +173,15 @@ async fn main() -> std::io::Result<()> {
 
 A hook that panics is caught, whether it panics before returning its future or while the future is being polled. Remaining hooks do not run, and `listen()` returns `std::io::Error` with a message like `startup hook 1 panicked: ...`, carrying the panic payload (non-string payloads are reported as `non-string panic payload`). A panic in a startup hook therefore turns into a failed boot rather than an unwinding server. The default panic hook still prints the panic message to stderr; `RUST_BACKTRACE=1` adds a backtrace. Only the unwind is contained, not the log line.
 
-> **Note:** catching a panic relies on unwinding. If you build with `panic = "abort"` (a profile setting, e.g. `[profile.release] panic = "abort"`), a panicking hook aborts the process as any other panic would — startup hooks are not special-cased. Keep the default unwind strategy if you want panics converted into a `listen()` error.
-
-### Relationship to shutdown hooks
-
-`on_startup` and `on_shutdown` bracket the server's lifetime, in opposite directions:
-
-- `on_startup` hooks run **before** the listener binds, before any traffic
-- `on_shutdown` hooks run **after** connections drain, once the server stops accepting
-
-Both sets run sequentially in registration order. A common pattern is to pair them: warm a resource up in `on_startup` and release it in `on_shutdown`.
+> **Note:** catching a panic relies on unwinding. If you build with `panic = "abort"` (a profile setting, e.g. `[profile.release] panic = "abort"`), a panicking hook aborts the process as any other panic would; startup hooks are not special-cased. Keep the default unwind strategy if you want panics converted into a `listen()` error.
 
 ### Testing startup hooks
 
-`TestClient` does not go through `listen()`/`serve()`, so it skips both `on_startup` and `on_shutdown` hooks — that keeps request tests fast and side-effect free. To test hooks themselves, call `listen()` and assert on its result; a failing hook returns before the listener binds, so the test needs no free port and accepts no traffic.
+`TestClient` does not go through `listen()`/`serve()`, so it skips both `on_startup` and `on_shutdown` hooks, which keeps request tests fast and side-effect free. To test the hooks themselves, call `listen()` and assert on its result.
 
 ---
 
 ## Graceful Shutdown
-
-Startup hooks have already run by the time the server accepts traffic; the shutdown hooks below run after connections have drained.
 
 Rapina handles `SIGINT` (Ctrl-C) and `SIGTERM` automatically. When a signal is received:
 
