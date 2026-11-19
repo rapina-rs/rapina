@@ -2,7 +2,7 @@
 name = "rapina"
 version = "0.13.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 description = "A fast, type-safe web framework for Rust inspired by FastAPI"
 license = "MIT"
 repository = "https://github.com/rapina-rs/rapina"
@@ -123,7 +123,8 @@ matchit = "0.9"
 nix = { version = "0.31", features = ["signal"] }
 # In-memory span exporter for the otel propagation/export test.
 opentelemetry_sdk = { version = "0.33", features = ["testing"] }
-serial_test = "4"
+# serial_test 4 requires rustc 1.93; the 3.x line still builds at the declared MSRV
+serial_test = "3"
 tempfile = "3"
 tower = { version = "0.5", features = ["limit"] }
 
