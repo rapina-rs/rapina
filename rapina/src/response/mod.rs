@@ -3,8 +3,10 @@
 //! This module defines the [`IntoResponse`] trait which allows various types
 //! to be converted into HTTP responses.
 
+mod redirect;
 mod stream;
 
+pub use redirect::Redirect;
 pub use stream::{SseEvent, SseResponse, StreamResponse};
 
 use bytes::Bytes;
