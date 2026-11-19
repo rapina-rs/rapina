@@ -66,6 +66,8 @@ let resp = client.delete("/users/42").send().await;
 | Method | Description |
 |--------|-------------|
 | `.header(key, value)` | Adds a request header |
+| `.bearer(token)` | Sets `Authorization: Bearer <token>` |
+| `.as_user(&auth, subject)` | Mints a token for `subject` with `auth` and sets it as the bearer token |
 | `.json(&T)` | Serializes `T` as JSON and sets `Content-Type: application/json` |
 | `.form(&T)` | URL-encodes `T` and sets `Content-Type: application/x-www-form-urlencoded` |
 | `.body(impl Into<Bytes>)` | Sets raw body bytes |
@@ -123,29 +125,34 @@ async fn test_protected_route_rejects_anonymous() {
 }
 ```
 
-To test an authenticated request, create a token with `AuthConfig::create_token()` and pass it as a Bearer header:
+To test an authenticated request, `.as_user(&auth, subject)` mints a token for that subject and sends it as a Bearer header. Routes are protected by default, so this is the shortest path to a test that reaches the handler:
 
 ```rust
 #[tokio::test]
 async fn test_protected_route_with_token() {
     let auth_config = AuthConfig::new("test-secret", 3600);
-    let token = auth_config.create_token("user-123").unwrap();
 
     let app = Rapina::new()
         .with_introspection(false)
-        .with_auth(auth_config)
+        .with_auth(auth_config.clone())
         .discover();
 
     let client = TestClient::new(app).await;
 
     let resp = client
         .get("/protected-endpoint")
-        .header("authorization", &format!("Bearer {}", token))
+        .as_user(&auth_config, "user-123")
         .send()
         .await;
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
+```
+
+If you already have a token — one returned by your own login handler, for instance — pass it with `.bearer(&token)` instead:
+
+```rust
+let resp = client.get("/protected-endpoint").bearer(&token).send().await;
 ```
 
 Routes marked `#[public]` bypass auth entirely:

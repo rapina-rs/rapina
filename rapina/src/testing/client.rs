@@ -16,6 +16,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
+use crate::auth::AuthConfig;
 use crate::middleware::MiddlewareStack;
 use crate::response::{APPLICATION_JSON, FORM_CONTENT_TYPE};
 use crate::router::Router;
@@ -188,6 +189,47 @@ impl<'a> TestRequestBuilder<'a> {
         self
     }
 
+    /// Sets an `Authorization: Bearer <token>` header on the request.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let resp = client.get("/me").bearer(&token).send().await;
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `token` is not a valid header value. Tokens are ASCII, so this
+    /// only fires on a token that could never be sent in a header anyway.
+    pub fn bearer(mut self, token: &str) -> Self {
+        let value = HeaderValue::from_str(&format!("Bearer {token}"))
+            .expect("token is not a valid header value");
+        self.headers.insert(http::header::AUTHORIZATION, value);
+        self
+    }
+
+    /// Mints a token for `subject` with `auth` and sets it as the request's
+    /// bearer token.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let auth = AuthConfig::new("test-secret", 3600);
+    /// let resp = client.get("/me").as_user(&auth, "user-123").send().await;
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the token cannot be created. This is test code, and a handler
+    /// that cannot mint a token for a subject is a broken test, not a case to
+    /// assert on.
+    pub fn as_user(self, auth: &AuthConfig, subject: &str) -> Self {
+        let token = auth
+            .create_token(subject)
+            .unwrap_or_else(|err| panic!("could not create a token for user {subject:?}: {err}"));
+        self.bearer(&token)
+    }
+
     /// Sets a JSON body on the request.
     pub fn json<T: Serialize>(mut self, body: &T) -> Self {
         self.body = Bytes::from(serde_json::to_vec(body).unwrap());
@@ -340,6 +382,78 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.text().contains("test"));
+    }
+
+    #[tokio::test]
+    async fn test_client_bearer_sets_authorization_header() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .router(
+                Router::new().route(http::Method::GET, "/headers", |req, _, _| async move {
+                    req.headers()
+                        .get(http::header::AUTHORIZATION)
+                        .map(|v| v.to_str().unwrap_or("").to_string())
+                        .unwrap_or_default()
+                }),
+            );
+
+        let client = TestClient::new(app).await;
+        let response = client.get("/headers").bearer("token123").send().await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text(), "Bearer token123");
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "token is not a valid header value")]
+    async fn test_client_bearer_panics_before_sending_an_unusable_token() {
+        let app = Rapina::new()
+            .with_introspection(false)
+            .router(Router::new().route(http::Method::GET, "/", |_, _, _| async { "ok" }));
+
+        let client = TestClient::new(app).await;
+        // A newline can never be part of a header value, so the request is
+        // rejected here rather than sent malformed.
+        client
+            .get("/")
+            .bearer(
+                "line
+break",
+            )
+            .send()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_client_as_user_sends_a_token_for_that_subject() {
+        let auth = AuthConfig::new("as-user-secret", 3600);
+        let app = Rapina::new()
+            .with_introspection(false)
+            .router(
+                Router::new().route(http::Method::GET, "/headers", |req, _, _| async move {
+                    req.headers()
+                        .get(http::header::AUTHORIZATION)
+                        .map(|v| v.to_str().unwrap_or("").to_string())
+                        .unwrap_or_default()
+                }),
+            );
+
+        let client = TestClient::new(app).await;
+        let response = client
+            .get("/headers")
+            .as_user(&auth, "user-42")
+            .send()
+            .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let header = response.text();
+        let token = header
+            .strip_prefix("Bearer ")
+            .expect("authorization header should carry a bearer token");
+        let claims = auth
+            .decode(token)
+            .expect("token should decode with the same config");
+        assert_eq!(claims.sub, "user-42");
     }
 
     #[tokio::test]
