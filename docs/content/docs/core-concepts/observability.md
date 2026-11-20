@@ -120,7 +120,7 @@ Incoming requests with a W3C `traceparent` header continue the upstream trace: t
 
 ## Trace IDs
 
-`TraceIdMiddleware` gives every request a trace ID that shows up in its log lines, in the `trace_id` field of error bodies and in the `x-trace-id` response header. An incoming `x-trace-id` header is reused when it holds a valid ID; when it is absent, `x-request-id` (sent by nginx, Heroku, AWS ALB and most API gateways) is read with the same check. A valid ID is at most 128 bytes and contains only `A-Z`, `a-z`, `0-9`, `-`, `_`, `.` and `:`. Anything else is ignored and the generated UUID is kept, the request itself is never rejected.
+`TraceIdMiddleware` gives every request a trace ID that handlers read through the `Context` extractor and that is echoed in the `x-trace-id` response header. An incoming `x-trace-id` header is reused when it holds a valid ID; when it is absent, `x-request-id` (sent by nginx, Heroku, AWS ALB and most API gateways) is read with the same check. A valid ID is at most 128 bytes and contains only `A-Z`, `a-z`, `0-9`, `-`, `_`, `.` and `:`. Anything else is ignored and the generated UUID is kept. The request itself is never rejected.
 
 ## Trying it locally
 

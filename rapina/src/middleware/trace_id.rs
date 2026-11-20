@@ -54,7 +54,6 @@ impl Middleware for TraceIdMiddleware {
         next: Next<'a>,
     ) -> BoxFuture<'a, Response<BoxBody>> {
         Box::pin(async move {
-            // Check for incoming x-trace-id header for distributed tracing
             let headers = req.headers();
             let incoming_trace_id = headers
                 .get(TRACE_ID_HEADER)
