@@ -44,6 +44,8 @@ pub fn generate(
         write_migrate_bin(src_path)?;
     }
 
+    super::write_docker_files(name, project_path)?;
+
     Ok(())
 }
 
