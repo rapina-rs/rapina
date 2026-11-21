@@ -838,6 +838,9 @@ impl Rapina {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
     {
+        // The hook is invoked inside the async block so it only runs when the
+        // future is polled, which keeps a panic before the first await inside
+        // `run_startup_hooks`' catch_unwind.
         self.startup_hooks
             .push(Box::new(move || Box::pin(async move { hook().await })));
         self

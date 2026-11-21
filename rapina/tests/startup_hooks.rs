@@ -19,7 +19,7 @@ use rapina::http::{Method, StatusCode};
 use rapina::prelude::Rapina;
 use rapina::router::Router;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 
 /// Generous upper bound: startup hooks are a handful of bookkeeping steps, so
 /// anything approaching this means `listen()` never observed the hook result.
@@ -73,13 +73,7 @@ fn free_port_addr() -> std::net::SocketAddr {
 
 /// Reserves an ephemeral port and releases it so the spawned server can bind it.
 async fn free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("failed to bind a free port");
-    listener
-        .local_addr()
-        .expect("failed to read the ephemeral address")
-        .port()
+    free_port_addr().port()
 }
 
 /// Spawns the app on a free port on a separate OS thread with its own
@@ -390,8 +384,6 @@ async fn startup_hook_error_preserves_source() {
         "error should carry the hook's error, got: {message}"
     );
 
-    // The maintainer's request: the concrete hook error must survive as the
-    // `io::Error`'s source instead of being flattened into a string.
     let source = err
         .get_ref()
         .expect("io::Error must carry the hook error")
@@ -414,10 +406,6 @@ async fn successful_startup_hooks_serve_requests() {
         StatusCode::OK
     });
 
-    // `Rapina: !Sync` makes the `listen()` future `!Send`, so it cannot be
-    // `tokio::spawn`-ed: `spawn_app` runs it on a dedicated OS thread with a
-    // current-thread runtime. The hook log stays reachable through the `Arc`
-    // captured by the test and by clones moved into the hooks.
     let port = spawn_app(move || {
         Rapina::new()
             .disable_introspection()
