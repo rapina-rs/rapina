@@ -161,6 +161,8 @@ pub mod prelude {
     #[cfg(feature = "otel")]
     pub use crate::observability::TelemetryConfig;
     pub use crate::observability::TracingConfig;
+    #[cfg(any(feature = "openapi-scalar", feature = "openapi-swagger"))]
+    pub use crate::openapi::OpenApiUi;
     #[cfg(feature = "database")]
     pub use crate::pagination::{
         CursorKey, CursorPaginate, CursorPaginated, Paginate, Paginated, PaginationConfig,

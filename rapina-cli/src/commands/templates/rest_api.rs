@@ -79,6 +79,8 @@ async fn main() -> std::io::Result<()> {{
         .get("/", hello);
     {db_config}
     Rapina::new()
+        .openapi(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        .openapi_ui(OpenApiUi::Scalar)
         .with_tracing(TracingConfig::new())
         .middleware(RequestLogMiddleware::new())
         .with_health_check(true)

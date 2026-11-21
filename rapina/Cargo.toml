@@ -151,7 +151,17 @@ required-features = ["otel"]
 name = "pagination"
 required-features = ["database"]
 
+[[example]]
+name = "openapi_scalar"
+required-features = ["openapi-scalar"]
+
+[[example]]
+name = "openapi_swagger"
+required-features = ["openapi-swagger"]
+
 [features]
+openapi-scalar = []
+openapi-swagger = []
 default = ["compression", "rate-limit"]
 rate-limit = []
 compression = ["flate2"]
