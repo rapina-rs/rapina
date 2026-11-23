@@ -167,7 +167,7 @@ pub mod prelude {
     };
     #[cfg(feature = "websocket")]
     pub use crate::relay::{Relay, RelayConfig, RelayEvent};
-    pub use crate::response::{IntoResponse, StaticStr};
+    pub use crate::response::{IntoResponse, Redirect, StaticStr};
     pub use crate::router::Router;
 
     #[cfg(feature = "graphql")]
