@@ -326,3 +326,91 @@ async fn test_unsubscribe_stops_delivery() {
 
     ws_tx.close().await.ok();
 }
+
+#[cfg(feature = "relay-redis")]
+mod redis_tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use rapina::prelude::*;
+    use rapina::relay::{RedisRelayBackend, RelayBackend, RelayConfig};
+
+    const REDIS_URL: &str = "redis://127.0.0.1:6379";
+
+    async fn redis_backends() -> (RedisRelayBackend, RedisRelayBackend) {
+        let subscriber = RedisRelayBackend::connect(REDIS_URL)
+            .await
+            .expect("Redis connection failed for subscriber");
+        let publisher = RedisRelayBackend::connect(REDIS_URL)
+            .await
+            .expect("Redis connection failed for publisher");
+        (subscriber, publisher)
+    }
+
+    async fn recv_message(receiver: &mut dyn rapina::relay::TopicReceiver) -> Arc<String> {
+        tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .expect("timed out waiting for Redis relay message")
+            .expect("Redis relay subscription closed")
+    }
+
+    // cargo test --features relay-redis -- --ignored
+    #[ignore]
+    #[tokio::test]
+    async fn test_with_relay_redis_builder_connects() {
+        let app = Rapina::new()
+            .with_relay_redis(RelayConfig::default(), REDIS_URL)
+            .await;
+
+        assert!(app.is_ok());
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_undecodable_payload_does_not_end_subscription() {
+        let (subscriber, publisher) = redis_backends().await;
+        let topic = "rapina:test:relay:undecodable";
+        let mut receiver = subscriber.subscribe(topic).await;
+
+        let client = redis::Client::open(REDIS_URL).expect("invalid Redis URL");
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("Redis connection failed for binary publisher");
+        redis::cmd("PUBLISH")
+            .arg(topic)
+            .arg(&[0xff_u8][..])
+            .query_async::<i64>(&mut conn)
+            .await
+            .expect("Redis binary publish failed");
+
+        publisher
+            .push(topic, Arc::new(r#"{"ok":true}"#.to_owned()))
+            .await
+            .expect("Redis valid publish failed");
+
+        assert_eq!(&*recv_message(receiver.as_mut()).await, r#"{"ok":true}"#);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_foreign_channel_does_not_end_subscription() {
+        let (subscriber, publisher) = redis_backends().await;
+        let topic = "rapina:test:relay:expected";
+        let mut receiver = subscriber.subscribe(topic).await;
+
+        publisher
+            .push(
+                "rapina:test:relay:foreign",
+                Arc::new(r#"{"foreign":true}"#.to_owned()),
+            )
+            .await
+            .expect("Redis foreign-channel publish failed");
+        publisher
+            .push(topic, Arc::new(r#"{"ok":true}"#.to_owned()))
+            .await
+            .expect("Redis valid publish failed");
+
+        assert_eq!(&*recv_message(receiver.as_mut()).await, r#"{"ok":true}"#);
+    }
+}
