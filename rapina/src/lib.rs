@@ -171,7 +171,9 @@ pub mod prelude {
     pub use crate::router::Router;
 
     #[cfg(feature = "graphql")]
-    pub use crate::graphql::{GraphQLRequest, GraphQLResponse};
+    pub use crate::graphql::{
+        GraphQLRequest, GraphQLResponse, RapinaGraphQLContext, graphql_error,
+    };
 
     pub use http::{Method, StatusCode};
     pub use schemars::JsonSchema;
