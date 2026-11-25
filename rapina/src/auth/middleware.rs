@@ -11,8 +11,11 @@ use crate::response::{BoxBody, IntoResponse};
 
 /// Middleware that enforces JWT authentication on all routes.
 ///
-/// Routes marked with `#[public]` or starting with `/__rapina` bypass authentication.
-/// All other routes require a valid `Authorization: Bearer <token>` header.
+/// Routes marked with `#[public]` or registered via `public_route`, and the
+/// `/__rapina` introspection routes, bypass authentication. All other routes
+/// require a valid `Authorization: Bearer <token>` header. Middleware that
+/// changes the request method or path must run before this one; `.with_auth()`
+/// already places it after all user middleware.
 ///
 /// # Example
 ///
@@ -67,11 +70,13 @@ impl Middleware for AuthMiddleware {
         next: Next<'a>,
     ) -> BoxFuture<'a, Response<BoxBody>> {
         Box::pin(async move {
-            let method = req.method().as_str();
-            let path = req.uri().path();
+            // Resolve here, from the request this chain holds: middleware may
+            // have rewritten the method or path before auth runs.
+            let is_public = next.resolve_pattern(&req).is_some_and(|pattern| {
+                self.public_routes.is_public(req.method().as_str(), pattern)
+            });
 
-            // Check if this route is public
-            if self.public_routes.is_public(method, path) {
+            if is_public {
                 return next.run(req).await;
             }
 

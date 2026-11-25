@@ -424,7 +424,9 @@ impl Rapina {
     /// Registers a route as public (no authentication required).
     ///
     /// Use this for routes that should be accessible without a JWT token.
-    /// Routes starting with `/__rapina` are automatically public.
+    /// `path` must be the exact route pattern, including parameter names
+    /// (e.g. `/users/:id`), and `prepare()` panics when no registered route
+    /// matches. The `/__rapina` introspection routes are automatically public.
     ///
     /// # Example
     ///
@@ -1116,6 +1118,7 @@ impl Rapina {
         }
 
         // Add auth middleware if configured
+        let auth_enabled = self.auth_config.is_some();
         if let Some(auth_config) = self.auth_config.take() {
             let auth_middleware =
                 AuthMiddleware::with_public_routes(auth_config, self.public_routes.clone());
@@ -1205,6 +1208,39 @@ impl Rapina {
             self.router =
                 self.router
                     .get_named("/__rapina/openapi.json", "openapi_spec", openapi_spec);
+        }
+
+        // is_public() matches patterns exactly, so a typo'd entry would
+        // silently keep the route protected instead of failing loudly here.
+        if auth_enabled {
+            let unknown: Vec<String> = self
+                .public_routes
+                .iter()
+                .filter(|(method, path)| {
+                    !self
+                        .router
+                        .routes
+                        .iter()
+                        .any(|(m, r)| m.as_str() == *method && r.pattern == *path)
+                })
+                .map(|(method, path)| {
+                    let routes = &self.router.routes;
+                    let hint = routes
+                        .iter()
+                        .find(|(_, r)| r.pattern == path)
+                        .or_else(|| routes.iter().find(|(_, r)| same_shape(&r.pattern, path)))
+                        .map(|(m, r)| format!(r#", did you mean "{} {}""#, m.as_str(), r.pattern))
+                        .unwrap_or_default();
+                    format!(r#"public_route("{method}", "{path}"){hint}"#)
+                })
+                .collect();
+            if !unknown.is_empty() {
+                panic!(
+                    "public_route() matched no registered route: {}. The method is matched \
+                     case-sensitively in uppercase and the path must equal the route pattern exactly",
+                    unknown.join("; ")
+                );
+            }
         }
 
         // Sort routes so static segments take priority over parameterized ones.
@@ -1330,6 +1366,13 @@ impl Default for Rapina {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn same_shape(a: &str, b: &str) -> bool {
+    a.split('/').count() == b.split('/').count()
+        && a.split('/')
+            .zip(b.split('/'))
+            .all(|(x, y)| x.starts_with(':') || x == y)
 }
 
 #[cfg(test)]

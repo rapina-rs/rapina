@@ -101,7 +101,7 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// Note: Routes starting with `/__rapina` are automatically public.
+/// Note: Routes named `/__rapina` or under `/__rapina/` are automatically public.
 #[proc_macro_attribute]
 pub fn public(attr: TokenStream, item: TokenStream) -> TokenStream {
     public_core(attr.into(), item.into())

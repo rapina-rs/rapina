@@ -60,6 +60,8 @@ Rapina::new()
     // ...
 ```
 
+`public_route` takes the exact route pattern, including parameter names: with a handler on `#[get("/users/:id")]`, call `.public_route("GET", "/users/:id")`, not `/users/123`. When auth is enabled, a mismatch is a startup panic.
+
 The built-in health check endpoints (`/__rapina/health`, `/__rapina/health/live`, `/__rapina/health/ready`) are always public when enabled — no `.public_route()` call needed.
 
 ## Protected Routes
