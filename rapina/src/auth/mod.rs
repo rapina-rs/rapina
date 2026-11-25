@@ -247,33 +247,20 @@ impl PublicRoutes {
         self.routes.push((method.to_string(), path.to_string()));
     }
 
-    /// Checks if a route is public.
-    pub fn is_public(&self, method: &str, path: &str) -> bool {
-        // Introspection routes are always public
-        if path.starts_with("/__rapina") {
-            return true;
-        }
-
-        self.routes
-            .iter()
-            .any(|(m, p)| m == method && Self::matches_pattern(p, path))
+    /// Iterates over the registered `(method, pattern)` pairs.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.routes.iter().map(|(m, p)| (m.as_str(), p.as_str()))
     }
 
-    /// Matches a route pattern against a path.
-    fn matches_pattern(pattern: &str, path: &str) -> bool {
-        let pattern_parts: Vec<&str> = pattern.split('/').collect();
-        let path_parts: Vec<&str> = path.split('/').collect();
-
-        if pattern_parts.len() != path_parts.len() {
-            return false;
-        }
-
-        pattern_parts
-            .iter()
-            .zip(path_parts.iter())
-            .all(|(pattern_part, path_part)| {
-                pattern_part.starts_with(':') || pattern_part == path_part
-            })
+    /// Checks if a route pattern is public.
+    ///
+    /// `pattern` is the resolved route pattern (e.g. `/users/:id`), not the
+    /// request path, and must be spelled exactly like the registered entry.
+    pub fn is_public(&self, method: &str, pattern: &str) -> bool {
+        // Introspection routes are always public
+        pattern == "/__rapina"
+            || pattern.starts_with("/__rapina/")
+            || self.routes.iter().any(|(m, p)| m == method && p == pattern)
     }
 }
 
@@ -366,13 +353,13 @@ mod tests {
     }
 
     #[test]
-    fn test_public_routes_with_params() {
+    fn test_public_routes_pattern_equality() {
         let mut routes = PublicRoutes::new();
         routes.add("GET", "/users/:id/public");
 
-        assert!(routes.is_public("GET", "/users/123/public"));
-        assert!(routes.is_public("GET", "/users/abc/public"));
-        assert!(!routes.is_public("GET", "/users/123/private"));
+        assert!(routes.is_public("GET", "/users/:id/public"));
+        assert!(!routes.is_public("GET", "/users/123/public"));
+        assert!(!routes.is_public("GET", "/users/:id/private"));
     }
 
     #[test]
@@ -380,5 +367,7 @@ mod tests {
         let routes = PublicRoutes::new();
         assert!(routes.is_public("GET", "/__rapina/routes"));
         assert!(routes.is_public("GET", "/__rapina/openapi.json"));
+        assert!(routes.is_public("GET", "/__rapina"));
+        assert!(!routes.is_public("GET", "/__rapinafoo"));
     }
 }

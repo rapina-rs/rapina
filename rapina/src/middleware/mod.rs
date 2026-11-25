@@ -131,6 +131,14 @@ impl<'a> Next<'a> {
             self.router.handle(req, &self.state).await
         }
     }
+
+    /// Resolves the route pattern the router will serve this request with.
+    ///
+    /// Middleware may have rewritten the method or path before this call, so
+    /// the result can differ from a resolution made before the chain ran.
+    pub(crate) fn resolve_pattern(&self, req: &Request<Incoming>) -> Option<&str> {
+        self.router.resolve_pattern(req.method(), req.uri().path())
+    }
 }
 
 /// A stack of middleware to be executed in order.

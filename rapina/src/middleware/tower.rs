@@ -321,4 +321,68 @@ mod tests {
         assert_eq!(r2.status(), http::StatusCode::OK);
         assert_eq!(max_concurrent.load(Ordering::SeqCst), 1);
     }
+
+    // RapinaService::call never runs prepare_request, so this only passes when
+    // auth resolves publicness from the request itself.
+    #[tokio::test]
+    async fn test_rapina_service_resolves_publicness_from_request() {
+        use crate::app::Rapina;
+        use crate::auth::AuthConfig;
+        use hyper::service::service_fn;
+        use hyper_util::rt::{TokioExecutor, TokioIo};
+        use hyper_util::server::conn::auto;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let app = Rapina::new()
+            .with_introspection(false)
+            .with_auth(AuthConfig::new("tower-test-secret", 3600))
+            .public_route("GET", "/open")
+            .router(
+                Router::new()
+                    .route(http::Method::GET, "/open", |_, _, _| async { "open" })
+                    .route(http::Method::GET, "/locked", |_, _, _| async { "locked" }),
+            );
+        let app = app.prepare();
+        let svc = RapinaService::new(app.router, app.state, app.middlewares);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let conn_svc = svc.clone();
+                tokio::spawn(async move {
+                    let service = service_fn(move |req: Request<Incoming>| {
+                        let mut s = conn_svc.clone();
+                        async move { s.call(req).await }
+                    });
+                    let io = TokioIo::new(stream);
+                    let _ = auto::Builder::new(TokioExecutor::new())
+                        .serve_connection_with_upgrades(io, service)
+                        .await;
+                });
+            }
+        });
+
+        async fn get(addr: std::net::SocketAddr, target: &str) -> String {
+            let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+            stream
+                .write_all(
+                    format!("GET {target} HTTP/1.1\r\nhost: test\r\nconnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut buf = Vec::new();
+            stream.read_to_end(&mut buf).await.unwrap();
+            String::from_utf8(buf).unwrap()
+        }
+
+        let open = get(addr, "/open").await;
+        assert!(open.starts_with("HTTP/1.1 200"), "got: {open}");
+        assert!(open.contains("\r\n\r\nopen"), "got: {open}");
+
+        let locked = get(addr, "/locked").await;
+        assert!(locked.starts_with("HTTP/1.1 401"), "got: {locked}");
+    }
 }

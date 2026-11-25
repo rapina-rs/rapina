@@ -43,6 +43,26 @@ async fn qualified_below() -> &'static str {
     "qualified below"
 }
 
+mod users {
+    use rapina::prelude::*;
+
+    #[public]
+    #[get("/users/:id")]
+    pub async fn show_route() -> &'static str {
+        "user"
+    }
+
+    #[get("/users/me")]
+    pub async fn me_route() -> &'static str {
+        "me"
+    }
+}
+
+#[get("/__rapinafoo")]
+async fn rapina_prefix_lookalike() -> &'static str {
+    "lookalike"
+}
+
 const SECRET: &str = "test-secret-public-collision";
 
 async fn client() -> TestClient {
@@ -96,4 +116,48 @@ async fn qualified_public_below_route_macro_is_public() {
 
     let resp = client.get("/qualified-below").send().await;
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn static_route_wins_over_public_param_pattern() {
+    let client = client().await;
+
+    let resp = client.get("/users/me").send().await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    let token = AuthConfig::new(SECRET, 3600).create_token("u1").unwrap();
+    let resp = client
+        .get("/users/me")
+        .header("authorization", &format!("Bearer {token}"))
+        .send()
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.text(), "me");
+}
+
+#[tokio::test]
+async fn public_param_route_stays_public() {
+    let client = client().await;
+
+    let resp = client.get("/users/42").send().await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.text(), "user");
+}
+
+#[tokio::test]
+async fn introspection_prefix_lookalike_requires_token() {
+    let client = client().await;
+
+    let resp = client.get("/__rapinafoo").send().await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[should_panic(expected = "matched no registered route")]
+async fn public_route_without_matching_route_panics_at_startup() {
+    let app = Rapina::new()
+        .with_introspection(false)
+        .with_auth(AuthConfig::new(SECRET, 3600))
+        .public_route("GET", "/nope");
+    TestClient::new(app).await;
 }
