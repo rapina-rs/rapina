@@ -19,9 +19,6 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "env"] }
 colored = "3"
 terminal_size = "0.4"
-notify = { version = "8", default-features = false, features = [
-  "macos_kqueue",
-] }
 notify-debouncer-mini = "0.4"
 sea-orm = { version = "1", features = ["runtime-tokio-rustls"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
